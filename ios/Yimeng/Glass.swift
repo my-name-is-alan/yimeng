@@ -4,6 +4,16 @@ import SwiftUI
 struct GlassCapsule: View {
     @Environment(\.colorScheme) var scheme
     var body: some View {
+        if #available(iOS 26.0, *) {
+            // iOS 26+: system Liquid Glass (real lensing of the live backdrop, incl. UIKit-backed scroll views).
+            Color.clear.glassEffect(.clear, in: Capsule())
+                .overlay(Capsule().fill(scheme == .dark ? Color.black.opacity(0.10) : Color.white.opacity(0.2)).allowsHitTesting(false))
+        } else {
+            custom
+        }
+    }
+    /// iOS 17–25 fallback (and the reference for Android AGSL): light blur + tint + Metal specular rim.
+    var custom: some View {
         GeometryReader { g in
             ZStack {
                 Capsule().fill(.ultraThinMaterial).opacity(0.35)

@@ -40,7 +40,6 @@ struct Shell: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             content
-                .glassLens(glassRects)
             chrome
         }
         .coordinateSpace(name: "shell")

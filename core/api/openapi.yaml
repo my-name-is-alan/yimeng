@@ -22,6 +22,7 @@ tags:
   - name: playback
   - name: metadata
   - name: history
+  - name: playlists
 
 paths:
   /healthz:
@@ -845,6 +846,110 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/playlists:
+    get:
+      tags: [playlists]
+      summary: All playlists (static and smart) with counts
+      responses:
+        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [playlists]
+      summary: Create a static (track_ids) or smart (rules) playlist
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlaylistInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/playlists/import:
+    post:
+      tags: [playlists]
+      summary: Import an M3U/M3U8 playlist (≤4 MiB) as a static playlist
+      description: Entries are matched against the library only (referenced files are never opened) — exact path, path relative to a library root, unique file name, then `#EXTINF` "artist - title".
+      parameters: [{ name: name, in: query, schema: { type: string } }]
+      requestBody: { required: true, content: { audio/x-mpegurl: { schema: { type: string } } } }
+      responses:
+        "201":
+          description: Imported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlist: { $ref: "#/components/schemas/Playlist" }
+                  matched: { type: integer }
+                  unmatched: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/playlists/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [playlists]
+      summary: Playlist with a page of tracks (smart playlists are evaluated now)
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Offset" }]
+      responses:
+        "200":
+          description: Playlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Playlist" }
+                  - type: object
+                    properties:
+                      missing: { type: integer, description: "static items whose track is currently not in the library" }
+                      tracks: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Track" } }, total: { type: integer }, limit: { type: integer }, offset: { type: integer } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [playlists]
+      summary: Rename / comment / change rules (smart only)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlaylistInput" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [playlists]
+      summary: Delete a playlist
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/playlists/{id}/items:
+    post:
+      tags: [playlists]
+      summary: Edit items of a static playlist (event playlist.updated)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [op]
+              properties:
+                op: { type: string, enum: [replace, append, insert, remove, move, clear] }
+                track_ids: { type: array, items: { type: string } }
+                index: { type: integer }
+                from: { type: integer }
+                to: { type: integer }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Smart playlists have no editable items, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/playlists/{id}/m3u:
+    get:
+      tags: [playlists]
+      summary: Export as extended M3U (UTF-8)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: paths, in: query, schema: { type: string, enum: [absolute, relative], default: absolute }, description: "relative = relative to the file's library root" }
+      responses:
+        "200": { description: M3U, content: { audio/x-mpegurl: { schema: { type: string } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -1079,3 +1184,41 @@ components:
         lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
         text: { type: string }
         meta: { type: object, additionalProperties: { type: string } }
+    Playlist:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        comment: { type: string }
+        smart: { type: boolean }
+        rules: { $ref: "#/components/schemas/SmartRules" }
+        track_count: { type: integer }
+        duration_ms: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PlaylistInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 200 }
+        comment: { type: string }
+        track_ids: { type: array, items: { type: string }, maxItems: 10000 }
+        rules: { $ref: "#/components/schemas/SmartRules" }
+    SmartRules:
+      type: object
+      description: |
+        Smart playlist rules, evaluated at read time.
+        Text fields (title, artist, album, albumartist, genre, format, codec): is, is_not, contains, not_contains, starts_with.
+        Number fields (year, duration [s], plays, rating, sample_rate, bit_depth): eq, ne, gt, gte, lt, lte, between [min,max].
+        Date fields (added, last_played): in_last / not_in_last (days), before / after (RFC 3339).
+        Bool fields (favorite, lossless): is true|false.
+      example: { match: all, rules: [{ field: genre, op: contains, value: jazz }, { field: added, op: in_last, value: 30 }], sort: added, order: desc, limit: 100 }
+      properties:
+        match: { type: string, enum: [all, any], default: all }
+        rules:
+          type: array
+          maxItems: 50
+          items: { type: object, required: [field, op, value], properties: { field: { type: string }, op: { type: string }, value: {} } }
+        sort: { type: string, description: "any /api/tracks sort, or random" }
+        order: { type: string, enum: [asc, desc] }
+        limit: { type: integer, maximum: 5000, default: 500 }

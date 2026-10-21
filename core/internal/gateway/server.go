@@ -63,7 +63,10 @@ type Deps struct {
 	// LyricsFetcher is an optional remote lyrics provider chain.
 	LyricsFetcher library.LyricsFetcher
 	UserData      *userdata.Store
+	Playlists     PlaylistUseCases
 }
+
+type contextT = context.Context
 
 func NewRouter(d Deps) http.Handler {
 	if d.Log == nil {
@@ -115,6 +118,16 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
 
+	if d.Playlists != nil {
+		mux.HandleFunc("GET /api/playlists", d.listPlaylists)
+		mux.HandleFunc("POST /api/playlists", d.createPlaylist)
+		mux.HandleFunc("POST /api/playlists/import", d.importM3U)
+		mux.HandleFunc("GET /api/playlists/{id}", d.getPlaylist)
+		mux.HandleFunc("PATCH /api/playlists/{id}", d.updatePlaylist)
+		mux.HandleFunc("DELETE /api/playlists/{id}", d.deletePlaylist)
+		mux.HandleFunc("POST /api/playlists/{id}/items", d.editPlaylist)
+		mux.HandleFunc("GET /api/playlists/{id}/m3u", d.exportM3U)
+	}
 	if d.UserData != nil {
 		mux.HandleFunc("POST /api/scrobble", d.scrobble)
 		mux.HandleFunc("GET /api/history", d.history)
@@ -206,11 +219,13 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
-func decodeBody(r *http.Request, v any) error {
+func decodeBody(r *http.Request, v any) error { return decodeBodyMax(r, v, 64<<10) }
+
+func decodeBodyMax(r *http.Request, v any, maxBytes int64) error {
 	if r.Body == nil {
 		return nil
 	}
-	dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+	dec := json.NewDecoder(io.LimitReader(r.Body, maxBytes))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
 		return err

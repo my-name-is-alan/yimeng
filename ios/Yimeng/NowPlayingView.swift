@@ -9,8 +9,6 @@ struct NowPlayingView: View {
         TimelineView(.animation) { tl in
             let t = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: 36)
             ZStack {
-                DiffusedBackdrop(images: [album.cover], height: 900).ignoresSafeArea()
-                Color.black.opacity(scheme == .dark ? 0.25 : 0).ignoresSafeArea()
                 VStack(spacing: 0) {
                     header
                     if state.lyricsMode { LyricsView(time: t).frame(maxHeight: .infinity) }
@@ -19,6 +17,14 @@ struct NowPlayingView: View {
                     transport.padding(.top, 20)
                     bottomBar.padding(.top, 24).padding(.bottom, 8)
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                ZStack(alignment: .top) {
+                    Theme.base(scheme)
+                    DiffusedBackdrop(images: [album.cover], height: 900)
+                    Color.black.opacity(scheme == .dark ? 0.25 : 0)
+                }.ignoresSafeArea()
             }
         }
         .foregroundStyle(Theme.fg(scheme))

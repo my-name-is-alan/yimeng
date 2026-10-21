@@ -89,6 +89,7 @@ func newEnv(t *testing.T) *env {
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
 		Backup:          &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 		UserData:        &userdata.Store{DB: d},
+		Playlists:       sc,
 		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS)}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}

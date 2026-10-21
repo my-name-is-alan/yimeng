@@ -48,3 +48,12 @@ alternative considered. Newest items at the bottom.
 - `track_stats` is a denormalized counter so sorting by plays scales (no
   aggregate over `plays` per list query).
 - Single-user model: favorites/ratings are global, not per device.
+
+## D5 Playlists
+- Static items have no FK to tracks (missing files keep their slot; `missing`
+  count reported). Smart playlists store rule JSON evaluated at read time; only
+  whitelisted field→SQL expressions are interpolated, values are bound.
+- M3U import never opens referenced files; it matches against indexed paths,
+  root-relative paths, unique basenames, then `#EXTINF` artist/title. Export
+  writes absolute (default) or root-relative paths — paths are only exposed to
+  authenticated devices, which already own the library.
