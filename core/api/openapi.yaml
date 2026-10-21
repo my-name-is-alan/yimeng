@@ -272,6 +272,7 @@ paths:
         - $ref: "#/components/parameters/Order"
         - $ref: "#/components/parameters/Q"
         - { name: sort, in: query, schema: { type: string, enum: [artist, title, year, added], default: artist } }
+        - { name: favorite, in: query, schema: { type: boolean }, description: only favorites }
         - { name: artist_id, in: query, schema: { type: string } }
       responses:
         "200":
@@ -326,7 +327,8 @@ paths:
         - $ref: "#/components/parameters/Offset"
         - $ref: "#/components/parameters/Order"
         - $ref: "#/components/parameters/Q"
-        - { name: sort, in: query, schema: { type: string, enum: [title, artist, album, added, duration, year, track], default: title, description: "default is track when album_id is set" } }
+        - { name: sort, in: query, schema: { type: string, enum: [title, artist, album, added, duration, year, track, plays, last_played, rating], default: title, description: "default is track when album_id is set" } }
+        - { name: favorite, in: query, schema: { type: boolean }, description: only favorites }
         - { name: album_id, in: query, schema: { type: string } }
         - { name: artist_id, in: query, schema: { type: string } }
       responses:
