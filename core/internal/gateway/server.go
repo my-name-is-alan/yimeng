@@ -15,6 +15,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -47,7 +48,10 @@ type Deps struct {
 	// Enrich, if non-nil, triggers a background metadata pass (opt-in providers).
 	Enrich func()
 	Auth   *auth.Service // required: every /api route except pairing needs a device token
-	Log    *slog.Logger
+	// Transcoder is optional (nil = original-only streaming).
+	Transcoder  *transcode.Transcoder
+	StreamPrefs StreamPrefs
+	Log         *slog.Logger
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -66,6 +70,8 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/pair/codes", d.newPairCode)
 	mux.HandleFunc("GET /api/devices", d.listDevices)
 	mux.HandleFunc("GET /api/devices/me", d.me)
+	mux.HandleFunc("GET /api/devices/me/stream-quality", d.getStreamQuality)
+	mux.HandleFunc("PUT /api/devices/me/stream-quality", d.putStreamQuality)
 	mux.HandleFunc("DELETE /api/devices/{id}", d.revokeDevice)
 
 	mux.HandleFunc("POST /api/library/scan", d.startScan)

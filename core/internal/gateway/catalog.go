@@ -180,17 +180,6 @@ var audioTypes = map[string]string{
 	"opus": "audio/ogg", "wav": "audio/wav", "dsf": "audio/x-dsf",
 }
 
-// stream serves the local file for a canonical track with HTTP Range support.
-// The path comes only from the DB and is re-validated against library roots.
-func (d Deps) stream(w http.ResponseWriter, r *http.Request) {
-	f, err := d.Library.TrackFile(r.Context(), r.PathValue("id"))
-	ct := audioTypes[f.Format]
-	if ct == "" {
-		ct = "application/octet-stream"
-	}
-	d.serveFile(w, r, f.Path, err, ct, "private, no-transform")
-}
-
 func (d Deps) serveFile(w http.ResponseWriter, r *http.Request, path string, err error, contentType, cache string) {
 	if errors.Is(err, library.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "file not found")

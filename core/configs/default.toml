@@ -20,7 +20,11 @@ path = "/var/yimeng/vault"
 
 [cache]
 dir = "/var/yimeng/cache"
-max_bytes = 2147483648
+max_bytes = 2147483648     # transcode cache limit (LRU); env YIMENG_CACHE_MAX_BYTES
+
+[transcode]
+ffmpeg = ""                # "" = look up ffmpeg in PATH (absent -> original-only); path; or "off"
+concurrency = 0            # concurrent ffmpeg processes; 0 = NumCPU/2
 
 [auth]
 pair_code_ttl_seconds = 300

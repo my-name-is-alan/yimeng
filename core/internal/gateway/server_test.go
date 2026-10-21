@@ -19,6 +19,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
 
@@ -28,6 +29,7 @@ type env struct {
 	sc    *library.Scanner
 	auth  *auth.Service
 	token string
+	tc    *transcode.Transcoder
 }
 
 func (e *env) do(method, path, body, tok string, hdr ...string) (*http.Response, []byte) {
@@ -77,10 +79,14 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tc, err := transcode.New(transcode.Options{CacheDir: filepath.Join(tmp, "cache"), Log: log})
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
-		Playback: orch, Hub: hub, Auth: a, Log: log}))
+		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d}}))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, srv: srv, sc: sc, auth: a}
+	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}
 	code, _, _ := a.NewCode()
 	res, body := e.do("POST", "/api/pair", `{"code":"`+code+`","name":"test","device_type":"web"}`, "")
 	if res.StatusCode != 201 {

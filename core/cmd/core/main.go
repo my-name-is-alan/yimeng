@@ -23,6 +23,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
@@ -117,6 +118,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	tc, err := transcode.New(transcode.Options{FFmpeg: cfg.FFmpeg, CacheDir: cfg.CacheDir,
+		MaxBytes: cfg.CacheMaxBytes, Concurrency: cfg.TranscodeConcurrency, Log: log})
+	if err != nil {
+		return err
+	}
+	if tc == nil {
+		log.Info("ffmpeg not available: streaming originals only")
+	} else {
+		log.Info("transcoding enabled", "formats", len(tc.Formats())-1)
+	}
+
 	authSvc := auth.New(database, cfg.PairCodeTTL, log)
 	if n, err := authSvc.DeviceCount(ctx); err == nil && n == 0 {
 		// First run: print a pairing code so the owner can pair the first client.
@@ -146,6 +158,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Enrich:   enrich,
 			Auth:     authSvc,
 			Log:      log,
+
+			Transcoder:  tc,
+			StreamPrefs: app.StreamPrefs{DB: database},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

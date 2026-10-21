@@ -20,7 +20,10 @@ type Config struct {
 	VaultPath     string   // vault.path
 	MasterKeyFile string   // vault.master_key_file (default <vault.path>/master.key)
 	CacheDir      string   // cache.dir
-	CacheMaxBytes int64    // cache.max_bytes
+	CacheMaxBytes int64    // cache.max_bytes (transcode cache LRU limit)
+
+	FFmpeg               string // transcode.ffmpeg: path/name; "" = PATH lookup; "off" disables
+	TranscodeConcurrency int    // transcode.concurrency; 0 = NumCPU/2
 
 	ScanOnStart    bool          // library.scan_on_start
 	WatchMode      string        // library.watch: auto | fsnotify | poll | off
@@ -53,7 +56,11 @@ type fileConfig struct {
 	Metadata struct {
 		MusicBrainz MusicBrainzConfig `toml:"musicbrainz"`
 	} `toml:"metadata"`
-	DB    struct{ Path string } `toml:"db"`
+	DB        struct{ Path string } `toml:"db"`
+	Transcode struct {
+		FFmpeg      string `toml:"ffmpeg"`
+		Concurrency int    `toml:"concurrency"`
+	} `toml:"transcode"`
 	Vault struct {
 		Path          string `toml:"path"`
 		MasterKeyFile string `toml:"master_key_file"`
@@ -128,6 +135,10 @@ func load(getenv func(string) string) (Config, error) {
 			return cfg, err
 		}
 		cfg.MusicBrainz = fc.Metadata.MusicBrainz
+		setStr(&cfg.FFmpeg, fc.Transcode.FFmpeg)
+		if fc.Transcode.Concurrency > 0 {
+			cfg.TranscodeConcurrency = fc.Transcode.Concurrency
+		}
 		if fc.Auth.PairCodeTTLSeconds > 0 {
 			cfg.PairCodeTTL = time.Duration(fc.Auth.PairCodeTTLSeconds) * time.Second
 		}
@@ -155,6 +166,14 @@ func load(getenv func(string) string) (Config, error) {
 			return cfg, fmt.Errorf("YIMENG_CACHE_MAX_BYTES: %w", err)
 		}
 		cfg.CacheMaxBytes = n
+	}
+	setStr(&cfg.FFmpeg, getenv("YIMENG_FFMPEG"))
+	if v := getenv("YIMENG_TRANSCODE_CONCURRENCY"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return cfg, fmt.Errorf("YIMENG_TRANSCODE_CONCURRENCY: invalid %q", v)
+		}
+		cfg.TranscodeConcurrency = n
 	}
 	if v := getenv("YIMENG_SCAN_ON_START"); v != "" {
 		b, err := strconv.ParseBool(v)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -131,6 +131,33 @@ paths:
       summary: The device owning the presented token
       responses:
         "200": { description: Device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/me/stream-quality:
+    get:
+      tags: [media]
+      summary: This device's default stream quality and the formats the server can produce
+      responses:
+        "200": { description: Quality, content: { application/json: { schema: { $ref: "#/components/schemas/StreamQuality" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [media]
+      summary: Set this device's default stream quality (used when /api/stream has no format/bitrate query)
+      description: Omitted bitrate selects the format's default preset. A format the server cannot currently produce is stored but streams fall back to the original.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              additionalProperties: false
+              properties:
+                format: { type: string, enum: [original, aac, mp3, opus, flac] }
+                bitrate_kbps: { type: integer, description: "mp3 128|192|256|320 (320); aac 128|192|256 (256); opus 96|128|160|192 (160); not allowed for original/flac" }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/StreamQuality" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/devices/{id}:
@@ -359,18 +386,43 @@ paths:
   /api/stream/{id}:
     get:
       tags: [media]
-      summary: Stream the local audio file of a track (supports HTTP Range)
-      description: The file path is resolved from the database only and must lie inside a configured library root (symlinks resolved). Bytes are served as stored; no transcoding.
+      summary: Stream a track, original or transcoded (GET and HEAD)
+      description: |
+        The file path is resolved from the database only and must lie inside a configured
+        library root (symlinks resolved). Without `format`/`bitrate` the device's default
+        stream quality applies (original if unset or not producible).
+
+        * `original`: file bytes as stored; Range, ETag, Last-Modified, If-Range, If-None-Match.
+        * Transcoded (requires ffmpeg on the server; otherwise 400 `format_unavailable`):
+          a cached transcode is served like a file (Range etc.). A first-time transcode is
+          streamed progressively while it is written to the cache: 200, chunked,
+          `Accept-Ranges: none`, Range ignored. Re-request with Range once cached
+          (HEAD shows `Accept-Ranges: bytes`). Cache keyed by track + source size/mtime +
+          profile, LRU-evicted above YIMENG_CACHE_MAX_BYTES; concurrent transcodes limited.
+        * Requests that cannot improve on the source (flac→flac, mp3/opus at ≥ source bitrate)
+          serve the original. `X-Stream-Profile` names what was served (e.g. `mp3-320`, `original`).
       security: [{ bearer: [] }, { queryToken: [] }]
       parameters:
         - $ref: "#/components/parameters/Id"
+        - { name: format, in: query, schema: { type: string, enum: [original, aac, mp3, opus, flac] } }
+        - { name: bitrate, in: query, description: "kbps preset; see stream-quality. Default per format.", schema: { type: integer } }
         - { name: Range, in: header, schema: { type: string, example: "bytes=0-" } }
+        - { name: If-Range, in: header, schema: { type: string } }
       responses:
-        "200": { description: Whole file, content: { audio/*: { schema: { type: string, format: binary } } } }
-        "206": { description: Partial content, content: { audio/*: { schema: { type: string, format: binary } } } }
+        "200":
+          description: Whole file or progressive transcode
+          headers:
+            ETag: { schema: { type: string } }
+            X-Stream-Profile: { schema: { type: string, example: mp3-320 } }
+            Accept-Ranges: { schema: { type: string, enum: [bytes, none] } }
+          content: { audio/*: { schema: { type: string, format: binary } } }
+        "206": { description: Partial content (original or cached transcode), content: { audio/*: { schema: { type: string, format: binary } } } }
+        "304": { description: Not modified (If-None-Match) }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "416": { description: Range not satisfiable }
+        "503": { description: Transcode could not be started, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/players:
     get:
@@ -782,4 +834,32 @@ components:
         isrc: { type: string }
         mb_recording_id: { type: string }
         format: { type: string, example: flac }
+        stream: { $ref: "#/components/schemas/StreamInfo" }
         created_at: { type: string, format: date-time }
+    StreamInfo:
+      type: object
+      description: Properties of the source file that /api/stream serves as original (signal path)
+      properties:
+        format: { type: string, example: flac, description: container }
+        codec: { type: string, example: flac, description: "flac | mp3 | aac | alac | opus | vorbis | pcm | unknown" }
+        sample_rate: { type: integer, example: 96000 }
+        bit_depth: { type: integer, example: 24, description: lossless only }
+        channels: { type: integer, example: 2 }
+        bitrate_kbps: { type: integer, description: average }
+        lossless: { type: boolean }
+        size_bytes: { type: integer }
+    StreamQuality:
+      type: object
+      properties:
+        format: { type: string, enum: [original, aac, mp3, opus, flac] }
+        bitrate_kbps: { type: integer }
+        available:
+          type: array
+          description: Formats this server can produce now (original always)
+          items:
+            type: object
+            properties:
+              format: { type: string }
+              lossless: { type: boolean }
+              bitrates: { type: array, items: { type: integer } }
+              default_bitrate: { type: integer }
