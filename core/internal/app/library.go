@@ -7,9 +7,10 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 )
 
-// Library is the scan use case consumed by the Gateway.
+// Library exposes scan + catalog use cases to the Gateway. Catalog reads are
+// promoted from the embedded Scanner.
 type Library struct {
-	Scanner *library.Scanner
+	*library.Scanner
 	// BG is the long-lived context background scans run under (server lifetime).
 	BG context.Context
 }

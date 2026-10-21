@@ -1,3 +1,4 @@
+// Package gateway is the HTTP boundary: auth, DTO mapping, error codes.
 package gateway
 
 import (
@@ -5,8 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 )
 
@@ -15,72 +20,140 @@ type LibraryUseCases interface {
 	StartScan(ctx context.Context, req library.StartRequest) (library.Job, error)
 	ScanStatus(ctx context.Context, id string) (library.Job, error)
 	LatestScan(ctx context.Context) (library.Job, error)
+
+	ListArtists(ctx context.Context, p library.ListParams) (library.Page[library.Artist], error)
+	GetArtist(ctx context.Context, id string) (library.Artist, error)
+	ListAlbums(ctx context.Context, p library.ListParams) (library.Page[library.Album], error)
+	GetAlbum(ctx context.Context, id string) (library.Album, error)
+	ListTracks(ctx context.Context, p library.ListParams) (library.Page[library.Track], error)
+	GetTrack(ctx context.Context, id string) (library.Track, error)
+	AlbumCover(ctx context.Context, albumID string) (string, error)
+	TrackCover(ctx context.Context, trackID string) (string, error)
+	TrackFile(ctx context.Context, trackID string) (library.TrackFile, error)
 }
 
 type Deps struct {
 	Library LibraryUseCases
+	Auth    *auth.Service // required: every /api route except pairing needs a device token
+	Log     *slog.Logger
 }
 
 func NewRouter(d Deps) http.Handler {
+	if d.Log == nil {
+		d.Log = slog.Default()
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "yimeng-core"})
 	})
-	if d.Library != nil {
-		mux.HandleFunc("POST /api/library/scan", d.startScan)
-		mux.HandleFunc("GET /api/library/scan", d.latestScan)
-		mux.HandleFunc("GET /api/library/scan/{id}", d.scanStatus)
+
+	// pairing (public, rate-limited)
+	mux.HandleFunc("POST /api/pair/request", d.pairRequest)
+	mux.HandleFunc("POST /api/pair", d.pair)
+	// device management (auth)
+	mux.HandleFunc("POST /api/pair/codes", d.newPairCode)
+	mux.HandleFunc("GET /api/devices", d.listDevices)
+	mux.HandleFunc("GET /api/devices/me", d.me)
+	mux.HandleFunc("DELETE /api/devices/{id}", d.revokeDevice)
+
+	mux.HandleFunc("POST /api/library/scan", d.startScan)
+	mux.HandleFunc("GET /api/library/scan", d.latestScan)
+	mux.HandleFunc("GET /api/library/scan/{id}", d.scanStatus)
+
+	mux.HandleFunc("GET /api/artists", d.listArtists)
+	mux.HandleFunc("GET /api/artists/{id}", d.getArtist)
+	mux.HandleFunc("GET /api/albums", d.listAlbums)
+	mux.HandleFunc("GET /api/albums/{id}", d.getAlbum)
+	mux.HandleFunc("GET /api/albums/{id}/cover", d.albumCover)
+	mux.HandleFunc("GET /api/tracks", d.listTracks)
+	mux.HandleFunc("GET /api/tracks/{id}", d.getTrack)
+	mux.HandleFunc("GET /api/tracks/{id}/cover", d.trackCover)
+	mux.HandleFunc("GET /api/search", d.search)
+	mux.HandleFunc("GET /api/stream/{id}", d.stream)
+
+	return securityHeaders(d.requireAuth(mux))
+}
+
+type ctxKey struct{}
+
+func DeviceFrom(ctx context.Context) (auth.Device, bool) {
+	dv, ok := ctx.Value(ctxKey{}).(auth.Device)
+	return dv, ok
+}
+
+func isPublic(r *http.Request) bool {
+	if !strings.HasPrefix(r.URL.Path, "/api/") {
+		return true // /healthz and 404s
 	}
-	return mux
+	return r.Method == http.MethodPost && (r.URL.Path == "/api/pair" || r.URL.Path == "/api/pair/request")
 }
 
-type startScanBody struct {
-	Root string `json:"root,omitempty"`
-	Full bool   `json:"full,omitempty"`
+// allowsQueryToken: <audio>/<img> cannot send headers, so media GETs may pass
+// ?access_token=. Core never logs request URLs.
+func allowsQueryToken(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	p := r.URL.Path
+	return strings.HasPrefix(p, "/api/stream/") || (strings.HasSuffix(p, "/cover") &&
+		(strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/")))
 }
 
-func (d Deps) startScan(w http.ResponseWriter, r *http.Request) {
-	var body startScanBody
-	if r.Body != nil {
-		dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-			writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
+func (d Deps) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isPublic(r) {
+			next.ServeHTTP(w, r)
 			return
 		}
-	}
-	job, err := d.Library.StartScan(r.Context(), library.StartRequest{Root: body.Root, Full: body.Full})
-	switch {
-	case errors.Is(err, library.ErrScanRunning):
-		writeJSON(w, http.StatusConflict, map[string]any{"error": "scan_running", "job": job})
-	case errors.Is(err, library.ErrUnknownRoot):
-		writeErr(w, http.StatusBadRequest, "unknown_root", "root must be inside a configured library root")
-	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "internal", "failed to start scan")
-	default:
-		w.Header().Set("Location", "/api/library/scan/"+job.ID)
-		writeJSON(w, http.StatusAccepted, job)
-	}
+		tok := ""
+		if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
+			tok = strings.TrimSpace(h[7:])
+		} else if allowsQueryToken(r) {
+			tok = r.URL.Query().Get("access_token")
+		}
+		if tok == "" || d.Auth == nil {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="yimeng"`)
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "device token required")
+			return
+		}
+		dev, err := d.Auth.Authenticate(r.Context(), tok)
+		if err != nil {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="yimeng", error="invalid_token"`)
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked device token")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, dev)))
+	})
 }
 
-func (d Deps) scanStatus(w http.ResponseWriter, r *http.Request) {
-	d.writeJob(w, func() (library.Job, error) { return d.Library.ScanStatus(r.Context(), r.PathValue("id")) })
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
 }
 
-func (d Deps) latestScan(w http.ResponseWriter, r *http.Request) {
-	d.writeJob(w, func() (library.Job, error) { return d.Library.LatestScan(r.Context()) })
-}
-
-func (d Deps) writeJob(w http.ResponseWriter, f func() (library.Job, error)) {
-	job, err := f()
-	switch {
-	case errors.Is(err, library.ErrNotFound):
-		writeErr(w, http.StatusNotFound, "not_found", "scan job not found")
-	case err != nil:
-		writeErr(w, http.StatusInternalServerError, "internal", "failed to load scan job")
-	default:
-		writeJSON(w, http.StatusOK, job)
+// clientIP uses the socket peer only; X-Forwarded-For is not trusted.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
+	return host
+}
+
+func decodeBody(r *http.Request, v any) error {
+	if r.Body == nil {
+		return nil
+	}
+	dec := json.NewDecoder(io.LimitReader(r.Body, 64<<10))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -91,4 +164,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, kind, msg string) {
 	writeJSON(w, code, map[string]string{"error": kind, "message": msg})
+}
+
+func (d Deps) internal(w http.ResponseWriter, what string, err error) {
+	d.Log.Error(what, "err", err)
+	writeErr(w, http.StatusInternalServerError, "internal", what+" failed")
 }

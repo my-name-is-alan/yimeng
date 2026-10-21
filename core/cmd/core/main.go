@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
+	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
@@ -69,6 +70,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	authSvc := auth.New(database, cfg.PairCodeTTL)
+	if n, err := authSvc.DeviceCount(ctx); err == nil && n == 0 {
+		// First run: print a pairing code so the owner can pair the first client.
+		if code, exp, err := authSvc.NewCode(); err == nil {
+			log.Warn("NO DEVICES PAIRED YET — pairing code (enter it in a client; POST /api/pair/request prints a new one)",
+				"code", code, "expires_at", exp.Format(time.RFC3339))
+		}
+	}
+
 	if cfg.ScanOnStart {
 		if _, err := scanner.Start(ctx, library.StartRequest{}); err != nil {
 			log.Warn("scan on start", "err", err)
@@ -81,8 +91,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}()
 
 	srv := &http.Server{
-		Addr:              cfg.Bind,
-		Handler:           gateway.NewRouter(gateway.Deps{Library: &app.Library{Scanner: scanner, BG: ctx}}),
+		Addr: cfg.Bind,
+		Handler: gateway.NewRouter(gateway.Deps{
+			Library: &app.Library{Scanner: scanner, BG: ctx},
+			Auth:    authSvc,
+			Log:     log,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	errc := make(chan error, 1)
