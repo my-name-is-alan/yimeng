@@ -53,6 +53,7 @@ type Track struct {
 	MBRecordingID string   `json:"mb_recording_id,omitempty"`
 	MBReleaseID   string   `json:"mb_release_id,omitempty"`
 	HasTags       bool     `json:"has_tags"`
+	Audio         Info     `json:"audio"`
 	Picture       *Picture `json:"-"`
 }
 
@@ -98,8 +99,9 @@ func ReadFile(path string) (Track, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return t, err
 	}
-	if d, err := Duration(f, t.Format); err == nil {
-		t.DurationMs = d.Milliseconds()
+	if in, err := Probe(f, t.Format); err == nil {
+		t.Audio = in
+		t.DurationMs = in.Duration.Milliseconds()
 	}
 	return t, nil
 }

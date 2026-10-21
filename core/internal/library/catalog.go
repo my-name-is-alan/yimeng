@@ -56,7 +56,20 @@ type Track struct {
 	ISRC          string      `json:"isrc,omitempty"`
 	MBRecordingID string      `json:"mb_recording_id,omitempty"`
 	Format        string      `json:"format,omitempty"`
+	Stream        *StreamInfo `json:"stream,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
+}
+
+// StreamInfo describes the best source file (Roon-like signal path).
+type StreamInfo struct {
+	Format      string `json:"format"` // container: flac, mp3, m4a, ...
+	Codec       string `json:"codec"`
+	SampleRate  int    `json:"sample_rate,omitempty"`
+	BitDepth    int    `json:"bit_depth,omitempty"`
+	Channels    int    `json:"channels,omitempty"`
+	BitrateKbps int    `json:"bitrate_kbps,omitempty"`
+	Lossless    bool   `json:"lossless"`
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
 }
 
 type ListParams struct {
@@ -277,16 +290,28 @@ var trackSorts = map[string]string{
 
 const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_id,''), COALESCE(al.title,''),
 	COALESCE(t.disc_no,0), COALESCE(t.track_no,0), COALESCE(t.year,0), COALESCE(t.genre,''), COALESCE(t.duration_ms,0),
-	COALESCE(t.isrc,''), COALESCE(t.mb_recording_id,''),
-	COALESCE((SELECT st.format FROM track_links l JOIN source_tracks st ON st.id=l.source_track_id
-		WHERE l.track_id=t.id ORDER BY l.confidence DESC LIMIT 1),''), t.created_at`
+	COALESCE(t.isrc,''), COALESCE(t.mb_recording_id,''), COALESCE(st.format,''), t.created_at,
+	COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
+	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0)`
+
+// bestSource picks the same file TrackFile streams: highest confidence, FLAC first, then path.
+const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
+	WHERE l.track_id=t.id ORDER BY l.confidence DESC, CASE s2.format WHEN 'flac' THEN 0 ELSE 1 END, s2.path LIMIT 1)`
+
+const trackFrom = ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id LEFT JOIN source_tracks st ON st.id=` + bestSource
 
 func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 	var t Track
 	var created int64
+	var si StreamInfo
 	err := r.Scan(&t.ID, &t.Title, &t.ArtistName, &t.AlbumID, &t.AlbumTitle, &t.DiscNo, &t.TrackNo, &t.Year, &t.Genre,
-		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created)
+		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created,
+		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes)
 	t.CreatedAt = time.UnixMilli(created).UTC()
+	if t.Format != "" {
+		si.Format = t.Format
+		t.Stream = &si
+	}
 	return t, err
 }
 
@@ -311,7 +336,7 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 	if p.ArtistID != "" {
 		w.add(`t.id IN (SELECT track_id FROM track_artists WHERE artist_id=?)`, p.ArtistID)
 	}
-	from := ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id`
+	from := trackFrom
 	out := Page[Track]{Items: []Track{}, Limit: p.Limit, Offset: p.Offset}
 	if out.Total, err = count(ctx, s.db, `SELECT count(*)`+from+w.sql(), w.args); err != nil {
 		return out, err
@@ -338,7 +363,7 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 }
 
 func (s *Scanner) GetTrack(ctx context.Context, id string) (Track, error) {
-	t, err := scanTrack(s.db.QueryRowContext(ctx, `SELECT `+trackCols+` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id WHERE t.id=?`, id))
+	t, err := scanTrack(s.db.QueryRowContext(ctx, `SELECT `+trackCols+trackFrom+` WHERE t.id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}
@@ -381,15 +406,22 @@ type TrackFile struct {
 	Path   string
 	Format string
 	Size   int64
+	Mtime  int64 // unix ns (from the last scan)
+	Stream StreamInfo
 }
 
 // TrackFile returns the best local file for a canonical track.
 func (s *Scanner) TrackFile(ctx context.Context, trackID string) (TrackFile, error) {
 	var f TrackFile
-	err := s.db.QueryRowContext(ctx, `SELECT st.path, COALESCE(st.format,'') FROM track_links l
+	err := s.db.QueryRowContext(ctx, `SELECT st.path, COALESCE(st.format,''), COALESCE(st.size,0), COALESCE(st.mtime,0),
+		COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
+		COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0) FROM track_links l
 		JOIN source_tracks st ON st.id=l.source_track_id
 		WHERE l.track_id=? AND st.source=? AND st.path IS NOT NULL
-		ORDER BY l.confidence DESC, CASE st.format WHEN 'flac' THEN 0 ELSE 1 END, st.path LIMIT 1`, trackID, SourceLocal).Scan(&f.Path, &f.Format)
+		ORDER BY l.confidence DESC, CASE st.format WHEN 'flac' THEN 0 ELSE 1 END, st.path LIMIT 1`, trackID, SourceLocal).
+		Scan(&f.Path, &f.Format, &f.Size, &f.Mtime, &f.Stream.Codec, &f.Stream.SampleRate, &f.Stream.BitDepth,
+			&f.Stream.Channels, &f.Stream.BitrateKbps, &f.Stream.Lossless)
+	f.Stream.Format, f.Stream.SizeBytes = f.Format, f.Size
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, ErrNotFound
 	}

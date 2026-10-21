@@ -93,7 +93,8 @@ func TestMergeIdempotentAndCatalog(t *testing.T) {
 		t.Fatalf("artists %+v", arts)
 	}
 	tp, err := s.ListTracks(ctx, ListParams{Q: "梦里", Limit: 10})
-	if err != nil || tp.Total != 1 || tp.Items[0].Format != "flac" || tp.Items[0].Artists[0].Name != "测试艺人" {
+	if err != nil || tp.Total != 1 || tp.Items[0].Format != "flac" || tp.Items[0].Artists[0].Name != "测试艺人" ||
+		tp.Items[0].Stream == nil || !tp.Items[0].Stream.Lossless || tp.Items[0].Stream.SampleRate != 8000 || tp.Items[0].Stream.BitDepth != 16 {
 		t.Fatalf("%+v %v", tp, err)
 	}
 	if _, err := s.ListTracks(ctx, ListParams{Sort: "drop table"}); err != ErrBadSort {

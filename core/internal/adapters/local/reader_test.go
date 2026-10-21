@@ -94,3 +94,29 @@ func MakeWAV(rate int, d time.Duration) []byte {
 	b.Write(bytes.Repeat([]byte{128}, n))
 	return b.Bytes()
 }
+
+func TestProbeStreamInfo(t *testing.T) {
+	want := map[string]Info{
+		"tagged.flac": {Codec: "flac", SampleRate: 8000, BitDepth: 16, Channels: 1, Lossless: true},
+		"tagged.mp3":  {Codec: "mp3", SampleRate: 22050, Channels: 1},
+		"tagged.m4a":  {Codec: "aac", SampleRate: 22050, Channels: 1},
+		"tagged.opus": {Codec: "opus", SampleRate: 48000, Channels: 1},
+	}
+	for f, w := range want {
+		tr, err := ReadFile(filepath.Join("testdata", f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := tr.Audio
+		if a.Codec != w.Codec || a.SampleRate != w.SampleRate || a.BitDepth != w.BitDepth || a.Channels != w.Channels ||
+			a.Lossless != w.Lossless || a.BitrateKbps <= 0 {
+			t.Errorf("%s: %+v want %+v", f, a, w)
+		}
+	}
+	p := filepath.Join(t.TempDir(), "x.wav")
+	os.WriteFile(p, MakeWAV(8000, time.Second), 0o644)
+	tr, _ := ReadFile(p)
+	if tr.Audio.Codec != "pcm" || tr.Audio.BitDepth != 8 || tr.Audio.SampleRate != 8000 || tr.Audio.BitrateKbps != 64 || !tr.Audio.Lossless {
+		t.Errorf("wav %+v", tr.Audio)
+	}
+}

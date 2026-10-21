@@ -5,27 +5,54 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"strings"
 	"time"
 )
 
 var errUnknownDuration = errors.New("duration: unsupported or unparseable")
 
-// Duration computes playback length with small pure-Go container parsers
-// (dhowden/tag does not report duration).
-func Duration(r io.ReadSeeker, format string) (time.Duration, error) {
+// Info describes the audio stream (for the signal-path display).
+type Info struct {
+	Duration    time.Duration
+	Codec       string // mp3 | flac | aac | alac | vorbis | opus | pcm | dsd
+	SampleRate  int
+	BitDepth    int // 0 for lossy codecs
+	Channels    int
+	BitrateKbps int // average
+	Lossless    bool
+}
+
+// Probe reads stream properties with small pure-Go container parsers
+// (dhowden/tag reports neither duration nor stream format).
+func Probe(r io.ReadSeeker, format string) (Info, error) {
+	var in Info
+	var err error
 	switch format {
 	case "flac":
-		return flacDuration(r)
+		in, err = flacProbe(r)
 	case "mp3":
-		return mp3Duration(r)
+		in, err = mp3Probe(r)
 	case "m4a":
-		return mp4Duration(r)
+		in, err = mp4Probe(r)
 	case "ogg", "opus":
-		return oggDuration(r)
+		in, err = oggProbe(r)
 	case "wav":
-		return wavDuration(r)
+		in, err = wavProbe(r)
+	default:
+		return in, errUnknownDuration
 	}
-	return 0, errUnknownDuration
+	if err == nil && in.BitrateKbps == 0 && in.Duration > 0 {
+		if size, e := r.Seek(0, io.SeekEnd); e == nil {
+			in.BitrateKbps = int(float64(size) * 8 / in.Duration.Seconds() / 1000)
+		}
+	}
+	return in, err
+}
+
+// Duration is Probe(...).Duration.
+func Duration(r io.ReadSeeker, format string) (time.Duration, error) {
+	in, err := Probe(r, format)
+	return in.Duration, err
 }
 
 func secs(num, den float64) time.Duration { return time.Duration(num / den * float64(time.Second)) }
@@ -50,26 +77,29 @@ func skipID3v2(r io.ReadSeeker) (int64, error) {
 	return off, nil
 }
 
-func flacDuration(r io.ReadSeeker) (time.Duration, error) {
+func flacProbe(r io.ReadSeeker) (Info, error) {
 	off, err := skipID3v2(r)
 	if err != nil {
-		return 0, err
+		return Info{}, err
 	}
 	r.Seek(off, io.SeekStart)
 	var b [42]byte // "fLaC" + block header(4) + STREAMINFO(34)
 	if _, err := io.ReadFull(r, b[:]); err != nil {
-		return 0, err
+		return Info{}, err
 	}
 	if string(b[:4]) != "fLaC" || b[4]&0x7f != 0 {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	si := b[8:]
 	rate := uint32(si[10])<<12 | uint32(si[11])<<4 | uint32(si[12])>>4
+	ch := int(si[12]>>1&0x07) + 1
+	bps := int((si[12]&1)<<4|si[13]>>4) + 1
 	total := uint64(si[13]&0x0f)<<32 | uint64(binary.BigEndian.Uint32(si[14:18]))
 	if rate == 0 || total == 0 {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
-	return secs(float64(total), float64(rate)), nil
+	return Info{Duration: secs(float64(total), float64(rate)), Codec: "flac", SampleRate: int(rate), BitDepth: bps,
+		Channels: ch, Lossless: true}, nil
 }
 
 var mp3Bitrates = [2][3][16]int{
@@ -131,14 +161,30 @@ func parseMP3Header(h []byte) (mp3Header, bool) {
 	return hd, true
 }
 
-func mp3Duration(r io.ReadSeeker) (time.Duration, error) {
+func mp3Probe(r io.ReadSeeker) (Info, error) {
+	d, hd, cbr, err := mp3Duration(r)
+	if err != nil {
+		return Info{}, err
+	}
+	ch := 2
+	if hd.mono {
+		ch = 1
+	}
+	in := Info{Duration: d, Codec: "mp3", SampleRate: hd.rate, Channels: ch}
+	if cbr {
+		in.BitrateKbps = hd.bitrate / 1000
+	}
+	return in, nil
+}
+
+func mp3Duration(r io.ReadSeeker) (time.Duration, mp3Header, bool, error) {
 	start, err := skipID3v2(r)
 	if err != nil {
-		return 0, err
+		return 0, mp3Header{}, false, err
 	}
 	size, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
-		return 0, err
+		return 0, mp3Header{}, false, err
 	}
 	r.Seek(start, io.SeekStart)
 	buf := make([]byte, 64*1024)
@@ -176,12 +222,12 @@ func mp3Duration(r io.ReadSeeker) (time.Duration, error) {
 						}
 					}
 				}
-				return secs(float64(samples), float64(hd.rate)), nil
+				return secs(float64(samples), float64(hd.rate)), hd, false, nil
 			}
 		}
 		if len(frame) >= 36+18 && string(frame[36:40]) == "VBRI" {
 			frames := binary.BigEndian.Uint32(frame[36+14:])
-			return secs(float64(frames)*float64(hd.samples), float64(hd.rate)), nil
+			return secs(float64(frames)*float64(hd.samples), float64(hd.rate)), hd, false, nil
 		}
 		// CBR estimate.
 		audio := size - start - int64(i)
@@ -194,18 +240,19 @@ func mp3Duration(r io.ReadSeeker) (time.Duration, error) {
 			}
 		}
 		if hd.bitrate == 0 || audio <= 0 {
-			return 0, errUnknownDuration
+			return 0, hd, false, errUnknownDuration
 		}
-		return secs(float64(audio)*8, float64(hd.bitrate)), nil
+		return secs(float64(audio)*8, float64(hd.bitrate)), hd, true, nil
 	}
-	return 0, errUnknownDuration
+	return 0, mp3Header{}, false, errUnknownDuration
 }
 
-// mp4Duration walks atoms to moov/mvhd.
-func mp4Duration(r io.ReadSeeker) (time.Duration, error) {
+// mp4Probe walks atoms to moov/mvhd (duration) and the first audio sample
+// entry in moov/trak/mdia/minf/stbl/stsd (codec, rate, channels, sample size).
+func mp4Probe(r io.ReadSeeker) (Info, error) {
 	end, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
-		return 0, err
+		return Info{}, err
 	}
 	find := func(from, to int64, name string) (int64, int64, bool) {
 		pos := from
@@ -238,16 +285,46 @@ func mp4Duration(r io.ReadSeeker) (time.Duration, error) {
 	}
 	ms, me, ok := find(0, end, "moov")
 	if !ok {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	hs, _, ok := find(ms, me, "mvhd")
 	if !ok {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
+	}
+	var in Info
+	// sample entry: walk trak -> mdia -> minf -> stbl -> stsd
+	if ts, te, ok := find(ms, me, "trak"); ok {
+		s0, e0 := ts, te
+		path := []string{"mdia", "minf", "stbl", "stsd"}
+		for _, name := range path {
+			if s0, e0, ok = find(s0, e0, name); !ok {
+				break
+			}
+		}
+		if ok {
+			r.Seek(s0+8, io.SeekStart) // skip version/flags + entry count
+			var e [36]byte
+			if _, err := io.ReadFull(r, e[:]); err == nil {
+				switch string(e[4:8]) {
+				case "mp4a":
+					in.Codec = "aac"
+				case "alac":
+					in.Codec, in.Lossless = "alac", true
+				default:
+					in.Codec = strings.TrimSpace(string(e[4:8]))
+				}
+				in.Channels = int(binary.BigEndian.Uint16(e[24:26]))
+				if in.Lossless {
+					in.BitDepth = int(binary.BigEndian.Uint16(e[26:28]))
+				}
+				in.SampleRate = int(binary.BigEndian.Uint32(e[32:36]) >> 16)
+			}
+		}
 	}
 	r.Seek(hs, io.SeekStart)
 	var b [32]byte
 	if _, err := io.ReadFull(r, b[:]); err != nil {
-		return 0, err
+		return Info{}, err
 	}
 	var scale uint32
 	var dur uint64
@@ -259,35 +336,39 @@ func mp4Duration(r io.ReadSeeker) (time.Duration, error) {
 		dur = uint64(binary.BigEndian.Uint32(b[16:20]))
 	}
 	if scale == 0 {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
-	return secs(float64(dur), float64(scale)), nil
+	in.Duration = secs(float64(dur), float64(scale))
+	return in, nil
 }
 
-func oggDuration(r io.ReadSeeker) (time.Duration, error) {
+func oggProbe(r io.ReadSeeker) (Info, error) {
 	r.Seek(0, io.SeekStart)
 	head := make([]byte, 512)
 	n, _ := io.ReadFull(r, head)
 	head = head[:n]
 	if len(head) < 28 || string(head[:4]) != "OggS" {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	segs := int(head[26])
 	p := 27 + segs
 	if len(head) < p+19 {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	pkt := head[p:]
 	var rate float64
 	var preSkip int64
+	var in Info
 	switch {
 	case bytes.HasPrefix(pkt, []byte("\x01vorbis")):
 		rate = float64(binary.LittleEndian.Uint32(pkt[12:16]))
+		in = Info{Codec: "vorbis", Channels: int(pkt[11]), SampleRate: int(rate)}
 	case bytes.HasPrefix(pkt, []byte("OpusHead")):
 		rate = 48000
 		preSkip = int64(binary.LittleEndian.Uint16(pkt[10:12]))
+		in = Info{Codec: "opus", Channels: int(pkt[9]), SampleRate: 48000} // Opus always decodes at 48 kHz
 	default:
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	size, _ := r.Seek(0, io.SeekEnd)
 	tail := int64(64 * 1024)
@@ -299,41 +380,48 @@ func oggDuration(r io.ReadSeeker) (time.Duration, error) {
 	io.ReadFull(r, buf)
 	i := bytes.LastIndex(buf, []byte("OggS"))
 	if i < 0 || i+14 > len(buf) || rate == 0 {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	gran := int64(binary.LittleEndian.Uint64(buf[i+6 : i+14]))
 	if gran <= preSkip {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
-	return secs(float64(gran-preSkip), rate), nil
+	in.Duration = secs(float64(gran-preSkip), rate)
+	return in, nil
 }
 
-func wavDuration(r io.ReadSeeker) (time.Duration, error) {
+func wavProbe(r io.ReadSeeker) (Info, error) {
 	r.Seek(0, io.SeekStart)
 	var h [12]byte
 	if _, err := io.ReadFull(r, h[:]); err != nil || string(h[:4]) != "RIFF" || string(h[8:12]) != "WAVE" {
-		return 0, errUnknownDuration
+		return Info{}, errUnknownDuration
 	}
 	var byteRate uint32
+	in := Info{Codec: "pcm", Lossless: true}
 	for {
 		var ch [8]byte
 		if _, err := io.ReadFull(r, ch[:]); err != nil {
-			return 0, errUnknownDuration
+			return Info{}, errUnknownDuration
 		}
 		sz := int64(binary.LittleEndian.Uint32(ch[4:]))
 		switch string(ch[:4]) {
 		case "fmt ":
 			var f [16]byte
 			if _, err := io.ReadFull(r, f[:]); err != nil {
-				return 0, err
+				return Info{}, err
 			}
+			in.Channels = int(binary.LittleEndian.Uint16(f[2:4]))
+			in.SampleRate = int(binary.LittleEndian.Uint32(f[4:8]))
 			byteRate = binary.LittleEndian.Uint32(f[8:12])
+			in.BitDepth = int(binary.LittleEndian.Uint16(f[14:16]))
+			in.BitrateKbps = int(byteRate * 8 / 1000)
 			r.Seek(sz-16+sz%2, io.SeekCurrent)
 		case "data":
 			if byteRate == 0 {
-				return 0, errUnknownDuration
+				return Info{}, errUnknownDuration
 			}
-			return secs(float64(sz), float64(byteRate)), nil
+			in.Duration = secs(float64(sz), float64(byteRate))
+			return in, nil
 		default:
 			r.Seek(sz+sz%2, io.SeekCurrent)
 		}

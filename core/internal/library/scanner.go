@@ -255,14 +255,15 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 
 	var rowID string
 	var oldSize, oldMtime sql.NullInt64
-	err = s.db.QueryRowContext(ctx, `SELECT id, size, mtime FROM source_tracks WHERE source=? AND source_track_id=?`,
-		SourceLocal, path).Scan(&rowID, &oldSize, &oldMtime)
+	var probed bool
+	err = s.db.QueryRowContext(ctx, `SELECT id, size, mtime, codec IS NOT NULL FROM source_tracks WHERE source=? AND source_track_id=?`,
+		SourceLocal, path).Scan(&rowID, &oldSize, &oldMtime, &probed)
 	exists := err == nil
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
 	now := time.Now().UnixMilli()
-	if exists && !full && oldSize.Int64 == size && oldMtime.Int64 == mtime {
+	if exists && !full && probed && oldSize.Int64 == size && oldMtime.Int64 == mtime {
 		_, err := s.db.ExecContext(ctx, `UPDATE source_tracks SET last_scan_id=? WHERE id=?`, jobID, rowID)
 		return "unchanged", err
 	}
@@ -304,8 +305,9 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 	_, err = s.db.ExecContext(ctx, `INSERT INTO source_tracks(
 		id, source, source_track_id, raw_json, path, root, size, mtime, hash, format,
 		title, artist, album, album_artist, track_no, track_total, disc_no, disc_total, year, genre,
-		duration_ms, isrc, mb_recording_id, mb_release_id, cover_path, cover_source, last_scan_id, created_at, updated_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?)
+		duration_ms, isrc, mb_recording_id, mb_release_id, cover_path, cover_source, last_scan_id, created_at, updated_at,
+		codec, sample_rate, bit_depth, channels, bitrate_kbps, lossless)
+		VALUES (?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?)
 		ON CONFLICT(source, source_track_id) DO UPDATE SET
 		raw_json=excluded.raw_json, root=excluded.root, size=excluded.size, mtime=excluded.mtime, hash=excluded.hash,
 		format=excluded.format, title=excluded.title, artist=excluded.artist, album=excluded.album,
@@ -313,10 +315,13 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 		disc_no=excluded.disc_no, disc_total=excluded.disc_total, year=excluded.year, genre=excluded.genre,
 		duration_ms=excluded.duration_ms, isrc=excluded.isrc, mb_recording_id=excluded.mb_recording_id,
 		mb_release_id=excluded.mb_release_id, cover_path=excluded.cover_path, cover_source=excluded.cover_source,
-		last_scan_id=excluded.last_scan_id, updated_at=excluded.updated_at`,
+		last_scan_id=excluded.last_scan_id, updated_at=excluded.updated_at, codec=excluded.codec,
+		sample_rate=excluded.sample_rate, bit_depth=excluded.bit_depth, channels=excluded.channels,
+		bitrate_kbps=excluded.bitrate_kbps, lossless=excluded.lossless`,
 		rowID, SourceLocal, path, string(raw), path, s.rootOf(path), size, mtime, hash, t.Format,
 		t.Title, nz(t.Artist), nz(t.Album), nz(t.AlbumArtist), ni(t.TrackNo), ni(t.TrackTotal), ni(t.DiscNo), ni(t.DiscTotal), ni(t.Year), nz(t.Genre),
-		ni64(t.DurationMs), nz(t.ISRC), nz(t.MBRecordingID), nz(t.MBReleaseID), nz(coverPath), nz(coverSrc), jobID, now, now)
+		ni64(t.DurationMs), nz(t.ISRC), nz(t.MBRecordingID), nz(t.MBReleaseID), nz(coverPath), nz(coverSrc), jobID, now, now,
+		codecOf(t), ni(t.Audio.SampleRate), ni(t.Audio.BitDepth), ni(t.Audio.Channels), ni(t.Audio.BitrateKbps), t.Audio.Lossless)
 	if err != nil {
 		return "", err
 	}
@@ -498,4 +503,12 @@ func statDir(p string) (bool, error) {
 		return false, err
 	}
 	return st.IsDir(), nil
+}
+
+// codecOf never returns NULL so a probed row is not re-read on every scan.
+func codecOf(t local.Track) string {
+	if t.Audio.Codec != "" {
+		return t.Audio.Codec
+	}
+	return "unknown"
 }
