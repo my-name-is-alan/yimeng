@@ -1,0 +1,11 @@
+.DS_Store
+# Core runtime data / build output
+core/bin/
+core/dist/
+core/data/
+*.db
+*.db-shm
+*.db-wal
+master.key
+.env
+compose.yaml
