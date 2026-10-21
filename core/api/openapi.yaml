@@ -1,0 +1,474 @@
+openapi: 3.1.0
+info:
+  title: 译梦 (yimeng) Core API
+  version: 0.3.0
+  description: |
+    LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
+    token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
+    `POST /api/pair/request`. Media routes (`/api/stream/*`, `*/cover`) also
+    accept `?access_token=` because `<audio>`/`<img>` cannot set headers.
+    Errors use `{ "error": "<kind>", "message": "..." }`.
+servers:
+  - url: http://nas.local:8741
+security:
+  - bearer: []
+tags:
+  - name: system
+  - name: pairing
+  - name: library
+  - name: catalog
+  - name: media
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      security: []
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: yimeng-core }
+
+  /api/pair/request:
+    post:
+      tags: [pairing]
+      security: []
+      summary: Ask Core to print a new pairing code to its log (bootstrap for the first device)
+      description: The code is never returned over HTTP. Rate-limited per client IP.
+      responses:
+        "202":
+          description: Code printed in the Core log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expires_at: { type: string, format: date-time }
+                  message: { type: string }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/pair:
+    post:
+      tags: [pairing]
+      security: []
+      summary: Redeem a pairing code for a device token
+      description: Codes are single-use and short-lived (default 5 min). Failed attempts are rate-limited per IP and globally.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                code: { type: string, example: "ABCD-EF23", description: "Case-insensitive; dash optional" }
+                name: { type: string, maxLength: 100, example: "宝英的 MacBook" }
+                device_type: { type: string, maxLength: 32, example: desktop }
+      responses:
+        "201":
+          description: Paired. The token is shown only once; store it securely.
+          headers:
+            Cache-Control: { schema: { type: string, example: no-store } }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device: { $ref: "#/components/schemas/Device" }
+                  token: { type: string, example: "ymd_..." }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Invalid or expired code
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/pair/codes:
+    post:
+      tags: [pairing]
+      summary: Create a pairing code from an already-paired device (to show in its UI)
+      responses:
+        "201":
+          description: New code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string }
+                  expires_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/devices:
+    get:
+      tags: [pairing]
+      summary: List paired devices
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Device" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/me:
+    get:
+      tags: [pairing]
+      summary: The device owning the presented token
+      responses:
+        "200": { description: Device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/{id}:
+    delete:
+      tags: [pairing]
+      summary: Revoke a device (its token stops working immediately)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/library/scan:
+    post:
+      tags: [library]
+      summary: Start a library scan (incremental by mtime/size unless full=true)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                root: { type: string, description: "Limit to a configured root or a sub-directory of one" }
+                full: { type: boolean, default: false, description: "Re-read every file" }
+      responses:
+        "202":
+          description: Scan started
+          headers:
+            Location: { schema: { type: string } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A scan is already running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, const: scan_running }
+                  job: { $ref: "#/components/schemas/ScanJob" }
+    get:
+      tags: [library]
+      summary: Most recent scan job
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/library/scan/{id}:
+    get:
+      tags: [library]
+      summary: Scan job status
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/artists:
+    get:
+      tags: [catalog]
+      summary: List artists
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [name, albums, tracks], default: name } }
+      responses:
+        "200":
+          description: Page of artists
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Artist" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/artists/{id}:
+    get:
+      tags: [catalog]
+      summary: Artist page (artist + albums + up to 20 tracks)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Artist page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artist: { $ref: "#/components/schemas/Artist" }
+                  albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums:
+    get:
+      tags: [catalog]
+      summary: List albums
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [artist, title, year, added], default: artist } }
+        - { name: artist_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Page of albums
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Album" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/albums/{id}:
+    get:
+      tags: [catalog]
+      summary: Album page (album + tracks + credits + related albums)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Album page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  album: { $ref: "#/components/schemas/Album" }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+                  credits: { type: array, items: { type: object }, description: "Empty until Metadata enrichment (P1)" }
+                  related_albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums/{id}/cover:
+    get:
+      tags: [media]
+      summary: Album cover image
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/tracks:
+    get:
+      tags: [catalog]
+      summary: List tracks
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [title, artist, album, added, duration, year, track], default: title, description: "default is track when album_id is set" } }
+        - { name: album_id, in: query, schema: { type: string } }
+        - { name: artist_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Page of tracks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Track" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tracks/{id}:
+    get:
+      tags: [catalog]
+      summary: Track
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Track, content: { application/json: { schema: { $ref: "#/components/schemas/Track" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/tracks/{id}/cover:
+    get:
+      tags: [media]
+      summary: Track cover (embedded or folder art)
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/search:
+    get:
+      tags: [catalog]
+      summary: Search artists, albums and tracks (substring match)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artists: { type: array, items: { $ref: "#/components/schemas/Artist" } }
+                  albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/stream/{id}:
+    get:
+      tags: [media]
+      summary: Stream the local audio file of a track (supports HTTP Range)
+      description: The file path is resolved from the database only and must lie inside a configured library root (symlinks resolved). Bytes are served as stored; no transcoding.
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: Range, in: header, schema: { type: string, example: "bytes=0-" } }
+      responses:
+        "200": { description: Whole file, content: { audio/*: { schema: { type: string, format: binary } } } }
+        "206": { description: Partial content, content: { audio/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "416": { description: Range not satisfiable }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
+    queryToken: { type: apiKey, in: query, name: access_token }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+    Offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Order: { name: order, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+    Q: { name: q, in: query, description: "Case-insensitive (ASCII) substring filter", schema: { type: string, maxLength: 200 } }
+  responses:
+    BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Unauthorized: { description: Missing / invalid / revoked device token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    RateLimited:
+      description: Too many attempts
+      headers: { Retry-After: { schema: { type: integer } } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: not_found }
+        message: { type: string }
+    PageMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    Device:
+      type: object
+      properties:
+        id: { type: string, example: dev_0123abcd }
+        name: { type: string }
+        device_type: { type: string }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+    ScanJob:
+      type: object
+      properties:
+        id: { type: string }
+        roots: { type: array, items: { type: string } }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        total: { type: integer }
+        processed: { type: integer }
+        added: { type: integer }
+        updated: { type: integer }
+        unchanged: { type: integer }
+        removed: { type: integer }
+        failed: { type: integer }
+        error: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+    ArtistRef:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [primary, feat] }
+    Artist:
+      type: object
+      properties:
+        id: { type: string, example: ar_1a2b3c }
+        name: { type: string }
+        sort_name: { type: string }
+        mb_id: { type: string }
+        album_count: { type: integer }
+        track_count: { type: integer }
+    Album:
+      type: object
+      properties:
+        id: { type: string, example: al_1a2b3c }
+        title: { type: string }
+        artist_name: { type: string }
+        artists: { type: array, items: { $ref: "#/components/schemas/ArtistRef" } }
+        year: { type: integer }
+        genre: { type: string }
+        track_count: { type: integer }
+        duration_ms: { type: integer }
+        mb_release_id: { type: string }
+        has_cover: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Track:
+      type: object
+      properties:
+        id: { type: string, example: tr_1a2b3c }
+        title: { type: string }
+        artist_name: { type: string }
+        artists: { type: array, items: { $ref: "#/components/schemas/ArtistRef" } }
+        album_id: { type: string }
+        album_title: { type: string }
+        disc_no: { type: integer }
+        track_no: { type: integer }
+        year: { type: integer }
+        genre: { type: string }
+        duration_ms: { type: integer }
+        isrc: { type: string }
+        mb_recording_id: { type: string }
+        format: { type: string, example: flac }
+        created_at: { type: string, format: date-time }
