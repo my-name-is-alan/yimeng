@@ -21,6 +21,7 @@ tags:
   - name: settings
   - name: playback
   - name: metadata
+  - name: history
 
 paths:
   /healthz:
@@ -717,6 +718,131 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/scrobble:
+    post:
+      tags: [history]
+      summary: Record a play reported by a client that played the track itself
+      description: Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id]
+              properties:
+                track_id: { type: string }
+                played_at: { type: string, format: date-time, description: "default now; must not be in the future" }
+                duration_ms: { type: integer, description: listened duration }
+                completed: { type: boolean }
+      responses:
+        "204": { description: Recorded }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/history:
+    get:
+      tags: [history]
+      summary: Listening history, newest first
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - { name: player_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        track_id: { type: string }
+                        player_id: { type: string }
+                        played_at: { type: string, format: date-time }
+                        duration_ms: { type: integer }
+                        completed: { type: boolean }
+                        source: { type: string, enum: [core, scrobble, subsonic] }
+                        title: { type: string }
+                        artist_name: { type: string }
+                        album_id: { type: string }
+                        album_title: { type: string }
+                        available: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/history/top:
+    get:
+      tags: [history]
+      summary: Most played tracks, albums or artists
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [track, album, artist], default: track } }
+        - { name: period, in: query, schema: { type: string, enum: [7d, 30d, 90d, 365d, all], default: all } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Ranking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, artist_name: { type: string }, plays: { type: integer } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/favorites:
+    get:
+      tags: [history]
+      summary: Favorites (newest first)
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [track, album, artist] } }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Favorites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object, properties: { type: { type: string }, id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time }, available: { type: boolean } } } }
+
+  /api/favorites/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [history]
+      summary: Mark as favorite (event favorite.changed)
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [history]
+      summary: Remove favorite
+      responses:
+        "204": { description: Done }
+
+  /api/ratings/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [history]
+      summary: Set a 1-5 rating; 0 clears (event rating.changed)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [rating], properties: { rating: { type: integer, minimum: 0, maximum: 5 } } } } } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -902,6 +1028,10 @@ components:
         mb_recording_id: { type: string }
         format: { type: string, example: flac }
         stream: { $ref: "#/components/schemas/StreamInfo" }
+        play_count: { type: integer }
+        last_played_at: { type: string, format: date-time }
+        favorite: { type: boolean }
+        rating: { type: integer, minimum: 1, maximum: 5 }
         created_at: { type: string, format: date-time }
     StreamInfo:
       type: object

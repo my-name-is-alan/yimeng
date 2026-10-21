@@ -25,6 +25,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
+	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
@@ -126,6 +127,19 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	ud := &userdata.Store{DB: database}
+	orch.OnListened = func(l playback.Listen) {
+		if !userdata.Counts(l.PlayedMs, l.DurationMs, l.Completed) {
+			return
+		}
+		err := ud.Record(context.Background(), userdata.Play{TrackID: l.TrackID, PlayerID: l.PlayerID,
+			PlayedAt: l.At.Add(-time.Duration(l.PlayedMs) * time.Millisecond), DurationMs: l.PlayedMs, Completed: l.Completed})
+		if err != nil {
+			log.Warn("record play", "err", err)
+			return
+		}
+		hub.Publish("history.played", map[string]any{"track_id": l.TrackID, "player_id": l.PlayerID})
+	}
 	if err := scanner.LoadSettings(ctx); err != nil {
 		return err
 	}
@@ -176,6 +190,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Log:      log,
 
 			Backup:          bk,
+			UserData:        ud,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,

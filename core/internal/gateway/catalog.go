@@ -40,6 +40,11 @@ func listParams(r *http.Request) (library.ListParams, error) {
 	}
 	p.ArtistID = q.Get("artist_id")
 	p.AlbumID = q.Get("album_id")
+	if v := q.Get("favorite"); v != "" {
+		if p.Favorite, err = strconv.ParseBool(v); err != nil {
+			return p, errors.New("favorite must be true or false")
+		}
+	}
 	return p, nil
 }
 

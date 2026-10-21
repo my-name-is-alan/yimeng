@@ -38,6 +38,8 @@ type Album struct {
 	DurationMs  int64       `json:"duration_ms"`
 	MBReleaseID string      `json:"mb_release_id,omitempty"`
 	HasCover    bool        `json:"has_cover"`
+	Favorite    bool        `json:"favorite"`
+	Rating      int         `json:"rating,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 }
 
@@ -57,6 +59,10 @@ type Track struct {
 	MBRecordingID string      `json:"mb_recording_id,omitempty"`
 	Format        string      `json:"format,omitempty"`
 	Stream        *StreamInfo `json:"stream,omitempty"`
+	PlayCount     int         `json:"play_count"`
+	LastPlayedAt  *time.Time  `json:"last_played_at,omitempty"`
+	Favorite      bool        `json:"favorite"`
+	Rating        int         `json:"rating,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
 }
 
@@ -79,6 +85,7 @@ type ListParams struct {
 	Q             string // substring search (case-insensitive for ASCII)
 	ArtistID      string
 	AlbumID       string
+	Favorite      bool // only favorites
 }
 
 type Page[T any] struct {
@@ -121,7 +128,7 @@ func orderBy(sorts map[string]string, p ListParams, def string) (string, error) 
 		dir = " DESC"
 	}
 	// apply direction to every comma-separated term
-	parts := strings.Split(col, ",")
+	parts := strings.Split(col, ", ") // terms are ", "-separated; expressions may contain ","
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i]) + dir
 	}
@@ -199,12 +206,14 @@ var albumSorts = map[string]string{
 }
 
 const albumCols = `al.id, al.title, COALESCE(al.artist_name,''), COALESCE(al.year,0), COALESCE(al.genre,''),
-	al.track_count, al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at`
+	al.track_count, al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at,
+	EXISTS(SELECT 1 FROM favorites f WHERE f.entity_type='album' AND f.entity_id=al.id),
+	COALESCE((SELECT rating FROM ratings r WHERE r.entity_type='album' AND r.entity_id=al.id),0)`
 
 func scanAlbum(r interface{ Scan(...any) error }) (Album, error) {
 	var a Album
 	var created int64
-	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created)
+	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created, &a.Favorite, &a.Rating)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	return a, err
 }
@@ -218,6 +227,9 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 	var w where
 	if p.Q != "" {
 		w.add(`(al.title LIKE ? ESCAPE '\' OR al.artist_name LIKE ? ESCAPE '\')`, likeAny(p.Q), likeAny(p.Q))
+	}
+	if p.Favorite {
+		w.add(`al.id IN (SELECT entity_id FROM favorites WHERE entity_type='album')`)
 	}
 	if p.ArtistID != "" {
 		w.add(`al.id IN (SELECT album_id FROM album_artists WHERE artist_id=?
@@ -286,28 +298,41 @@ var trackSorts = map[string]string{
 	"album": "lower(al.title), t.disc_no, t.track_no, t.id", "added": "t.created_at, t.id",
 	"duration": "t.duration_ms, t.id", "year": "t.year, t.id",
 	"track": "t.disc_no, t.track_no, lower(t.title)",
+	"plays": "COALESCE(ts.play_count,0), t.id", "last_played": "COALESCE(ts.last_played_at,0), t.id",
+	"rating": "COALESCE(rt.rating,0), t.id",
 }
 
 const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_id,''), COALESCE(al.title,''),
 	COALESCE(t.disc_no,0), COALESCE(t.track_no,0), COALESCE(t.year,0), COALESCE(t.genre,''), COALESCE(t.duration_ms,0),
 	COALESCE(t.isrc,''), COALESCE(t.mb_recording_id,''), COALESCE(st.format,''), t.created_at,
 	COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
-	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0)`
+	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0),
+	COALESCE(ts.play_count,0), COALESCE(ts.last_played_at,0), fv.entity_id IS NOT NULL, COALESCE(rt.rating,0)`
 
 // bestSource picks the same file TrackFile streams: highest confidence, FLAC first, then path.
 const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
 	WHERE l.track_id=t.id ORDER BY l.confidence DESC, CASE s2.format WHEN 'flac' THEN 0 ELSE 1 END, s2.path LIMIT 1)`
 
-const trackFrom = ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id LEFT JOIN source_tracks st ON st.id=` + bestSource
+const trackFrom = ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id
+	LEFT JOIN track_stats ts ON ts.track_id=t.id
+	LEFT JOIN favorites fv ON fv.entity_type='track' AND fv.entity_id=t.id
+	LEFT JOIN ratings rt ON rt.entity_type='track' AND rt.entity_id=t.id
+	LEFT JOIN source_tracks st ON st.id=` + bestSource
 
 func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 	var t Track
 	var created int64
 	var si StreamInfo
+	var lastPlayed int64
 	err := r.Scan(&t.ID, &t.Title, &t.ArtistName, &t.AlbumID, &t.AlbumTitle, &t.DiscNo, &t.TrackNo, &t.Year, &t.Genre,
 		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created,
-		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes)
+		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes,
+		&t.PlayCount, &lastPlayed, &t.Favorite, &t.Rating)
 	t.CreatedAt = time.UnixMilli(created).UTC()
+	if lastPlayed > 0 {
+		lp := time.UnixMilli(lastPlayed).UTC()
+		t.LastPlayedAt = &lp
+	}
 	if t.Format != "" {
 		si.Format = t.Format
 		t.Stream = &si
@@ -336,9 +361,13 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 	if p.ArtistID != "" {
 		w.add(`t.id IN (SELECT track_id FROM track_artists WHERE artist_id=?)`, p.ArtistID)
 	}
+	if p.Favorite {
+		w.add(`t.id IN (SELECT entity_id FROM favorites WHERE entity_type='track')`)
+	}
 	from := trackFrom
 	out := Page[Track]{Items: []Track{}, Limit: p.Limit, Offset: p.Offset}
-	if out.Total, err = count(ctx, s.db, `SELECT count(*)`+from+w.sql(), w.args); err != nil {
+	// counting needs no per-row source/stat joins
+	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM tracks t LEFT JOIN albums al ON al.id=t.album_id`+w.sql(), w.args); err != nil {
 		return out, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT `+trackCols+from+w.sql()+ob+` LIMIT ? OFFSET ?`, append(w.args, p.Limit, p.Offset)...)

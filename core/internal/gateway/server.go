@@ -17,6 +17,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
+	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -61,6 +62,7 @@ type Deps struct {
 	Version         string
 	// LyricsFetcher is an optional remote lyrics provider chain.
 	LyricsFetcher library.LyricsFetcher
+	UserData      *userdata.Store
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -113,6 +115,15 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
 
+	if d.UserData != nil {
+		mux.HandleFunc("POST /api/scrobble", d.scrobble)
+		mux.HandleFunc("GET /api/history", d.history)
+		mux.HandleFunc("GET /api/history/top", d.historyTop)
+		mux.HandleFunc("GET /api/favorites", d.favorites)
+		mux.HandleFunc("PUT /api/favorites/{type}/{id}", d.setFavorite(true))
+		mux.HandleFunc("DELETE /api/favorites/{type}/{id}", d.setFavorite(false))
+		mux.HandleFunc("PUT /api/ratings/{type}/{id}", d.setRating)
+	}
 	if d.Backup != nil {
 		mux.HandleFunc("GET /api/system/backups", d.adminOnly(d.listBackups))
 		mux.HandleFunc("POST /api/system/backups", d.adminOnly(d.createBackup))

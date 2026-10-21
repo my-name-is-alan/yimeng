@@ -90,6 +90,20 @@ type Orchestrator struct {
 	lease LeaseFunc
 	now   func() time.Time
 	mu    sync.Mutex
+
+	// OnListened, if set before use, is called (outside the lock) whenever the
+	// current track is left: skipped, ended, replaced or stopped.
+	OnListened func(Listen)
+}
+
+// Listen describes how long a track was heard before it was left.
+type Listen struct {
+	PlayerID   string
+	TrackID    string
+	PlayedMs   int64
+	DurationMs int64
+	Completed  bool
+	At         time.Time // end of the listen
 }
 
 func NewOrchestrator(ctx context.Context, db *sql.DB, hub *events.Hub, lease LeaseFunc) (*Orchestrator, error) {
@@ -110,6 +124,7 @@ type session struct {
 	shuffle  bool
 	order    []int // play order (queue indices) when shuffled
 	seed     int64
+	ended    bool // set by advance(ended=true) within one mutation
 }
 
 func (o *Orchestrator) load(ctx context.Context, q querier, pid string) (*session, error) {
@@ -197,6 +212,11 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 	if err != nil {
 		return State{}, err
 	}
+	var prev *Listen
+	if s.idx >= 0 && s.idx < len(s.queue) && s.state != Idle {
+		prev = &Listen{PlayerID: pid, TrackID: s.queue[s.idx], PlayedMs: o.position(s), DurationMs: s.duration}
+	}
+	prevIdx := s.idx
 	before := len(s.queue)
 	beforeOrder := fmt.Sprint(s.shuffle, s.order)
 	beforeQ := strings.Join(s.queue, ",")
@@ -258,6 +278,20 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 	}
 	if err := tx.Commit(); err != nil {
 		return State{}, err
+	}
+	if prev != nil && o.OnListened != nil {
+		left := s.ended || s.idx != prevIdx || s.idx < 0 || s.idx >= len(s.queue) || s.queue[s.idx] != prev.TrackID ||
+			s.state == Idle
+		if left && prev.PlayedMs > 0 || s.ended {
+			if s.ended {
+				prev.Completed = true
+				if prev.DurationMs > 0 {
+					prev.PlayedMs = prev.DurationMs
+				}
+			}
+			prev.At = o.now()
+			o.OnListened(*prev)
+		}
 	}
 	o.hub.Publish("player.state", st)
 	if queueChanged {
@@ -472,6 +506,7 @@ func (o *Orchestrator) advance(s *session, ended bool) error {
 	if len(s.queue) == 0 {
 		return ErrEmptyQueue
 	}
+	s.ended = ended
 	next, wrap := s.nextIndex(ended)
 	switch {
 	case next < 0:

@@ -36,3 +36,15 @@ alternative considered. Newest items at the bottom.
   clears `codec` so the next scan re-reads every file once to pick them up.
 - LRC: multiple timestamps per line, `[offset]` applied server-side, enhanced
   word timing `<mm:ss.xx>` stripped (line-level only for now).
+
+## D4 History, favorites, ratings
+- A play counts (Last.fm rule) when the track ended, or ≥ min(50 %, 4 min) was
+  heard; tracks ≤30 s must complete. Core-managed players are recorded when the
+  orchestrator leaves a track (skip, end, replace, stop); seeking is not leaving.
+  `POST /api/scrobble` records client-side plays verbatim (client applies the rule).
+- `plays`, `track_stats`, `favorites`, `ratings` have **no FK** to tracks: user
+  data survives a file being temporarily missing (NAS offline) and reattaches
+  because canonical IDs are deterministic. Listings mark such rows `available:false`.
+- `track_stats` is a denormalized counter so sorting by plays scales (no
+  aggregate over `plays` per list query).
+- Single-user model: favorites/ratings are global, not per device.

@@ -392,3 +392,23 @@ func TestShuffleShuffledHelper(t *testing.T) {
 		t.Fatal("not deterministic per seed")
 	}
 }
+
+func TestOnListened(t *testing.T) {
+	f := newFixture(t)
+	must := mustFn(t)
+	ctx := context.Background()
+	var got []Listen
+	f.o.OnListened = func(l Listen) { got = append(got, l) }
+	must(f.o.Play(ctx, "p1", PlayRequest{TrackIDs: []string{"t1", "t2", "t3"}}))
+	f.o.Progress(ctx, "p1", 0)
+	f.now = f.now.Add(100 * time.Second)
+	must(f.o.Next(ctx, "p1")) // skip after 100s
+	f.o.Progress(ctx, "p1", 0)
+	must(f.o.Ended(ctx, "p1", "t2"))
+	must(f.o.Seek(ctx, "p1", 0)) // seeking is not leaving
+	must(f.o.Stop(ctx, "p1"))
+	if len(got) != 2 || got[0].TrackID != "t1" || got[0].PlayedMs != 100000 || got[0].Completed ||
+		got[1].TrackID != "t2" || !got[1].Completed || got[1].PlayedMs != 200000 {
+		t.Fatalf("%+v", got)
+	}
+}
