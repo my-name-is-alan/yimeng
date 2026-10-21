@@ -84,6 +84,9 @@ func ReadFile(path string) (Track, error) {
 			t.Picture = &Picture{MIME: p.MIMEType, Ext: pictureExt(p), Data: p.Data}
 		}
 		extractIDs(&t, m.Raw())
+		if isID3(m.Format()) {
+			fixTrackCharset(&t)
+		}
 	case errors.Is(err, tag.ErrNoTagsFound):
 	default:
 		// Corrupt / unsupported tag block: index the file anyway.

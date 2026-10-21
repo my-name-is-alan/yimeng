@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
+	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.60.1
 )
 
