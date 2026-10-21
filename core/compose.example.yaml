@@ -1,0 +1,21 @@
+# Copy to compose.yaml and adjust the host paths.
+#  Synology:  /volume1/music      /volume1/docker/yimeng
+#  fnOS(飞牛): /vol1/1000/Music    /vol1/1000/docker/yimeng
+services:
+  core:
+    image: yimeng-core:latest
+    build: .
+    container_name: yimeng-core
+    restart: unless-stopped
+    # Optional: run as your NAS user so files in the data volume are owned by you
+    # (check with `id` on the NAS). The music mount is read-only either way.
+    # user: "1026:100"
+    ports:
+      - "8741:8741"          # LAN only; do not expose to the internet
+    environment:
+      YIMENG_LIBRARY_ROOTS: /music      # comma-separated for several mounts, e.g. /music,/music2
+      TZ: Asia/Shanghai
+    volumes:
+      - /volume1/music:/music:ro
+      # - /volume2/hires:/music2:ro
+      - ./data:/var/yimeng                # library.db, cache/, vault/
