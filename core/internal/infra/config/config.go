@@ -18,6 +18,7 @@ type Config struct {
 	LibraryRoots  []string // library.roots (absolute paths)
 	DBPath        string   // db.path
 	VaultPath     string   // vault.path
+	MasterKeyFile string   // vault.master_key_file (default <vault.path>/master.key)
 	CacheDir      string   // cache.dir
 	CacheMaxBytes int64    // cache.max_bytes
 
@@ -53,7 +54,10 @@ type fileConfig struct {
 		MusicBrainz MusicBrainzConfig `toml:"musicbrainz"`
 	} `toml:"metadata"`
 	DB    struct{ Path string } `toml:"db"`
-	Vault struct{ Path string } `toml:"vault"`
+	Vault struct {
+		Path          string `toml:"path"`
+		MasterKeyFile string `toml:"master_key_file"`
+	} `toml:"vault"`
 	Cache struct {
 		Dir      string `toml:"dir"`
 		MaxBytes int64  `toml:"max_bytes"`
@@ -88,6 +92,8 @@ func Defaults() Config {
 //	YIMENG_WATCH_DEBOUNCE  Go duration, default 5s
 //	YIMENG_RESCAN_INTERVAL Go duration, default 1h (poll mode / watch fallback; 0 = off)
 //	YIMENG_PAIR_CODE_TTL   Go duration, default 5m (30s..15m)
+//	YIMENG_VAULT_KEY_FILE  master key file (default <vault.path>/master.key, created 0600)
+//	YIMENG_VAULT_KEY       base64 32-byte master key (overrides the file; read in main, never stored)
 //	YIMENG_MB_ENABLED      true|false (default false) — MusicBrainz enrichment
 //	YIMENG_MB_CONTACT      email/URL for the MusicBrainz User-Agent (required when enabled)
 //	YIMENG_MB_BASE_URL     optional mirror
@@ -106,6 +112,7 @@ func load(getenv func(string) string) (Config, error) {
 		}
 		setStr(&cfg.DBPath, fc.DB.Path)
 		setStr(&cfg.VaultPath, fc.Vault.Path)
+		setStr(&cfg.MasterKeyFile, fc.Vault.MasterKeyFile)
 		setStr(&cfg.CacheDir, fc.Cache.Dir)
 		if fc.Cache.MaxBytes > 0 {
 			cfg.CacheMaxBytes = fc.Cache.MaxBytes
@@ -137,6 +144,10 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	setStr(&cfg.DBPath, getenv("YIMENG_DB_PATH"))
 	setStr(&cfg.VaultPath, getenv("YIMENG_VAULT_PATH"))
+	setStr(&cfg.MasterKeyFile, getenv("YIMENG_VAULT_KEY_FILE"))
+	if cfg.MasterKeyFile == "" {
+		cfg.MasterKeyFile = filepath.Join(cfg.VaultPath, "master.key")
+	}
 	setStr(&cfg.CacheDir, getenv("YIMENG_CACHE_DIR"))
 	if v := getenv("YIMENG_CACHE_MAX_BYTES"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)

@@ -23,6 +23,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
 
@@ -65,6 +66,20 @@ func run(cfg config.Config, log *slog.Logger) error {
 			log.Warn("library root not accessible", "root", r, "err", err)
 		}
 	}
+	key, warn, err := vault.LoadOrCreateKey(cfg.MasterKeyFile, os.Getenv("YIMENG_VAULT_KEY"))
+	if err != nil {
+		return err
+	}
+	if warn != "" {
+		log.Warn(warn)
+	}
+	vlt, err := vault.NewSQLStore(database, key)
+	if err != nil {
+		return err
+	}
+	clear(key)
+	_ = vlt // handed to StreamSource / MetadataProvider factories (vault.Scope) as they land
+
 	hub := events.NewHub()
 	var enrich func()
 	if cfg.MusicBrainz.Enabled {
