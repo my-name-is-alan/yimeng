@@ -224,6 +224,10 @@ func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, ful
 		n, _ := res.RowsAffected()
 		c.removed += int(n)
 	}
+	if err := s.Merge(dbctx); err != nil {
+		fail(fmt.Errorf("merge: %w", err))
+		return
+	}
 	s.finish(dbctx, id, &c, "completed", lastErr)
 	s.log.Info("scan completed", "job", id, "total", c.total, "added", c.added, "updated", c.updated,
 		"unchanged", c.unchanged, "removed", c.removed, "failed", c.failed)
