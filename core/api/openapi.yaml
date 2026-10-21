@@ -19,6 +19,7 @@ tags:
   - name: catalog
   - name: media
   - name: settings
+  - name: playback
 
 paths:
   /healthz:
@@ -370,6 +371,163 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "416": { description: Range not satisfiable }
 
+  /api/players:
+    get:
+      tags: [playback]
+      summary: All players (paired devices) with their session state
+      responses:
+        "200":
+          description: States
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/PlayerState" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/players/{id}:
+    get:
+      tags: [playback]
+      summary: Player state
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: State, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/players/{id}/queue:
+    get:
+      tags: [playback]
+      summary: Player queue
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Queue, content: { application/json: { schema: { $ref: "#/components/schemas/Queue" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [playback]
+      summary: Edit the queue (replace | append | insert | remove | move | clear); current item follows its track
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/QueueOp" } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/play:
+    post:
+      tags: [playback]
+      summary: "Play — replace queue (track_ids), jump (index) or resume"
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PlayRequest" } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/pause:
+    post:
+      tags: [playback]
+      summary: Pause (stores extrapolated position)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/stop:
+    post:
+      tags: [playback]
+      summary: Stop (idle, position 0)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/next:
+    post:
+      tags: [playback]
+      summary: Next track (wraps when repeat=all, else idle at end)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/prev:
+    post:
+      tags: [playback]
+      summary: Previous track (restarts current if > 3 s in)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/seek:
+    post:
+      tags: [playback]
+      summary: Seek (playing -> buffering)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [position_ms], properties: { position_ms: { type: integer, minimum: 0 } } } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/repeat:
+    post:
+      tags: [playback]
+      summary: Set repeat mode
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [off, all, one] } } } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /ws:
+    get:
+      tags: [playback]
+      summary: WebSocket event stream
+      security: [{ bearer: [] }, { queryToken: [] }]
+      description: |
+        Upgrade to WebSocket. Messages are JSON `{ "type": ..., "data": ... }`.
+        Server → client: `hello` {device_id, players: PlayerState[]}, `player.state` (PlayerState),
+        `queue.updated` (Queue), `scan.progress` (ScanJob), `metadata.patched` {entity_type, entity_id}, `pong`.
+        Client → server: `player.progress` {player_id?, position_ms} (first report after buffering
+        moves to playing; send every few seconds), `player.ended` {player_id?, track_id} (advances
+        the queue; stale track ids are ignored), `ping`. player_id defaults to the caller's device.
+        Slow consumers are disconnected (close 1013) and should reconnect and re-read state.
+      responses:
+        "101": { description: Switching protocols }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/settings/artist-split:
     get:
       tags: [settings]
@@ -407,6 +565,63 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    TrackRef:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist_name: { type: string }
+        album_id: { type: string }
+        album_title: { type: string }
+        duration_ms: { type: integer }
+    PlayerState:
+      type: object
+      properties:
+        player_id: { type: string }
+        transport: { type: string, enum: [idle, buffering, playing, paused] }
+        position_ms: { type: integer, description: "Extrapolated to updated_at while playing" }
+        updated_at: { type: string, format: date-time }
+        current_index: { type: integer, description: "-1 = none" }
+        queue_length: { type: integer }
+        repeat: { type: string, enum: [off, all, one] }
+        track: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
+        lease:
+          oneOf:
+            - type: "null"
+            - type: object
+              properties:
+                delivery: { type: string, enum: [direct, proxy, client_sdk] }
+                url: { type: string, example: /api/stream/tr_1a2b }
+                format: { type: string }
+                expires_at: { type: string, format: date-time }
+    Queue:
+      type: object
+      properties:
+        player_id: { type: string }
+        current_index: { type: integer }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/TrackRef" }
+              - { type: object, properties: { index: { type: integer } } }
+    PlayRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        track_ids: { type: array, items: { type: string }, maxItems: 5000, description: Replace the queue }
+        index: { type: integer, minimum: 0, description: Start at / jump to this queue index }
+        position_ms: { type: integer, minimum: 0 }
+    QueueOp:
+      type: object
+      required: [op]
+      additionalProperties: false
+      properties:
+        op: { type: string, enum: [replace, append, insert, remove, move, clear] }
+        track_ids: { type: array, items: { type: string } }
+        index: { type: integer, description: "insert position / remove index" }
+        from: { type: integer }
+        to: { type: integer }
     SplitConfig:
       type: object
       additionalProperties: false

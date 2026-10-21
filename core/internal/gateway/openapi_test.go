@@ -18,10 +18,18 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		if i < 0 {
 			continue
 		}
+		if strings.Contains(line, `+a`) {
+			continue // player actions checked below
+		}
 		pat := strings.SplitN(line[i+len(`mux.HandleFunc("`):], `"`, 2)[0]
 		_, path, _ := strings.Cut(pat, " ")
 		if !strings.Contains(string(spec), "\n  "+path+":") {
 			t.Errorf("route %q missing from openapi.yaml", pat)
+		}
+	}
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "queue"} {
+		if !strings.Contains(string(spec), "\n  /api/players/{id}/"+a+":") {
+			t.Errorf("player action %s missing", a)
 		}
 	}
 }

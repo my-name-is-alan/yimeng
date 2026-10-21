@@ -15,8 +15,10 @@ import (
 
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
 
@@ -70,7 +72,13 @@ func newEnv(t *testing.T) *env {
 	sc := library.NewScanner(d, library.Options{Roots: []string{root}, CoverDir: filepath.Join(tmp, "c")})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a := auth.New(d, 5*time.Minute, log)
-	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()}, Auth: a, Log: log}))
+	hub := events.NewHub()
+	orch, err := playback.NewOrchestrator(context.Background(), d, hub, app.LocalLease(sc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
+		Playback: orch, Hub: hub, Auth: a, Log: log}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a}
 	code, _, _ := a.NewCode()

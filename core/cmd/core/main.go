@@ -15,10 +15,12 @@ import (
 
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
 
@@ -61,11 +63,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 			log.Warn("library root not accessible", "root", r, "err", err)
 		}
 	}
+	hub := events.NewHub()
 	scanner := library.NewScanner(database, library.Options{
-		Roots:    cfg.LibraryRoots,
-		CoverDir: filepath.Join(cfg.CacheDir, "covers"),
-		Logger:   log,
+		Roots:      cfg.LibraryRoots,
+		CoverDir:   filepath.Join(cfg.CacheDir, "covers"),
+		Logger:     log,
+		OnProgress: func(j library.Job) { hub.Publish("scan.progress", j) },
 	})
+	orch, err := playback.NewOrchestrator(ctx, database, hub, app.LocalLease(scanner))
+	if err != nil {
+		return err
+	}
 	if err := scanner.LoadSettings(ctx); err != nil {
 		return err
 	}
@@ -96,9 +104,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.Bind,
 		Handler: gateway.NewRouter(gateway.Deps{
-			Library: &app.Library{Scanner: scanner, BG: ctx},
-			Auth:    authSvc,
-			Log:     log,
+			Library:  &app.Library{Scanner: scanner, BG: ctx},
+			Playback: orch,
+			Hub:      hub,
+			Auth:     authSvc,
+			Log:      log,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

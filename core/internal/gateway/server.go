@@ -12,7 +12,9 @@ import (
 	"strings"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -36,9 +38,11 @@ type LibraryUseCases interface {
 }
 
 type Deps struct {
-	Library LibraryUseCases
-	Auth    *auth.Service // required: every /api route except pairing needs a device token
-	Log     *slog.Logger
+	Library  LibraryUseCases
+	Playback *playback.Orchestrator
+	Hub      *events.Hub
+	Auth     *auth.Service // required: every /api route except pairing needs a device token
+	Log      *slog.Logger
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -74,6 +78,14 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/search", d.search)
 	mux.HandleFunc("GET /api/stream/{id}", d.stream)
 
+	mux.HandleFunc("GET /api/players", d.listPlayers)
+	mux.HandleFunc("GET /api/players/{id}", d.playerState)
+	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "queue"} {
+		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
+	}
+	mux.HandleFunc("GET /ws", d.ws)
+
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
 
@@ -88,20 +100,20 @@ func DeviceFrom(ctx context.Context) (auth.Device, bool) {
 }
 
 func isPublic(r *http.Request) bool {
-	if !strings.HasPrefix(r.URL.Path, "/api/") {
+	if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws" {
 		return true // /healthz and 404s
 	}
 	return r.Method == http.MethodPost && (r.URL.Path == "/api/pair" || r.URL.Path == "/api/pair/request")
 }
 
-// allowsQueryToken: <audio>/<img> cannot send headers, so media GETs may pass
+// allowsQueryToken: <audio>/<img>/WebSocket cannot send headers, so these GETs may pass
 // ?access_token=. Core never logs request URLs.
 func allowsQueryToken(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
 	p := r.URL.Path
-	return strings.HasPrefix(p, "/api/stream/") || (strings.HasSuffix(p, "/cover") &&
+	return p == "/ws" || strings.HasPrefix(p, "/api/stream/") || (strings.HasSuffix(p, "/cover") &&
 		(strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/")))
 }
 

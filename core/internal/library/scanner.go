@@ -54,6 +54,11 @@ type Options struct {
 	Roots    []string // configured library roots (absolute)
 	CoverDir string   // where embedded cover art is extracted
 	Logger   *slog.Logger
+	// OnProgress, if set, receives the job after every progress flush and at
+	// completion (feeds WS scan.progress).
+	OnProgress func(Job)
+	// OnMerged, if set, runs after a successful scan + merge (e.g. enrichment).
+	OnMerged func()
 }
 
 type Scanner struct {
@@ -417,6 +422,15 @@ func (s *Scanner) progress(ctx context.Context, id string, c *counters, lastErr 
 	if err != nil {
 		s.log.Warn("scan progress", "err", err)
 	}
+	s.notify(ctx, id)
+}
+
+func (s *Scanner) notify(ctx context.Context, id string) {
+	if s.opts.OnProgress != nil {
+		if j, err := s.Get(ctx, id); err == nil {
+			s.opts.OnProgress(j)
+		}
+	}
 }
 
 func (s *Scanner) finish(ctx context.Context, id string, c *counters, status, errMsg string) {
@@ -428,6 +442,10 @@ func (s *Scanner) finish(ctx context.Context, id string, c *counters, status, er
 	if _, err := s.db.ExecContext(ctx, `UPDATE scan_jobs SET status=?, progress=?, finished_at=? WHERE id=?`,
 		status, prog, time.Now().UnixMilli(), id); err != nil {
 		s.log.Error("scan finish", "err", err)
+	}
+	s.notify(ctx, id)
+	if status == "completed" && s.opts.OnMerged != nil {
+		s.opts.OnMerged()
 	}
 }
 
