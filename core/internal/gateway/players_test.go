@@ -115,6 +115,7 @@ func TestPlayersAndWebSocket(t *testing.T) {
 	}{
 		{"pause", "", 200}, {"seek", `{"position_ms":500}`, 200}, {"seek", `{}`, 400},
 		{"prev", "", 200}, {"next", "", 200}, {"repeat", `{"mode":"all"}`, 200}, {"repeat", `{"mode":"x"}`, 400},
+		{"shuffle", `{"enabled":true}`, 200}, {"shuffle", `{}`, 400}, {"shuffle", `{"enabled":false}`, 200},
 		{"queue", `{"op":"remove","index":0}`, 200}, {"queue", `{"op":"bogus"}`, 400}, {"stop", "", 200},
 	} {
 		if res, body := e.do("POST", "/api/players/"+me.ID+"/"+c.path, c.body, tok); res.StatusCode != c.code {

@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -53,8 +54,14 @@ type State struct {
 	CurrentIndex int       `json:"current_index"` // -1 = none
 	QueueLength  int       `json:"queue_length"`
 	Repeat       string    `json:"repeat"` // off | all | one
+	Shuffle      bool      `json:"shuffle"`
 	Track        *TrackRef `json:"track"`
 	Lease        *Lease    `json:"lease"`
+	// Next is what plays after Track ends naturally (repeat/shuffle aware);
+	// clients prefetch NextLease for gapless transitions.
+	NextIndex int       `json:"next_index"` // -1 = none
+	Next      *TrackRef `json:"next"`
+	NextLease *Lease    `json:"next_lease"`
 }
 
 type QueueItem struct {
@@ -63,9 +70,12 @@ type QueueItem struct {
 }
 
 type Queue struct {
-	PlayerID     string      `json:"player_id"`
-	CurrentIndex int         `json:"current_index"`
-	Items        []QueueItem `json:"items"`
+	PlayerID     string `json:"player_id"`
+	CurrentIndex int    `json:"current_index"`
+	Shuffle      bool   `json:"shuffle"`
+	// PlayOrder lists queue indices in the order they will play (identity when not shuffled).
+	PlayOrder []int       `json:"play_order"`
+	Items     []QueueItem `json:"items"`
 }
 
 // LeaseFunc resolves a playable lease for a canonical track.
@@ -97,6 +107,9 @@ type session struct {
 	repeat   string
 	queue    []string // track ids
 	duration int64    // current track
+	shuffle  bool
+	order    []int // play order (queue indices) when shuffled
+	seed     int64
 }
 
 func (o *Orchestrator) load(ctx context.Context, q querier, pid string) (*session, error) {
@@ -109,8 +122,10 @@ func (o *Orchestrator) load(ctx context.Context, q querier, pid string) (*sessio
 	}
 	s := &session{state: Idle, idx: -1, repeat: "off", updated: o.now()}
 	var upd int64
-	err := q.QueryRowContext(ctx, `SELECT state, position_ms, updated_at, current_idx, repeat_mode FROM sessions WHERE player_id=?`, pid).
-		Scan(&s.state, &s.pos, &upd, &s.idx, &s.repeat)
+	var order, seed sql.NullString
+	err := q.QueryRowContext(ctx, `SELECT state, position_ms, updated_at, current_idx, repeat_mode, shuffle, shuffle_order,
+		CAST(shuffle_seed AS TEXT) FROM sessions WHERE player_id=?`, pid).
+		Scan(&s.state, &s.pos, &upd, &s.idx, &s.repeat, &s.shuffle, &order, &seed)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -138,6 +153,12 @@ func (o *Orchestrator) load(ctx context.Context, q querier, pid string) (*sessio
 	}
 	if s.idx >= 0 {
 		q.QueryRowContext(ctx, `SELECT COALESCE(duration_ms,0) FROM tracks WHERE id=?`, s.queue[s.idx]).Scan(&s.duration)
+	}
+	if s.shuffle {
+		fmt.Sscan(seed.String, &s.seed)
+		if json.Unmarshal([]byte(order.String), &s.order) != nil || !validOrder(s.order, len(s.queue)) {
+			s.reshuffle(s.idx) // queue changed underneath (deleted tracks)
+		}
 	}
 	return s, rows.Err()
 }
@@ -177,6 +198,7 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 		return State{}, err
 	}
 	before := len(s.queue)
+	beforeOrder := fmt.Sprint(s.shuffle, s.order)
 	beforeQ := strings.Join(s.queue, ",")
 	known := map[string]bool{}
 	for _, id := range s.queue {
@@ -212,10 +234,15 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 		tx.QueryRowContext(ctx, `SELECT COALESCE(duration_ms,0) FROM tracks WHERE id=?`, s.queue[s.idx]).Scan(&s.duration)
 	}
 	s.updated = o.now()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(player_id, state, position_ms, updated_at, current_idx, repeat_mode)
-		VALUES (?,?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET state=excluded.state, position_ms=excluded.position_ms,
-		updated_at=excluded.updated_at, current_idx=excluded.current_idx, repeat_mode=excluded.repeat_mode`,
-		pid, s.state, s.pos, s.updated.UnixMilli(), s.idx, s.repeat); err != nil {
+	if s.shuffle && !validOrder(s.order, len(s.queue)) {
+		return State{}, fmt.Errorf("internal: shuffle order out of sync")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(player_id, state, position_ms, updated_at, current_idx, repeat_mode,
+		shuffle, shuffle_order, shuffle_seed)
+		VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET state=excluded.state, position_ms=excluded.position_ms,
+		updated_at=excluded.updated_at, current_idx=excluded.current_idx, repeat_mode=excluded.repeat_mode,
+		shuffle=excluded.shuffle, shuffle_order=excluded.shuffle_order, shuffle_seed=excluded.shuffle_seed`,
+		pid, s.state, s.pos, s.updated.UnixMilli(), s.idx, s.repeat, s.shuffle, encodeOrder(s), s.seed); err != nil {
 		return State{}, err
 	}
 	st, err := o.state(ctx, tx, pid, s)
@@ -223,7 +250,8 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 		return State{}, err
 	}
 	var q Queue
-	if queueChanged {
+	if queueChanged || orderChanged(beforeOrder, s) {
+		queueChanged = true
 		if q, err = o.queue(ctx, tx, pid, s); err != nil {
 			return State{}, err
 		}
@@ -266,7 +294,19 @@ func trackRef(ctx context.Context, q querier, id string) (*TrackRef, error) {
 
 func (o *Orchestrator) state(ctx context.Context, q querier, pid string, s *session) (State, error) {
 	st := State{PlayerID: pid, Transport: s.state, PositionMs: o.position(s), UpdatedAt: o.now().UTC(),
-		CurrentIndex: s.idx, QueueLength: len(s.queue), Repeat: s.repeat}
+		CurrentIndex: s.idx, QueueLength: len(s.queue), Repeat: s.repeat, Shuffle: s.shuffle, NextIndex: -1}
+	if ni, _ := s.nextIndex(true); ni >= 0 && s.idx >= 0 {
+		t, err := trackRef(ctx, q, s.queue[ni])
+		if err != nil {
+			return st, err
+		}
+		st.NextIndex, st.Next = ni, t
+		if s.state != Idle && o.lease != nil {
+			if l, err := o.lease(ctx, t.ID); err == nil {
+				st.NextLease = &l
+			}
+		}
+	}
 	if s.idx >= 0 && s.idx < len(s.queue) {
 		t, err := trackRef(ctx, q, s.queue[s.idx])
 		if err != nil {
@@ -283,7 +323,10 @@ func (o *Orchestrator) state(ctx context.Context, q querier, pid string, s *sess
 }
 
 func (o *Orchestrator) queue(ctx context.Context, q querier, pid string, s *session) (Queue, error) {
-	out := Queue{PlayerID: pid, CurrentIndex: s.idx, Items: []QueueItem{}}
+	out := Queue{PlayerID: pid, CurrentIndex: s.idx, Shuffle: s.shuffle, Items: []QueueItem{}, PlayOrder: []int{}}
+	for p := range s.queue {
+		out.PlayOrder = append(out.PlayOrder, s.at(p))
+	}
 	for i, id := range s.queue {
 		t, err := trackRef(ctx, q, id)
 		if err != nil {
@@ -356,6 +399,13 @@ func (o *Orchestrator) Play(ctx context.Context, pid string, r PlayRequest) (Sta
 		}
 		if len(r.TrackIDs) > 0 {
 			s.queue = append([]string(nil), r.TrackIDs...)
+			if s.shuffle {
+				first := -1
+				if r.Index != nil {
+					first = *r.Index
+				}
+				s.reshuffle(first)
+			}
 		}
 		if len(s.queue) == 0 {
 			return ErrEmptyQueue
@@ -367,11 +417,15 @@ func (o *Orchestrator) Play(ctx context.Context, pid string, r PlayRequest) (Sta
 			}
 			load(s, *r.Index, r.PositionMs)
 		case len(r.TrackIDs) > 0:
-			load(s, 0, r.PositionMs)
+			load(s, s.at(0), r.PositionMs)
 		case s.state == Paused && s.idx >= 0:
 			s.state = Playing // resume from stored position
 		case s.state == Idle:
-			load(s, max(s.idx, 0), r.PositionMs)
+			idx := s.idx
+			if idx < 0 {
+				idx = s.at(0)
+			}
+			load(s, idx, r.PositionMs)
 		}
 		return nil
 	})
@@ -418,15 +472,20 @@ func (o *Orchestrator) advance(s *session, ended bool) error {
 	if len(s.queue) == 0 {
 		return ErrEmptyQueue
 	}
+	next, wrap := s.nextIndex(ended)
 	switch {
-	case ended && s.repeat == "one":
-		load(s, s.idx, 0)
-	case s.idx+1 < len(s.queue):
-		load(s, s.idx+1, 0)
-	case s.repeat == "all":
-		load(s, 0, 0)
-	default:
+	case next < 0:
 		s.state, s.pos = Idle, 0
+	case wrap && s.shuffle:
+		// new pass, new seed; avoid repeating the track that just played
+		last := s.idx
+		s.reshuffle(-1)
+		if len(s.order) > 1 && s.order[0] == last {
+			s.order[0], s.order[len(s.order)-1] = s.order[len(s.order)-1], s.order[0]
+		}
+		load(s, s.order[0], 0)
+	default:
+		load(s, next, 0)
 	}
 	return nil
 }
@@ -438,10 +497,26 @@ func (o *Orchestrator) Prev(ctx context.Context, pid string) (State, error) {
 			return ErrEmptyQueue
 		}
 		idx := s.idx
-		if o.position(s) <= 3000 && idx > 0 {
-			idx--
+		if p := s.playPos(); o.position(s) <= 3000 && p > 0 {
+			idx = s.at(p - 1)
 		}
 		load(s, max(idx, 0), 0)
+		return nil
+	})
+}
+
+// SetShuffle toggles shuffle. Enabling (or reshuffle=true while enabled)
+// generates a new order with a fresh seed, keeping the current track first;
+// disabling returns to natural queue order from the current track.
+func (o *Orchestrator) SetShuffle(ctx context.Context, pid string, on, reshuffle bool) (State, error) {
+	return o.mutate(ctx, pid, false, func(s *session) error {
+		switch {
+		case on && (!s.shuffle || reshuffle):
+			s.shuffle = true
+			s.reshuffle(s.idx)
+		case !on:
+			s.shuffle, s.order, s.seed = false, nil, 0
+		}
 		return nil
 	})
 }
@@ -514,8 +589,11 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 		case "replace":
 			s.queue = append([]string(nil), op.TrackIDs...)
 			s.idx, s.pos = -1, 0
+			if s.shuffle {
+				s.reshuffle(-1)
+			}
 			if len(s.queue) > 0 {
-				s.idx = 0
+				s.idx = s.at(0)
 				if s.state == Playing || s.state == Buffering {
 					s.state = Buffering
 				} else {
@@ -529,8 +607,9 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 				return fmt.Errorf("%w: track_ids required", ErrBadRequest)
 			}
 			s.queue = append(s.queue, op.TrackIDs...)
+			s.remap(identity, span(n, len(op.TrackIDs)), false)
 			if s.idx < 0 {
-				s.idx = n
+				s.idx = s.at(0)
 			}
 		case "insert":
 			if op.Index < 0 || op.Index > n || len(op.TrackIDs) == 0 {
@@ -539,8 +618,15 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 			q := append([]string{}, s.queue[:op.Index]...)
 			q = append(q, op.TrackIDs...)
 			s.queue = append(q, s.queue[op.Index:]...)
+			k := len(op.TrackIDs)
+			s.remap(func(i int) int {
+				if i >= op.Index {
+					return i + k
+				}
+				return i
+			}, span(op.Index, k), true)
 			if s.idx < 0 {
-				s.idx = op.Index
+				s.idx = s.at(0)
 			} else if op.Index <= s.idx {
 				s.idx += len(op.TrackIDs)
 			}
@@ -549,6 +635,38 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 				return fmt.Errorf("%w: index out of range", ErrBadRequest)
 			}
 			s.queue = append(s.queue[:op.Index:op.Index], s.queue[op.Index+1:]...)
+			// with shuffle, removing the current track continues at its successor in play order
+			succ := -1
+			if s.shuffle && op.Index == s.idx {
+				if p := s.playPos(); p+1 < n {
+					succ = s.order[p+1]
+					if succ > op.Index {
+						succ--
+					}
+				}
+			}
+			s.remap(func(i int) int {
+				switch {
+				case i == op.Index:
+					return -1
+				case i > op.Index:
+					return i - 1
+				}
+				return i
+			}, nil, false)
+			if s.shuffle && op.Index == s.idx {
+				if succ < 0 {
+					s.idx, s.state, s.pos = -1, Idle, 0
+					if len(s.queue) > 0 {
+						s.idx = s.order[len(s.order)-1]
+					}
+				} else if s.state == Playing || s.state == Buffering {
+					load(s, succ, 0)
+				} else {
+					s.idx, s.pos = succ, 0
+				}
+				break
+			}
 			switch {
 			case op.Index < s.idx:
 				s.idx--
@@ -572,6 +690,17 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 			q := append(append([]string{}, s.queue[:op.From]...), s.queue[op.From+1:]...)
 			q = append(q[:op.To], append([]string{id}, q[op.To:]...)...)
 			s.queue = q
+			s.remap(func(i int) int {
+				switch {
+				case i == op.From:
+					return op.To
+				case op.From < i && i <= op.To:
+					return i - 1
+				case op.To <= i && i < op.From:
+					return i + 1
+				}
+				return i
+			}, nil, false)
 			switch {
 			case s.idx == op.From:
 				s.idx = op.To
@@ -582,9 +711,24 @@ func (o *Orchestrator) EditQueue(ctx context.Context, pid string, op QueueOp) (S
 			}
 		case "clear":
 			s.queue, s.idx, s.state, s.pos = nil, -1, Idle, 0
+			if s.shuffle {
+				s.order = []int{}
+			}
 		default:
 			return fmt.Errorf("%w: unknown op %q", ErrBadRequest, op.Op)
 		}
 		return nil
 	})
 }
+
+func identity(i int) int { return i }
+
+func span(from, k int) []int {
+	out := make([]int, k)
+	for i := range out {
+		out[i] = from + i
+	}
+	return out
+}
+
+func orderChanged(before string, s *session) bool { return before != fmt.Sprint(s.shuffle, s.order) }

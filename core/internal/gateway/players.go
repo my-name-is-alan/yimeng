@@ -83,6 +83,16 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 				return
 			}
 			st, err = d.Playback.SetRepeat(ctx, pid, b.Mode)
+		case "shuffle":
+			var b struct {
+				Enabled   *bool `json:"enabled"`
+				Reshuffle bool  `json:"reshuffle"`
+			}
+			if err := decodeBody(r, &b); err != nil || b.Enabled == nil {
+				writeErr(w, http.StatusBadRequest, "invalid_body", "enabled required")
+				return
+			}
+			st, err = d.Playback.SetShuffle(ctx, pid, *b.Enabled, b.Reshuffle)
 		case "queue":
 			var b playback.QueueOp
 			if err := decodeBody(r, &b); err != nil {

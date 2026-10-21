@@ -86,7 +86,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/players", d.listPlayers)
 	mux.HandleFunc("GET /api/players/{id}", d.playerState)
 	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
-	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "queue"} {
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue"} {
 		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
 	}
 	mux.HandleFunc("GET /ws", d.ws)

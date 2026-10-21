@@ -512,6 +512,33 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/players/{id}/shuffle:
+    post:
+      tags: [playback]
+      summary: Toggle shuffle (a persisted play-order view; the queue itself is not reordered)
+      description: |
+        Enabling generates a new random play order (fresh seed) with the current track first.
+        `reshuffle: true` while enabled generates a new order. Disabling continues in natural
+        queue order from the current track. With repeat=all, wrapping past the last track
+        reshuffles with a new seed. Queue edits keep the order consistent: `insert` places the
+        new tracks right after the current one (play next), `append` spreads them randomly over
+        the upcoming part, `move` keeps play order, `remove` of the current track continues at
+        its play-order successor, `replace` reshuffles. Broadcasts player.state + queue.updated.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties: { enabled: { type: boolean }, reshuffle: { type: boolean, default: false } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /ws:
     get:
       tags: [playback]
@@ -619,21 +646,26 @@ components:
         current_index: { type: integer, description: "-1 = none" }
         queue_length: { type: integer }
         repeat: { type: string, enum: [off, all, one] }
+        shuffle: { type: boolean }
         track: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
-        lease:
-          oneOf:
-            - type: "null"
-            - type: object
-              properties:
-                delivery: { type: string, enum: [direct, proxy, client_sdk] }
-                url: { type: string, example: /api/stream/tr_1a2b }
-                format: { type: string }
-                expires_at: { type: string, format: date-time }
+        lease: { oneOf: [{ $ref: "#/components/schemas/Lease" }, { type: "null" }] }
+        next_index: { type: integer, description: "Queue index that plays after the current track ends naturally (repeat/shuffle aware); -1 = none" }
+        next: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
+        next_lease: { oneOf: [{ $ref: "#/components/schemas/Lease" }, { type: "null" }], description: "Prefetch hint for gapless playback" }
+    Lease:
+      type: object
+      properties:
+        delivery: { type: string, enum: [direct, proxy, client_sdk] }
+        url: { type: string, example: /api/stream/tr_1a2b }
+        format: { type: string }
+        expires_at: { type: string, format: date-time }
     Queue:
       type: object
       properties:
         player_id: { type: string }
         current_index: { type: integer }
+        shuffle: { type: boolean }
+        play_order: { type: array, items: { type: integer }, description: "Queue indices in play order (identity when not shuffled)" }
         items:
           type: array
           items:
