@@ -69,6 +69,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	if cfg.ScanOnStart {
+		if _, err := scanner.Start(ctx, library.StartRequest{}); err != nil {
+			log.Warn("scan on start", "err", err)
+		}
+	}
+	watchDone := make(chan struct{})
+	go func() {
+		defer close(watchDone)
+		scanner.Watch(ctx, library.WatchOptions{Mode: cfg.WatchMode, Debounce: cfg.WatchDebounce, RescanInterval: cfg.RescanInterval})
+	}()
+
 	srv := &http.Server{
 		Addr:              cfg.Bind,
 		Handler:           gateway.NewRouter(gateway.Deps{Library: &app.Library{Scanner: scanner, BG: ctx}}),
@@ -89,6 +100,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	shCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shCtx)
+	<-watchDone
 	scanner.Wait() // background scan stops via ctx cancellation
 	return nil
 }

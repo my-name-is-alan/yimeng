@@ -167,7 +167,7 @@ func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, ful
 			}
 			name := d.Name()
 			if d.IsDir() {
-				if p != root && (strings.HasPrefix(name, ".") || name == "@eaDir" || name == "#recycle" || name == "@Recycle") {
+				if p != root && skipDirName(name) {
 					return filepath.SkipDir // hidden + Synology/fnOS/QNAP system dirs
 				}
 				return nil
@@ -465,4 +465,12 @@ func newID() string {
 		panic(err)
 	}
 	return hex.EncodeToString(b[:])
+}
+
+func statDir(p string) (bool, error) {
+	st, err := os.Stat(p)
+	if err != nil {
+		return false, err
+	}
+	return st.IsDir(), nil
 }

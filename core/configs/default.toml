@@ -6,6 +6,10 @@ bind = "0.0.0.0:8741"
 
 [library]
 roots = ["/music"]
+scan_on_start = true
+watch = "auto"            # auto | fsnotify | poll | off  (auto: poll on network mounts)
+watch_debounce = "5s"
+rescan_interval = "1h"    # used in poll mode or when watching is unavailable; "0s" = off
 
 [db]
 path = "/var/yimeng/library.db"
@@ -17,3 +21,6 @@ path = "/var/yimeng/vault"
 [cache]
 dir = "/var/yimeng/cache"
 max_bytes = 2147483648
+
+[auth]
+pair_code_ttl_seconds = 300

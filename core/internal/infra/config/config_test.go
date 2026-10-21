@@ -37,3 +37,17 @@ func TestShippedDefaultToml(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+func TestWatchAndAuthEnv(t *testing.T) {
+	c, err := load(env(map[string]string{"YIMENG_SCAN_ON_START": "false", "YIMENG_WATCH": "poll",
+		"YIMENG_RESCAN_INTERVAL": "10m", "YIMENG_WATCH_DEBOUNCE": "2s", "YIMENG_PAIR_CODE_TTL": "2m"}))
+	if err != nil || c.ScanOnStart || c.WatchMode != "poll" || c.RescanInterval.Minutes() != 10 ||
+		c.WatchDebounce.Seconds() != 2 || c.PairCodeTTL.Minutes() != 2 {
+		t.Fatalf("%+v %v", c, err)
+	}
+	for _, bad := range []map[string]string{{"YIMENG_WATCH": "maybe"}, {"YIMENG_PAIR_CODE_TTL": "1h"}, {"YIMENG_RESCAN_INTERVAL": "x"}} {
+		if _, err := load(env(bad)); err == nil {
+			t.Errorf("want error for %v", bad)
+		}
+	}
+}

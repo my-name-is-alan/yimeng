@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,14 +20,30 @@ type Config struct {
 	VaultPath     string   // vault.path
 	CacheDir      string   // cache.dir
 	CacheMaxBytes int64    // cache.max_bytes
+
+	ScanOnStart    bool          // library.scan_on_start
+	WatchMode      string        // library.watch: auto | fsnotify | poll | off
+	WatchDebounce  time.Duration // library.watch_debounce
+	RescanInterval time.Duration // library.rescan_interval (poll / fallback); 0 = never
+
+	PairCodeTTL time.Duration // auth.pair_code_ttl_seconds
 }
 
 type fileConfig struct {
-	Server  struct{ Bind string }    `toml:"server"`
-	Library struct{ Roots []string } `toml:"library"`
-	DB      struct{ Path string }    `toml:"db"`
-	Vault   struct{ Path string }    `toml:"vault"`
-	Cache   struct {
+	Server  struct{ Bind string } `toml:"server"`
+	Library struct {
+		Roots          []string `toml:"roots"`
+		ScanOnStart    *bool    `toml:"scan_on_start"`
+		Watch          string   `toml:"watch"`
+		WatchDebounce  string   `toml:"watch_debounce"`
+		RescanInterval string   `toml:"rescan_interval"`
+	} `toml:"library"`
+	Auth struct {
+		PairCodeTTLSeconds int `toml:"pair_code_ttl_seconds"`
+	} `toml:"auth"`
+	DB    struct{ Path string } `toml:"db"`
+	Vault struct{ Path string } `toml:"vault"`
+	Cache struct {
 		Dir      string `toml:"dir"`
 		MaxBytes int64  `toml:"max_bytes"`
 	} `toml:"cache"`
@@ -40,6 +57,12 @@ func Defaults() Config {
 		VaultPath:     "/var/yimeng/vault",
 		CacheDir:      "/var/yimeng/cache",
 		CacheMaxBytes: 2 << 30,
+
+		ScanOnStart:    true,
+		WatchMode:      "auto",
+		WatchDebounce:  5 * time.Second,
+		RescanInterval: time.Hour,
+		PairCodeTTL:    5 * time.Minute,
 	}
 }
 
@@ -49,6 +72,11 @@ func Defaults() Config {
 //	YIMENG_BIND            listen address (legacy alias: ZHILE_BIND)
 //	YIMENG_LIBRARY_ROOTS   comma-separated music root directories
 //	YIMENG_DB_PATH, YIMENG_VAULT_PATH, YIMENG_CACHE_DIR, YIMENG_CACHE_MAX_BYTES
+//	YIMENG_SCAN_ON_START   true|false (default true)
+//	YIMENG_WATCH           auto|fsnotify|poll|off (default auto)
+//	YIMENG_WATCH_DEBOUNCE  Go duration, default 5s
+//	YIMENG_RESCAN_INTERVAL Go duration, default 1h (poll mode / watch fallback; 0 = off)
+//	YIMENG_PAIR_CODE_TTL   Go duration, default 5m (30s..15m)
 func Load() (Config, error) { return load(os.Getenv) }
 
 func load(getenv func(string) string) (Config, error) {
@@ -67,6 +95,19 @@ func load(getenv func(string) string) (Config, error) {
 		setStr(&cfg.CacheDir, fc.Cache.Dir)
 		if fc.Cache.MaxBytes > 0 {
 			cfg.CacheMaxBytes = fc.Cache.MaxBytes
+		}
+		if fc.Library.ScanOnStart != nil {
+			cfg.ScanOnStart = *fc.Library.ScanOnStart
+		}
+		setStr(&cfg.WatchMode, fc.Library.Watch)
+		if err := setDur(&cfg.WatchDebounce, fc.Library.WatchDebounce, "library.watch_debounce"); err != nil {
+			return cfg, err
+		}
+		if err := setDur(&cfg.RescanInterval, fc.Library.RescanInterval, "library.rescan_interval"); err != nil {
+			return cfg, err
+		}
+		if fc.Auth.PairCodeTTLSeconds > 0 {
+			cfg.PairCodeTTL = time.Duration(fc.Auth.PairCodeTTLSeconds) * time.Second
 		}
 	}
 	setStr(&cfg.Bind, getenv("ZHILE_BIND"))
@@ -89,6 +130,35 @@ func load(getenv func(string) string) (Config, error) {
 		}
 		cfg.CacheMaxBytes = n
 	}
+	if v := getenv("YIMENG_SCAN_ON_START"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return cfg, fmt.Errorf("YIMENG_SCAN_ON_START: %w", err)
+		}
+		cfg.ScanOnStart = b
+	}
+	setStr(&cfg.WatchMode, strings.ToLower(getenv("YIMENG_WATCH")))
+	if err := setDur(&cfg.WatchDebounce, getenv("YIMENG_WATCH_DEBOUNCE"), "YIMENG_WATCH_DEBOUNCE"); err != nil {
+		return cfg, err
+	}
+	if err := setDur(&cfg.RescanInterval, getenv("YIMENG_RESCAN_INTERVAL"), "YIMENG_RESCAN_INTERVAL"); err != nil {
+		return cfg, err
+	}
+	if err := setDur(&cfg.PairCodeTTL, getenv("YIMENG_PAIR_CODE_TTL"), "YIMENG_PAIR_CODE_TTL"); err != nil {
+		return cfg, err
+	}
+	switch cfg.WatchMode {
+	case "auto", "fsnotify", "poll", "off":
+	case "true", "on":
+		cfg.WatchMode = "auto"
+	case "false":
+		cfg.WatchMode = "off"
+	default:
+		return cfg, fmt.Errorf("library.watch %q: want auto|fsnotify|poll|off", cfg.WatchMode)
+	}
+	if cfg.PairCodeTTL < 30*time.Second || cfg.PairCodeTTL > 15*time.Minute {
+		return cfg, fmt.Errorf("pair code TTL %v out of range [30s,15m]", cfg.PairCodeTTL)
+	}
 	for i, r := range cfg.LibraryRoots {
 		if !filepath.IsAbs(r) {
 			return cfg, fmt.Errorf("library root %q must be an absolute path", r)
@@ -102,4 +172,16 @@ func setStr(dst *string, v string) {
 	if v != "" {
 		*dst = v
 	}
+}
+
+func setDur(dst *time.Duration, v, name string) error {
+	if v == "" {
+		return nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return fmt.Errorf("%s: invalid duration %q", name, v)
+	}
+	*dst = d
+	return nil
 }
