@@ -431,3 +431,40 @@ func (s *Scanner) safeFile(p string, allowCache bool) (string, error) {
 	}
 	return real, nil
 }
+
+type Credit struct {
+	TrackID string `json:"track_id"`
+	Role    string `json:"role"`
+	Name    string `json:"name"`
+	MBID    string `json:"mb_id,omitempty"`
+	Source  string `json:"source,omitempty"`
+}
+
+// AlbumCredits returns credits for every track on an album (disc/track order).
+func (s *Scanner) AlbumCredits(ctx context.Context, albumID string) ([]Credit, error) {
+	return s.credits(ctx, `JOIN tracks t ON t.id=c.track_id WHERE t.album_id=? ORDER BY t.disc_no, t.track_no, c.role, c.name`, albumID)
+}
+
+func (s *Scanner) TrackCredits(ctx context.Context, trackID string) ([]Credit, error) {
+	return s.credits(ctx, `WHERE c.track_id=? ORDER BY c.role, c.name`, trackID)
+}
+
+func (s *Scanner) credits(ctx context.Context, tail string, arg string) ([]Credit, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT c.track_id, c.role, c.name, COALESCE(c.mb_id,''), COALESCE(c.source,'') FROM credits c `+tail, arg)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Credit{}
+	for rows.Next() {
+		var c Credit
+		if err := rows.Scan(&c.TrackID, &c.Role, &c.Name, &c.MBID, &c.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// DB exposes the handle for tests and wiring.
+func (s *Scanner) DB() *sql.DB { return s.db }

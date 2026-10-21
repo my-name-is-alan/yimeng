@@ -33,6 +33,9 @@ type LibraryUseCases interface {
 	TrackCover(ctx context.Context, trackID string) (string, error)
 	TrackFile(ctx context.Context, trackID string) (library.TrackFile, error)
 
+	AlbumCredits(ctx context.Context, albumID string) ([]library.Credit, error)
+	TrackCredits(ctx context.Context, trackID string) ([]library.Credit, error)
+
 	SplitConfig() library.SplitConfig
 	SetSplitConfig(ctx context.Context, c library.SplitConfig) (library.SplitConfig, error)
 }
@@ -41,8 +44,10 @@ type Deps struct {
 	Library  LibraryUseCases
 	Playback *playback.Orchestrator
 	Hub      *events.Hub
-	Auth     *auth.Service // required: every /api route except pairing needs a device token
-	Log      *slog.Logger
+	// Enrich, if non-nil, triggers a background metadata pass (opt-in providers).
+	Enrich func()
+	Auth   *auth.Service // required: every /api route except pairing needs a device token
+	Log    *slog.Logger
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -85,6 +90,9 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
 	}
 	mux.HandleFunc("GET /ws", d.ws)
+
+	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
+	mux.HandleFunc("POST /api/metadata/enrich", d.enrich)
 
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)

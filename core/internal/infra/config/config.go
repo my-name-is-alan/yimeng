@@ -27,6 +27,14 @@ type Config struct {
 	RescanInterval time.Duration // library.rescan_interval (poll / fallback); 0 = never
 
 	PairCodeTTL time.Duration // auth.pair_code_ttl_seconds
+
+	MusicBrainz MusicBrainzConfig // metadata.musicbrainz (opt-in)
+}
+
+type MusicBrainzConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Contact string `toml:"contact"`  // email or URL; required by the MB API policy
+	BaseURL string `toml:"base_url"` // default https://musicbrainz.org (or a local mirror)
 }
 
 type fileConfig struct {
@@ -41,6 +49,9 @@ type fileConfig struct {
 	Auth struct {
 		PairCodeTTLSeconds int `toml:"pair_code_ttl_seconds"`
 	} `toml:"auth"`
+	Metadata struct {
+		MusicBrainz MusicBrainzConfig `toml:"musicbrainz"`
+	} `toml:"metadata"`
 	DB    struct{ Path string } `toml:"db"`
 	Vault struct{ Path string } `toml:"vault"`
 	Cache struct {
@@ -77,6 +88,9 @@ func Defaults() Config {
 //	YIMENG_WATCH_DEBOUNCE  Go duration, default 5s
 //	YIMENG_RESCAN_INTERVAL Go duration, default 1h (poll mode / watch fallback; 0 = off)
 //	YIMENG_PAIR_CODE_TTL   Go duration, default 5m (30s..15m)
+//	YIMENG_MB_ENABLED      true|false (default false) — MusicBrainz enrichment
+//	YIMENG_MB_CONTACT      email/URL for the MusicBrainz User-Agent (required when enabled)
+//	YIMENG_MB_BASE_URL     optional mirror
 func Load() (Config, error) { return load(os.Getenv) }
 
 func load(getenv func(string) string) (Config, error) {
@@ -106,6 +120,7 @@ func load(getenv func(string) string) (Config, error) {
 		if err := setDur(&cfg.RescanInterval, fc.Library.RescanInterval, "library.rescan_interval"); err != nil {
 			return cfg, err
 		}
+		cfg.MusicBrainz = fc.Metadata.MusicBrainz
 		if fc.Auth.PairCodeTTLSeconds > 0 {
 			cfg.PairCodeTTL = time.Duration(fc.Auth.PairCodeTTLSeconds) * time.Second
 		}
@@ -146,6 +161,18 @@ func load(getenv func(string) string) (Config, error) {
 	}
 	if err := setDur(&cfg.PairCodeTTL, getenv("YIMENG_PAIR_CODE_TTL"), "YIMENG_PAIR_CODE_TTL"); err != nil {
 		return cfg, err
+	}
+	if v := getenv("YIMENG_MB_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return cfg, fmt.Errorf("YIMENG_MB_ENABLED: %w", err)
+		}
+		cfg.MusicBrainz.Enabled = b
+	}
+	setStr(&cfg.MusicBrainz.Contact, getenv("YIMENG_MB_CONTACT"))
+	setStr(&cfg.MusicBrainz.BaseURL, getenv("YIMENG_MB_BASE_URL"))
+	if cfg.MusicBrainz.Enabled && strings.TrimSpace(cfg.MusicBrainz.Contact) == "" {
+		return cfg, fmt.Errorf("metadata.musicbrainz.contact (YIMENG_MB_CONTACT) is required when MusicBrainz is enabled")
 	}
 	switch cfg.WatchMode {
 	case "auto", "fsnotify", "poll", "off":

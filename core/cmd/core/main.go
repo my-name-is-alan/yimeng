@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/adapters/musicbrainz"
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
@@ -20,6 +21,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
 )
@@ -64,7 +66,26 @@ func run(cfg config.Config, log *slog.Logger) error {
 		}
 	}
 	hub := events.NewHub()
+	var enrich func()
+	if cfg.MusicBrainz.Enabled {
+		mb, err := musicbrainz.New(musicbrainz.Config{
+			BaseURL:   cfg.MusicBrainz.BaseURL,
+			UserAgent: fmt.Sprintf("yimeng/%s ( %s )", version, cfg.MusicBrainz.Contact),
+		})
+		if err != nil {
+			return err
+		}
+		en := &metadata.Enricher{DB: database, P: mb, Hub: hub, CoverDir: filepath.Join(cfg.CacheDir, "covers"), Log: log}
+		go en.Run(ctx)
+		enrich = en.Kick
+		log.Info("MusicBrainz enrichment enabled")
+	}
 	scanner := library.NewScanner(database, library.Options{
+		OnMerged: func() {
+			if enrich != nil {
+				enrich()
+			}
+		},
 		Roots:      cfg.LibraryRoots,
 		CoverDir:   filepath.Join(cfg.CacheDir, "covers"),
 		Logger:     log,
@@ -107,6 +128,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Library:  &app.Library{Scanner: scanner, BG: ctx},
 			Playback: orch,
 			Hub:      hub,
+			Enrich:   enrich,
 			Auth:     authSvc,
 			Log:      log,
 		}),

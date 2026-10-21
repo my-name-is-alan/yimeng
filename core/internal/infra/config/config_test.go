@@ -51,3 +51,17 @@ func TestWatchAndAuthEnv(t *testing.T) {
 		}
 	}
 }
+
+func TestMusicBrainzConfig(t *testing.T) {
+	c, err := load(env(nil))
+	if err != nil || c.MusicBrainz.Enabled {
+		t.Fatal("MB must be opt-in")
+	}
+	if _, err := load(env(map[string]string{"YIMENG_MB_ENABLED": "true"})); err == nil {
+		t.Fatal("contact required")
+	}
+	c, err = load(env(map[string]string{"YIMENG_MB_ENABLED": "1", "YIMENG_MB_CONTACT": "me@example.com"}))
+	if err != nil || !c.MusicBrainz.Enabled || c.MusicBrainz.Contact != "me@example.com" {
+		t.Fatal(c.MusicBrainz, err)
+	}
+}

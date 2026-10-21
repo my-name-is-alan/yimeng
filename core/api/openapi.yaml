@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -20,6 +20,7 @@ tags:
   - name: media
   - name: settings
   - name: playback
+  - name: metadata
 
 paths:
   /healthz:
@@ -272,7 +273,7 @@ paths:
                 properties:
                   album: { $ref: "#/components/schemas/Album" }
                   tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
-                  credits: { type: array, items: { type: object }, description: "Empty until Metadata enrichment (P1)" }
+                  credits: { type: array, items: { $ref: "#/components/schemas/Credit" }, description: "Empty unless a metadata provider is enabled" }
                   related_albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -528,6 +529,32 @@ paths:
         "101": { description: Switching protocols }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/tracks/{id}/credits:
+    get:
+      tags: [catalog]
+      summary: Track credits (from opt-in metadata providers)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Credits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/Credit" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/metadata/enrich:
+    post:
+      tags: [metadata]
+      summary: Schedule a background metadata pass (MusicBrainz; also runs after every scan)
+      description: Tracks without an enrichment record are looked up by MBID → ISRC → search (score ≥ 0.9, duration ±3 s). Credits are stored; MBIDs/ISRC are only filled when missing; albums without local art get a Cover Art Archive cover. Progress arrives as WS `metadata.patched`.
+      responses:
+        "202": { description: Scheduled }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { description: No provider enabled, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /api/settings/artist-split:
     get:
       tags: [settings]
@@ -565,6 +592,14 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    Credit:
+      type: object
+      properties:
+        track_id: { type: string }
+        role: { type: string, example: "instrument (guitar)" }
+        name: { type: string }
+        mb_id: { type: string }
+        source: { type: string, example: musicbrainz }
     TrackRef:
       type: object
       properties:

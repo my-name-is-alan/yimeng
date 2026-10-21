@@ -242,3 +242,29 @@ func TestSplitSettingsAPI(t *testing.T) {
 		t.Fatal("auth")
 	}
 }
+
+func TestCreditsAndEnrich(t *testing.T) {
+	e := newEnv(t)
+	e.do("POST", "/api/library/scan", "", e.token)
+	e.sc.Wait()
+	if res, _ := e.do("POST", "/api/metadata/enrich", "", e.token); res.StatusCode != 503 {
+		t.Fatal("enrich without provider should be 503")
+	}
+	var tracks library.Page[library.Track]
+	_, body := e.do("GET", "/api/tracks?q=梦里", "", e.token)
+	json.Unmarshal(body, &tracks)
+	id := tracks.Items[0].ID
+	e.sc.DB().Exec(`INSERT INTO credits(id, track_id, role, name, source) VALUES ('c1', ?, 'composer', '周杰伦', 'musicbrainz')`, id)
+	if res, body := e.do("GET", "/api/tracks/"+id+"/credits", "", e.token); res.StatusCode != 200 || !strings.Contains(string(body), "composer") {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	var page AlbumPage
+	_, body = e.do("GET", "/api/albums/"+tracks.Items[0].AlbumID, "", e.token)
+	json.Unmarshal(body, &page)
+	if len(page.Credits) != 1 || page.Credits[0].Name != "周杰伦" {
+		t.Fatalf("album credits %s", body)
+	}
+	if res, _ := e.do("GET", "/api/tracks/nope/credits", "", e.token); res.StatusCode != 404 {
+		t.Fatal("404")
+	}
+}

@@ -69,10 +69,10 @@ func (d Deps) getTrack(w http.ResponseWriter, r *http.Request) {
 }
 
 type AlbumPage struct {
-	Album         library.Album   `json:"album"`
-	Tracks        []library.Track `json:"tracks"`
-	Credits       []any           `json:"credits"` // filled by Metadata (P1)
-	RelatedAlbums []library.Album `json:"related_albums"`
+	Album         library.Album    `json:"album"`
+	Tracks        []library.Track  `json:"tracks"`
+	Credits       []library.Credit `json:"credits"` // from metadata providers (opt-in)
+	RelatedAlbums []library.Album  `json:"related_albums"`
 }
 
 func (d Deps) getAlbum(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +86,11 @@ func (d Deps) getAlbum(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		page := AlbumPage{Album: al, Tracks: tr.Items, Credits: []any{}, RelatedAlbums: []library.Album{}}
+		cr, err := d.Library.AlbumCredits(ctx, al.ID)
+		if err != nil {
+			return nil, err
+		}
+		page := AlbumPage{Album: al, Tracks: tr.Items, Credits: cr, RelatedAlbums: []library.Album{}}
 		if len(al.Artists) > 0 {
 			rel, err := d.Library.ListAlbums(ctx, library.ListParams{ArtistID: al.Artists[0].ID, Sort: "year", Limit: 20})
 			if err != nil {
@@ -215,4 +219,23 @@ func (d Deps) serveFile(w http.ResponseWriter, r *http.Request, path string, err
 	}
 	w.Header().Set("Cache-Control", cache)
 	http.ServeContent(w, r, "", st.ModTime(), fh)
+}
+
+func (d Deps) trackCredits(w http.ResponseWriter, r *http.Request) {
+	d.writeOne(w, "track", func() (any, error) {
+		if _, err := d.Library.GetTrack(r.Context(), r.PathValue("id")); err != nil {
+			return nil, err
+		}
+		cr, err := d.Library.TrackCredits(r.Context(), r.PathValue("id"))
+		return map[string]any{"items": cr}, err
+	})
+}
+
+func (d Deps) enrich(w http.ResponseWriter, r *http.Request) {
+	if d.Enrich == nil {
+		writeErr(w, http.StatusServiceUnavailable, "source_unavailable", "no metadata provider enabled (set metadata.musicbrainz.enabled)")
+		return
+	}
+	d.Enrich()
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scheduled"})
 }

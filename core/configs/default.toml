@@ -24,3 +24,8 @@ max_bytes = 2147483648
 
 [auth]
 pair_code_ttl_seconds = 300
+
+[metadata.musicbrainz]
+enabled = false            # opt-in: fetch MBIDs, credits and Cover Art Archive covers (≤1 req/s)
+contact = ""               # REQUIRED when enabled: your email or URL (sent in the User-Agent)
+# base_url = "https://musicbrainz.org"

@@ -16,6 +16,9 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 
 - API 契约：`api/openapi.yaml`（测试保证所有路由均有文档）。
 - 扫描：启动时自动扫描；fsnotify 监听 + 去抖；网络挂载 / inotify 上限时退回定时重扫（`YIMENG_WATCH`、`YIMENG_RESCAN_INTERVAL`）。
+- 播放：`/api/players/{id}/play|pause|seek|next|prev|stop|repeat|queue`，WebSocket `/ws`（player.state / queue.updated / scan.progress / metadata.patched）。
+- 元数据：MusicBrainz 默认关闭；`YIMENG_MB_ENABLED=true YIMENG_MB_CONTACT=you@example.com` 开启（≤1 req/s，Credits + Cover Art Archive 封面）。
+- 艺人拆分：`GET/PUT /api/settings/artist-split`（例外名单、可选 & / , 、自定义分隔符）。
 - 鉴权：配对码（单次、5 分钟）→ 设备 Token（库中仅存 SHA-256）；`/api/devices` 可吊销。
 
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
