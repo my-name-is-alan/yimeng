@@ -57,3 +57,17 @@ alternative considered. Newest items at the bottom.
   root-relative paths, unique basenames, then `#EXTINF` artist/title. Export
   writes absolute (default) or root-relative paths — paths are only exposed to
   authenticated devices, which already own the library.
+
+## D6 ReplayGain / loudness
+- Read REPLAYGAIN_* (Vorbis, ID3 TXXX, MP4 freeform) and Opus R128_*_GAIN
+  (Q7.8 vs -23 LUFS → +5 dB to the RG2 -18 LUFS reference). Values outside
+  ±60 dB are ignored.
+- Missing gains are measured in the background with ffmpeg `ebur128=peak=true`
+  (one file at a time, 10 min timeout, kicked after every merge; failures are
+  recorded and not retried until the file changes). Gain = -18 − I.
+  Album gain for analyzed albums = duration-weighted energy mean of track
+  loudness (approximation of a joint album measurement; avoids re-decoding).
+- Gain is exposed (stream.replaygain on tracks, track.replaygain in
+  player.state); applying it is the client's job — originals are never altered
+  (bit-perfect), and transcodes are not gain-adjusted either.
+- Disable with `YIMENG_LOUDNESS_ANALYSIS=false`.

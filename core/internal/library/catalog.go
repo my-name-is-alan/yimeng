@@ -76,6 +76,16 @@ type StreamInfo struct {
 	BitrateKbps int    `json:"bitrate_kbps,omitempty"`
 	Lossless    bool   `json:"lossless"`
 	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	ReplayGain  *Gain  `json:"replaygain,omitempty"`
+}
+
+// Gain is ReplayGain in dB relative to -18 LUFS (peaks linear).
+type Gain struct {
+	TrackGain *float64 `json:"track_gain,omitempty"`
+	TrackPeak *float64 `json:"track_peak,omitempty"`
+	AlbumGain *float64 `json:"album_gain,omitempty"`
+	AlbumPeak *float64 `json:"album_peak,omitempty"`
+	Source    string   `json:"source"` // tag | analyzed
 }
 
 type ListParams struct {
@@ -307,7 +317,8 @@ const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_i
 	COALESCE(t.isrc,''), COALESCE(t.mb_recording_id,''), COALESCE(st.format,''), t.created_at,
 	COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
 	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0),
-	COALESCE(ts.play_count,0), COALESCE(ts.last_played_at,0), fv.entity_id IS NOT NULL, COALESCE(rt.rating,0)`
+	COALESCE(ts.play_count,0), COALESCE(ts.last_played_at,0), fv.entity_id IS NOT NULL, COALESCE(rt.rating,0),
+	st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,'')`
 
 // bestSource picks the same file TrackFile streams: highest confidence, FLAC first, then path.
 const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
@@ -324,10 +335,15 @@ func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 	var created int64
 	var si StreamInfo
 	var lastPlayed int64
+	var g Gain
 	err := r.Scan(&t.ID, &t.Title, &t.ArtistName, &t.AlbumID, &t.AlbumTitle, &t.DiscNo, &t.TrackNo, &t.Year, &t.Genre,
 		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created,
 		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes,
-		&t.PlayCount, &lastPlayed, &t.Favorite, &t.Rating)
+		&t.PlayCount, &lastPlayed, &t.Favorite, &t.Rating,
+		&g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source)
+	if g.Source != "" {
+		si.ReplayGain = &g
+	}
 	t.CreatedAt = time.UnixMilli(created).UTC()
 	if lastPlayed > 0 {
 		lp := time.UnixMilli(lastPlayed).UTC()
@@ -529,3 +545,6 @@ func (s *Scanner) credits(ctx context.Context, tail string, arg string) ([]Credi
 
 // DB exposes the handle for tests and wiring.
 func (s *Scanner) DB() *sql.DB { return s.db }
+
+// SafePath validates that p is a regular file inside a library root (symlinks resolved).
+func (s *Scanner) SafePath(p string) (string, error) { return s.safeFile(p, false) }

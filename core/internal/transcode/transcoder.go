@@ -374,3 +374,11 @@ func (t *Transcoder) evict() {
 		}
 	}
 }
+
+// FFmpeg returns the resolved ffmpeg binary ("" when unavailable).
+func (t *Transcoder) FFmpeg() string {
+	if t == nil {
+		return ""
+	}
+	return t.ffmpeg
+}

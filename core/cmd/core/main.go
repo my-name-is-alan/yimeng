@@ -22,6 +22,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/loudness"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
@@ -112,10 +113,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 		enrich = en.Kick
 		log.Info("MusicBrainz enrichment enabled")
 	}
+	var analyzer *loudness.Analyzer
 	scanner := library.NewScanner(database, library.Options{
 		OnMerged: func() {
 			if enrich != nil {
 				enrich()
+			}
+			if analyzer != nil {
+				analyzer.Kick()
 			}
 		},
 		Roots:      cfg.LibraryRoots,
@@ -156,6 +161,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Info("ffmpeg not available: streaming originals only")
 	} else {
 		log.Info("transcoding enabled", "formats", len(tc.Formats())-1)
+	}
+
+	if cfg.Library.LoudnessAnalysis && tc.FFmpeg() != "" {
+		analyzer = loudness.New(database, tc.FFmpeg(), log)
+		analyzer.Resolve = scanner.SafePath
+		analyzer.OnDone = func(n int) { hub.Publish("library.loudness", map[string]int{"analyzed": n}) }
+		go analyzer.Run(ctx)
+		analyzer.Kick()
 	}
 
 	authSvc := auth.New(database, cfg.PairCodeTTL, log)

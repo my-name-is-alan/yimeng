@@ -36,6 +36,16 @@ type TrackRef struct {
 	AlbumID    string `json:"album_id,omitempty"`
 	AlbumTitle string `json:"album_title,omitempty"`
 	DurationMs int64  `json:"duration_ms"`
+	// ReplayGain of the file that will be streamed (dB vs -18 LUFS; peaks linear).
+	ReplayGain *Gain `json:"replaygain,omitempty"`
+}
+
+type Gain struct {
+	TrackGain *float64 `json:"track_gain,omitempty"`
+	TrackPeak *float64 `json:"track_peak,omitempty"`
+	AlbumGain *float64 `json:"album_gain,omitempty"`
+	AlbumPeak *float64 `json:"album_peak,omitempty"`
+	Source    string   `json:"source"`
 }
 
 // Lease tells the client where to fetch audio (P0: Core's own Range endpoint).
@@ -320,9 +330,17 @@ func validTracks(ctx context.Context, q querier, ids []string) error {
 
 func trackRef(ctx context.Context, q querier, id string) (*TrackRef, error) {
 	t := &TrackRef{ID: id}
+	var g Gain
 	err := q.QueryRowContext(ctx, `SELECT t.title, COALESCE(t.artist_name,''), COALESCE(t.album_id,''), COALESCE(al.title,''),
-		COALESCE(t.duration_ms,0) FROM tracks t LEFT JOIN albums al ON al.id=t.album_id WHERE t.id=?`, id).
-		Scan(&t.Title, &t.ArtistName, &t.AlbumID, &t.AlbumTitle, &t.DurationMs)
+		COALESCE(t.duration_ms,0), st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,'')
+		FROM tracks t LEFT JOIN albums al ON al.id=t.album_id
+		LEFT JOIN source_tracks st ON st.id=(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
+			WHERE l.track_id=t.id ORDER BY l.confidence DESC, CASE s2.format WHEN 'flac' THEN 0 ELSE 1 END, s2.path LIMIT 1)
+		WHERE t.id=?`, id).
+		Scan(&t.Title, &t.ArtistName, &t.AlbumID, &t.AlbumTitle, &t.DurationMs, &g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source)
+	if g.Source != "" {
+		t.ReplayGain = &g
+	}
 	return t, err
 }
 

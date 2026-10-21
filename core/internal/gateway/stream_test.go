@@ -143,3 +143,22 @@ func mustProfile(f, b string) transcode.Profile {
 	}
 	return p
 }
+
+func TestReplayGainExposed(t *testing.T) {
+	e := newEnv(t)
+	tr := flacTrack(t, e)
+	e.sc.DB().Exec(`UPDATE source_tracks SET rg_track_gain=-7.5, rg_track_peak=0.99, rg_source='tag'`)
+	var got library.Track
+	_, body := e.do("GET", "/api/tracks/"+tr.ID, "", e.token)
+	json.Unmarshal(body, &got)
+	if got.Stream == nil || got.Stream.ReplayGain == nil || *got.Stream.ReplayGain.TrackGain != -7.5 {
+		t.Fatalf("%s", body)
+	}
+	var dev struct{ ID string }
+	_, body = e.do("GET", "/api/devices/me", "", e.token)
+	json.Unmarshal(body, &dev)
+	_, body = e.do("POST", "/api/players/"+dev.ID+"/play", `{"track_ids":["`+tr.ID+`"]}`, e.token)
+	if !strings.Contains(string(body), `"replaygain":{"track_gain":-7.5`) {
+		t.Fatalf("%s", body)
+	}
+}

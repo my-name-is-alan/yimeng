@@ -987,6 +987,7 @@ components:
         album_id: { type: string }
         album_title: { type: string }
         duration_ms: { type: integer }
+        replaygain: { $ref: "#/components/schemas/ReplayGain" }
     PlayerState:
       type: object
       properties:
@@ -1152,6 +1153,16 @@ components:
         bitrate_kbps: { type: integer, description: average }
         lossless: { type: boolean }
         size_bytes: { type: integer }
+        replaygain: { $ref: "#/components/schemas/ReplayGain" }
+    ReplayGain:
+      type: object
+      description: "ReplayGain of the source file: gains in dB relative to -18 LUFS, peaks linear. Clients apply gain (+ clip prevention via peak); Core never alters audio."
+      properties:
+        track_gain: { type: number, example: -7.5 }
+        track_peak: { type: number, example: 0.988 }
+        album_gain: { type: number }
+        album_peak: { type: number }
+        source: { type: string, enum: [tag, analyzed] }
     StreamQuality:
       type: object
       properties:

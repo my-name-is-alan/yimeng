@@ -55,6 +55,7 @@ type Track struct {
 	HasTags       bool     `json:"has_tags"`
 	Audio         Info     `json:"audio"`
 	Lyrics        string   `json:"-"`
+	Gain          Gain     `json:"replaygain"`
 	Picture       *Picture `json:"-"`
 }
 
@@ -87,6 +88,7 @@ func ReadFile(path string) (Track, error) {
 		}
 		extractIDs(&t, m.Raw())
 		t.Lyrics = embeddedLyrics(m)
+		t.Gain = readGain(m.Raw())
 		if isID3(m.Format()) {
 			fixTrackCharset(&t)
 		}
