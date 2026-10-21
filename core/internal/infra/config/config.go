@@ -33,6 +33,40 @@ type Config struct {
 	PairCodeTTL time.Duration // auth.pair_code_ttl_seconds
 
 	MusicBrainz MusicBrainzConfig // metadata.musicbrainz (opt-in)
+
+	Backup  BackupConfig
+	Log     LogConfig
+	Server  ServerConfig
+	Library LibraryExtra
+	// Providers lists optional metadata/lyrics providers to enable (metadata.providers).
+	Providers []string
+	Subsonic  bool // subsonic.enabled (default true)
+	MDNS      bool // server.mdns (default true)
+}
+
+type BackupConfig struct {
+	Dir             string        `toml:"dir"`  // default <dir of db.path>/backups
+	Interval        time.Duration `toml:"-"`    // backup.interval, default 24h; 0 = off
+	Keep            int           `toml:"keep"` // default 7
+	RestoreMaxBytes int64         `toml:"max_restore_bytes"`
+}
+
+type LogConfig struct {
+	Format string `toml:"format"` // text | json
+	Level  string `toml:"level"`  // debug | info | warn | error
+}
+
+type ServerConfig struct {
+	TLSCert        string   `toml:"tls_cert"`
+	TLSKey         string   `toml:"tls_key"`
+	TrustedProxies []string `toml:"trusted_proxies"` // CIDRs whose X-Forwarded-For is honoured
+	RateLimit      float64  `toml:"rate_limit"`      // requests/s per client (token or IP); 0 = off
+	RateBurst      int      `toml:"rate_burst"`
+	GlobalRate     float64  `toml:"global_rate_limit"` // requests/s for the whole server; 0 = off
+}
+
+type LibraryExtra struct {
+	LoudnessAnalysis bool // library.loudness_analysis (ffmpeg ebur128 when tags are missing)
 }
 
 type MusicBrainzConfig struct {
@@ -69,6 +103,15 @@ type fileConfig struct {
 		Dir      string `toml:"dir"`
 		MaxBytes int64  `toml:"max_bytes"`
 	} `toml:"cache"`
+	Backup struct {
+		BackupConfig
+		Interval string `toml:"interval"`
+	} `toml:"backup"`
+	Log      LogConfig    `toml:"log"`
+	TLS      ServerConfig `toml:"http"`
+	Subsonic struct {
+		Enabled *bool `toml:"enabled"`
+	} `toml:"subsonic"`
 }
 
 func Defaults() Config {
@@ -85,6 +128,13 @@ func Defaults() Config {
 		WatchDebounce:  5 * time.Second,
 		RescanInterval: time.Hour,
 		PairCodeTTL:    5 * time.Minute,
+
+		Backup:   BackupConfig{Interval: 24 * time.Hour, Keep: 7, RestoreMaxBytes: 4 << 30},
+		Log:      LogConfig{Format: "text", Level: "info"},
+		Server:   ServerConfig{RateLimit: 50, RateBurst: 200},
+		Library:  LibraryExtra{LoudnessAnalysis: true},
+		Subsonic: true,
+		MDNS:     true,
 	}
 }
 
@@ -135,6 +185,35 @@ func load(getenv func(string) string) (Config, error) {
 			return cfg, err
 		}
 		cfg.MusicBrainz = fc.Metadata.MusicBrainz
+		setStr(&cfg.Backup.Dir, fc.Backup.Dir)
+		if fc.Backup.Keep > 0 {
+			cfg.Backup.Keep = fc.Backup.Keep
+		}
+		if fc.Backup.RestoreMaxBytes > 0 {
+			cfg.Backup.RestoreMaxBytes = fc.Backup.RestoreMaxBytes
+		}
+		if err := setDur(&cfg.Backup.Interval, fc.Backup.Interval, "backup.interval"); err != nil {
+			return cfg, err
+		}
+		setStr(&cfg.Log.Format, fc.Log.Format)
+		setStr(&cfg.Log.Level, fc.Log.Level)
+		setStr(&cfg.Server.TLSCert, fc.TLS.TLSCert)
+		setStr(&cfg.Server.TLSKey, fc.TLS.TLSKey)
+		if len(fc.TLS.TrustedProxies) > 0 {
+			cfg.Server.TrustedProxies = fc.TLS.TrustedProxies
+		}
+		if fc.TLS.RateLimit > 0 {
+			cfg.Server.RateLimit = fc.TLS.RateLimit
+		}
+		if fc.TLS.RateBurst > 0 {
+			cfg.Server.RateBurst = fc.TLS.RateBurst
+		}
+		if fc.TLS.GlobalRate > 0 {
+			cfg.Server.GlobalRate = fc.TLS.GlobalRate
+		}
+		if fc.Subsonic.Enabled != nil {
+			cfg.Subsonic = *fc.Subsonic.Enabled
+		}
 		setStr(&cfg.FFmpeg, fc.Transcode.FFmpeg)
 		if fc.Transcode.Concurrency > 0 {
 			cfg.TranscodeConcurrency = fc.Transcode.Concurrency
@@ -204,6 +283,20 @@ func load(getenv func(string) string) (Config, error) {
 	if cfg.MusicBrainz.Enabled && strings.TrimSpace(cfg.MusicBrainz.Contact) == "" {
 		return cfg, fmt.Errorf("metadata.musicbrainz.contact (YIMENG_MB_CONTACT) is required when MusicBrainz is enabled")
 	}
+	if err := extraEnv(&cfg, getenv); err != nil {
+		return cfg, err
+	}
+	if cfg.Backup.Dir == "" {
+		cfg.Backup.Dir = filepath.Join(filepath.Dir(cfg.DBPath), "backups")
+	}
+	if (cfg.Server.TLSCert == "") != (cfg.Server.TLSKey == "") {
+		return cfg, fmt.Errorf("TLS needs both a certificate and a key file")
+	}
+	switch cfg.Log.Format {
+	case "text", "json":
+	default:
+		return cfg, fmt.Errorf("log.format %q: want text|json", cfg.Log.Format)
+	}
 	switch cfg.WatchMode {
 	case "auto", "fsnotify", "poll", "off":
 	case "true", "on":
@@ -241,4 +334,70 @@ func setDur(dst *time.Duration, v, name string) error {
 	}
 	*dst = d
 	return nil
+}
+
+// extraEnv applies the environment overrides added after v0.5.
+//
+//	YIMENG_BACKUP_DIR, YIMENG_BACKUP_INTERVAL (24h; 0 = off), YIMENG_BACKUP_KEEP (7)
+//	YIMENG_LOG_FORMAT text|json, YIMENG_LOG_LEVEL debug|info|warn|error
+//	YIMENG_TLS_CERT, YIMENG_TLS_KEY, YIMENG_TRUSTED_PROXIES (comma-separated CIDRs)
+//	YIMENG_RATE_LIMIT (req/s per client, default 50; 0 = off), YIMENG_RATE_BURST (200), YIMENG_GLOBAL_RATE_LIMIT
+//	YIMENG_LOUDNESS_ANALYSIS true|false, YIMENG_SUBSONIC true|false, YIMENG_MDNS true|false
+//	YIMENG_PROVIDERS comma-separated optional providers (e.g. lrclib)
+func extraEnv(cfg *Config, getenv func(string) string) error {
+	setStr(&cfg.Backup.Dir, getenv("YIMENG_BACKUP_DIR"))
+	if err := setDur(&cfg.Backup.Interval, getenv("YIMENG_BACKUP_INTERVAL"), "YIMENG_BACKUP_INTERVAL"); err != nil {
+		return err
+	}
+	setStr(&cfg.Log.Format, strings.ToLower(getenv("YIMENG_LOG_FORMAT")))
+	setStr(&cfg.Log.Level, strings.ToLower(getenv("YIMENG_LOG_LEVEL")))
+	setStr(&cfg.Server.TLSCert, getenv("YIMENG_TLS_CERT"))
+	setStr(&cfg.Server.TLSKey, getenv("YIMENG_TLS_KEY"))
+	if v := getenv("YIMENG_TRUSTED_PROXIES"); v != "" {
+		cfg.Server.TrustedProxies = splitList(v)
+	}
+	if v := getenv("YIMENG_PROVIDERS"); v != "" {
+		cfg.Providers = splitList(v)
+	}
+	ints := map[string]*int{"YIMENG_BACKUP_KEEP": &cfg.Backup.Keep, "YIMENG_RATE_BURST": &cfg.Server.RateBurst}
+	for k, dst := range ints {
+		if v := getenv(k); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return fmt.Errorf("%s: invalid %q", k, v)
+			}
+			*dst = n
+		}
+	}
+	floats := map[string]*float64{"YIMENG_RATE_LIMIT": &cfg.Server.RateLimit, "YIMENG_GLOBAL_RATE_LIMIT": &cfg.Server.GlobalRate}
+	for k, dst := range floats {
+		if v := getenv(k); v != "" {
+			n, err := strconv.ParseFloat(v, 64)
+			if err != nil || n < 0 {
+				return fmt.Errorf("%s: invalid %q", k, v)
+			}
+			*dst = n
+		}
+	}
+	bools := map[string]*bool{"YIMENG_LOUDNESS_ANALYSIS": &cfg.Library.LoudnessAnalysis, "YIMENG_SUBSONIC": &cfg.Subsonic, "YIMENG_MDNS": &cfg.MDNS}
+	for k, dst := range bools {
+		if v := getenv(k); v != "" {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return fmt.Errorf("%s: %w", k, err)
+			}
+			*dst = b
+		}
+	}
+	return nil
+}
+
+func splitList(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

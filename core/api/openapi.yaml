@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -652,6 +652,60 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/system/backups:
+    get:
+      tags: [system]
+      summary: List stored backups (admin)
+      responses:
+        "200": { description: Backups, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/BackupInfo" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [system]
+      summary: Create a backup now (admin). VACUUM INTO snapshot zipped; never contains the master key.
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/BackupInfo" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/system/backups/{name}:
+    parameters: [{ name: name, in: path, required: true, schema: { type: string, pattern: '^yimeng-[0-9]{8}-[0-9]{6}(-[a-z0-9-]{1,32})?\.ymbak$' } }]
+    get:
+      tags: [system]
+      summary: Download a stored backup (admin)
+      responses:
+        "200": { description: Zip archive, content: { application/zip: { schema: { type: string, format: binary } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [system]
+      summary: Delete a stored backup (admin)
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/system/export:
+    get:
+      tags: [system]
+      summary: Stream a fresh backup archive (admin)
+      description: Zip with library.db (VACUUM INTO; vault entries stay AES-256-GCM encrypted) and manifest.json. include_key=true adds the vault master key — the archive then decrypts stored credentials.
+      parameters: [{ name: include_key, in: query, schema: { type: boolean, default: false } }]
+      responses:
+        "200": { description: Zip archive, content: { application/zip: { schema: { type: string, format: binary } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/system/restore:
+    post:
+      tags: [system]
+      summary: Upload a backup archive to restore (admin); applied at the next start
+      description: The archive is validated (manifest, SQLite integrity_check, schema not newer than this Core) and staged. On the next start the current database is kept as `*.pre-restore-<ts>` and the staged one swapped in, then migrations run (with an automatic pre-migration backup).
+      requestBody: { required: true, content: { application/zip: { schema: { type: string, format: binary } } } }
+      responses:
+        "202": { description: Staged; restart required, content: { application/json: { schema: { type: object, properties: { restart_required: { type: boolean }, message: { type: string }, manifest: { type: object } } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -665,6 +719,7 @@ components:
   responses:
     BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     Unauthorized: { description: Missing / invalid / revoked device token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: Admin device required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     RateLimited:
       description: Too many attempts
@@ -770,6 +825,7 @@ components:
         name: { type: string }
         device_type: { type: string }
         created_at: { type: string, format: date-time }
+        admin: { type: boolean, description: "Admin devices may use system/admin APIs. The first paired device is admin." }
         last_seen_at: { type: string, format: date-time }
     ScanJob:
       type: object
@@ -863,3 +919,10 @@ components:
               lossless: { type: boolean }
               bitrates: { type: array, items: { type: integer } }
               default_bitrate: { type: integer }
+    BackupInfo:
+      type: object
+      properties:
+        name: { type: string, example: yimeng-20261021-120000-scheduled.ymbak }
+        size: { type: integer }
+        created_at: { type: string, format: date-time }
+        reason: { type: string, example: "scheduled | manual | pre-migrate-5" }

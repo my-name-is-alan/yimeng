@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/backup"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
@@ -52,6 +53,11 @@ type Deps struct {
 	Transcoder  *transcode.Transcoder
 	StreamPrefs StreamPrefs
 	Log         *slog.Logger
+
+	Backup          *backup.Service
+	RestoreMaxBytes int64
+	SchemaVersion   int // newest schema this binary understands
+	Version         string
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -102,6 +108,15 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
+
+	if d.Backup != nil {
+		mux.HandleFunc("GET /api/system/backups", d.adminOnly(d.listBackups))
+		mux.HandleFunc("POST /api/system/backups", d.adminOnly(d.createBackup))
+		mux.HandleFunc("GET /api/system/backups/{name}", d.adminOnly(d.downloadBackup))
+		mux.HandleFunc("DELETE /api/system/backups/{name}", d.adminOnly(d.deleteBackup))
+		mux.HandleFunc("GET /api/system/export", d.adminOnly(d.exportBackup))
+		mux.HandleFunc("POST /api/system/restore", d.adminOnly(d.restoreBackup))
+	}
 
 	return securityHeaders(d.requireAuth(mux))
 }

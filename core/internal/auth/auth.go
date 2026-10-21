@@ -47,6 +47,7 @@ type Device struct {
 	DeviceType string    `json:"device_type,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	LastSeenAt time.Time `json:"last_seen_at,omitzero"`
+	Admin      bool      `json:"admin"`
 }
 
 type codeEntry struct {
@@ -253,11 +254,13 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 	var idb [16]byte
 	rand.Read(idb[:])
 	d := Device{ID: "dev_" + hex.EncodeToString(idb[:]), Name: name, DeviceType: deviceType, CreatedAt: now.UTC().Truncate(time.Millisecond)}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO players(id, name, device_type, token_hash, created_at, last_seen_at) VALUES (?,?,?,?,?,?)`,
+	_, err := s.db.ExecContext(ctx, `INSERT INTO players(id, name, device_type, token_hash, created_at, last_seen_at, is_admin)
+		VALUES (?,?,?,?,?,?, NOT EXISTS (SELECT 1 FROM players WHERE is_admin=1 AND token_hash IS NOT NULL))`,
 		d.ID, d.Name, nullStr(deviceType), HashToken(token), now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Device{}, "", err
 	}
+	s.db.QueryRowContext(ctx, `SELECT is_admin FROM players WHERE id=?`, d.ID).Scan(&d.Admin)
 	d.LastSeenAt = d.CreatedAt
 	return d, token, nil
 }
@@ -273,8 +276,8 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Device, error
 	var dt sql.NullString
 	var created int64
 	var seen sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, device_type, token_hash, created_at, last_seen_at FROM players WHERE token_hash=?`, h).
-		Scan(&d.ID, &d.Name, &dt, &stored, &created, &seen)
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, device_type, token_hash, created_at, last_seen_at, is_admin FROM players WHERE token_hash=?`, h).
+		Scan(&d.ID, &d.Name, &dt, &stored, &created, &seen, &d.Admin)
 	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(h)) != 1 {
 		return Device{}, ErrUnauthorized
 	}
@@ -290,7 +293,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Device, error
 }
 
 func (s *Service) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(device_type,''), created_at, COALESCE(last_seen_at,0)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(device_type,''), created_at, COALESCE(last_seen_at,0), is_admin
 		FROM players WHERE token_hash IS NOT NULL ORDER BY created_at`)
 	if err != nil {
 		return nil, err
@@ -300,7 +303,7 @@ func (s *Service) ListDevices(ctx context.Context) ([]Device, error) {
 	for rows.Next() {
 		var d Device
 		var c, l int64
-		if err := rows.Scan(&d.ID, &d.Name, &d.DeviceType, &c, &l); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.DeviceType, &c, &l, &d.Admin); err != nil {
 			return nil, err
 		}
 		d.CreatedAt = time.UnixMilli(c).UTC()
@@ -336,3 +339,45 @@ func nullStr(s string) any {
 	}
 	return s
 }
+
+var ErrLastAdmin = errors.New("cannot remove the last admin device")
+
+// SetAdmin grants or revokes the admin role; the last admin cannot be demoted.
+func (s *Service) SetAdmin(ctx context.Context, id string, admin bool) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE players SET is_admin=? WHERE id=? AND token_hash IS NOT NULL`, admin, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	var admins int
+	tx.QueryRowContext(ctx, `SELECT count(*) FROM players WHERE is_admin=1 AND token_hash IS NOT NULL`).Scan(&admins)
+	if admins == 0 {
+		return ErrLastAdmin
+	}
+	return tx.Commit()
+}
+
+// Rename changes a device's display name.
+func (s *Service) Rename(ctx context.Context, id, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 100 {
+		return ErrBadName
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE players SET name=? WHERE id=? AND token_hash IS NOT NULL`, name, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+var ErrBadName = errors.New("name must be 1-100 characters")

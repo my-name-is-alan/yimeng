@@ -16,6 +16,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/adapters/musicbrainz"
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/backup"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
@@ -51,11 +52,25 @@ func run(cfg config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if ok, err := backup.ApplyPending(cfg.DBPath); err != nil {
+		return fmt.Errorf("apply staged restore: %w", err)
+	} else if ok {
+		log.Warn("restored database from staged backup; previous database kept as *.pre-restore-*")
+	}
 	database, err := db.Open(cfg.DBPath)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
+	bk := &backup.Service{DB: database, DBPath: cfg.DBPath, Dir: cfg.Backup.Dir, KeyFile: cfg.MasterKeyFile,
+		Keep: cfg.Backup.Keep, CoreVersion: version, Log: log}
+	if pending, fresh, err := db.Pending(ctx, database, migrations.FS); err != nil {
+		return err
+	} else if len(pending) > 0 && !fresh {
+		if _, err := bk.Create(ctx, fmt.Sprintf("pre-migrate-%d", pending[0])); err != nil {
+			return fmt.Errorf("backup before migration: %w", err)
+		}
+	}
 	applied, err := db.Migrate(ctx, database, migrations.FS)
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
@@ -143,6 +158,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			log.Warn("scan on start", "err", err)
 		}
 	}
+	go bk.Run(ctx, cfg.Backup.Interval)
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)
@@ -159,8 +175,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Auth:     authSvc,
 			Log:      log,
 
-			Transcoder:  tc,
-			StreamPrefs: app.StreamPrefs{DB: database},
+			Backup:          bk,
+			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
+			SchemaVersion:   db.Latest(migrations.FS),
+			Version:         version,
+			Transcoder:      tc,
+			StreamPrefs:     app.StreamPrefs{DB: database},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

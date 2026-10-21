@@ -15,6 +15,7 @@ import (
 
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
+	"github.com/my-name-is-alan/yimeng/core/internal/backup"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
@@ -84,7 +85,9 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
-		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d}}))
+		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
+		Backup:          &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
+		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS)}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}
 	code, _, _ := a.NewCode()

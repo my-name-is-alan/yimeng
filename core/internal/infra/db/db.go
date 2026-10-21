@@ -128,3 +128,44 @@ func Migrate(ctx context.Context, db *sql.DB, fsys fs.FS) ([]int, error) {
 	}
 	return done, nil
 }
+
+// Pending reports migration versions in fsys not yet applied. A database
+// without schema_migrations (fresh) reports fresh=true.
+func Pending(ctx context.Context, db *sql.DB, fsys fs.FS) (pending []int, fresh bool, err error) {
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&n); err != nil {
+		return nil, false, err
+	}
+	migs, err := loadMigrations(fsys)
+	if err != nil {
+		return nil, false, err
+	}
+	applied := map[int]bool{}
+	if n > 0 {
+		rows, err := db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+		if err != nil {
+			return nil, false, err
+		}
+		for rows.Next() {
+			var v int
+			rows.Scan(&v)
+			applied[v] = true
+		}
+		rows.Close()
+	}
+	for _, m := range migs {
+		if !applied[m.version] {
+			pending = append(pending, m.version)
+		}
+	}
+	return pending, n == 0, nil
+}
+
+// Latest is the highest migration version in fsys.
+func Latest(fsys fs.FS) int {
+	migs, _ := loadMigrations(fsys)
+	if len(migs) == 0 {
+		return 0
+	}
+	return migs[len(migs)-1].version
+}
