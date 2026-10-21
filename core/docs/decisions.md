@@ -26,3 +26,13 @@ alternative considered. Newest items at the bottom.
   Migration 0005 makes the oldest paired device admin; whenever no admin exists
   the next paired device becomes admin. The last admin cannot be demoted.
   Rejected: a separate admin password (one more secret to manage).
+
+## D3 Lyrics
+- Order: sidecar `.lrc` (same basename) → embedded tag → optional provider;
+  synced beats plain. Sidecars are read at request time (no rescan after
+  editing), must resolve inside a library root (symlink escape refused), ≤1 MiB,
+  BOM stripped, invalid UTF-8 decoded as GB18030.
+- Embedded lyrics are stored in `source_tracks.lyrics` (≤256 KiB). Migration 0006
+  clears `codec` so the next scan re-reads every file once to pick them up.
+- LRC: multiple timestamps per line, `[offset]` applied server-side, enhanced
+  word timing `<mm:ss.xx>` stripped (line-level only for now).

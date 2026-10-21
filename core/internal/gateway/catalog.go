@@ -228,3 +228,17 @@ func (d Deps) enrich(w http.ResponseWriter, r *http.Request) {
 	d.Enrich()
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "scheduled"})
 }
+
+func (d Deps) trackLyrics(w http.ResponseWriter, r *http.Request) {
+	l, err := d.Library.Lyrics(r.Context(), r.PathValue("id"), d.LyricsFetcher)
+	switch {
+	case errors.Is(err, library.ErrNotFound):
+		writeErr(w, http.StatusNotFound, "not_found", "track not found")
+	case errors.Is(err, library.ErrNoLyrics):
+		writeErr(w, http.StatusNotFound, "no_lyrics", "no lyrics for this track")
+	case err != nil:
+		d.internal(w, "lyrics", err)
+	default:
+		writeJSON(w, http.StatusOK, l)
+	}
+}

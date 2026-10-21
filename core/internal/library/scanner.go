@@ -306,8 +306,8 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 		id, source, source_track_id, raw_json, path, root, size, mtime, hash, format,
 		title, artist, album, album_artist, track_no, track_total, disc_no, disc_total, year, genre,
 		duration_ms, isrc, mb_recording_id, mb_release_id, cover_path, cover_source, last_scan_id, created_at, updated_at,
-		codec, sample_rate, bit_depth, channels, bitrate_kbps, lossless)
-		VALUES (?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?)
+		codec, sample_rate, bit_depth, channels, bitrate_kbps, lossless, lyrics)
+		VALUES (?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?)
 		ON CONFLICT(source, source_track_id) DO UPDATE SET
 		raw_json=excluded.raw_json, root=excluded.root, size=excluded.size, mtime=excluded.mtime, hash=excluded.hash,
 		format=excluded.format, title=excluded.title, artist=excluded.artist, album=excluded.album,
@@ -317,11 +317,11 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 		mb_release_id=excluded.mb_release_id, cover_path=excluded.cover_path, cover_source=excluded.cover_source,
 		last_scan_id=excluded.last_scan_id, updated_at=excluded.updated_at, codec=excluded.codec,
 		sample_rate=excluded.sample_rate, bit_depth=excluded.bit_depth, channels=excluded.channels,
-		bitrate_kbps=excluded.bitrate_kbps, lossless=excluded.lossless`,
+		bitrate_kbps=excluded.bitrate_kbps, lossless=excluded.lossless, lyrics=excluded.lyrics`,
 		rowID, SourceLocal, path, string(raw), path, s.rootOf(path), size, mtime, hash, t.Format,
 		t.Title, nz(t.Artist), nz(t.Album), nz(t.AlbumArtist), ni(t.TrackNo), ni(t.TrackTotal), ni(t.DiscNo), ni(t.DiscTotal), ni(t.Year), nz(t.Genre),
 		ni64(t.DurationMs), nz(t.ISRC), nz(t.MBRecordingID), nz(t.MBReleaseID), nz(coverPath), nz(coverSrc), jobID, now, now,
-		codecOf(t), ni(t.Audio.SampleRate), ni(t.Audio.BitDepth), ni(t.Audio.Channels), ni(t.Audio.BitrateKbps), t.Audio.Lossless)
+		codecOf(t), ni(t.Audio.SampleRate), ni(t.Audio.BitDepth), ni(t.Audio.Channels), ni(t.Audio.BitrateKbps), t.Audio.Lossless, nz(t.Lyrics))
 	if err != nil {
 		return "", err
 	}

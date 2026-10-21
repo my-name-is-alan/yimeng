@@ -54,6 +54,7 @@ type Track struct {
 	MBReleaseID   string   `json:"mb_release_id,omitempty"`
 	HasTags       bool     `json:"has_tags"`
 	Audio         Info     `json:"audio"`
+	Lyrics        string   `json:"-"`
 	Picture       *Picture `json:"-"`
 }
 
@@ -85,6 +86,7 @@ func ReadFile(path string) (Track, error) {
 			t.Picture = &Picture{MIME: p.MIMEType, Ext: pictureExt(p), Data: p.Data}
 		}
 		extractIDs(&t, m.Raw())
+		t.Lyrics = embeddedLyrics(m)
 		if isID3(m.Format()) {
 			fixTrackCharset(&t)
 		}
@@ -188,4 +190,34 @@ func numPair(raw map[string]any, key string, n, total *int) {
 	if total != nil && *total == 0 && b != "" {
 		*total, _ = strconv.Atoi(strings.TrimSpace(b))
 	}
+}
+
+// embeddedLyrics returns USLT (ID3), LYRICS/UNSYNCEDLYRICS (Vorbis) or ©lyr (MP4).
+func embeddedLyrics(m tag.Metadata) string {
+	if l := strings.TrimSpace(m.Lyrics()); l != "" {
+		return capLyrics(l)
+	}
+	for k, v := range m.Raw() {
+		switch strings.ToLower(k) {
+		case "lyrics", "unsyncedlyrics", "unsynced lyrics", "\xa9lyr", "©lyr", "uslt":
+			switch x := v.(type) {
+			case string:
+				if strings.TrimSpace(x) != "" {
+					return capLyrics(strings.TrimSpace(x))
+				}
+			case *tag.Comm:
+				if strings.TrimSpace(x.Text) != "" {
+					return capLyrics(strings.TrimSpace(x.Text))
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func capLyrics(s string) string {
+	if len(s) > 256<<10 {
+		return s[:256<<10]
+	}
+	return s
 }

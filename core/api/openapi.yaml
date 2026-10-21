@@ -706,6 +706,17 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/tracks/{id}/lyrics:
+    get:
+      tags: [catalog]
+      summary: Lyrics for a track (synced LRC or plain)
+      description: "Resolution: sidecar `<file>.lrc` beside the audio file (read on demand, inside library roots, GB18030 auto-detected) → embedded tag (USLT / LYRICS / UNSYNCEDLYRICS / ©lyr) → optional remote provider. Synced lyrics are preferred. LRC [offset] is already applied to time_ms."
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Lyrics, content: { application/json: { schema: { $ref: "#/components/schemas/Lyrics" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -926,3 +937,13 @@ components:
         size: { type: integer }
         created_at: { type: string, format: date-time }
         reason: { type: string, example: "scheduled | manual | pre-migrate-5" }
+    Lyrics:
+      type: object
+      properties:
+        track_id: { type: string }
+        source: { type: string, example: sidecar, description: "sidecar | embedded | provider name" }
+        synced: { type: boolean }
+        offset_ms: { type: integer }
+        lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
+        text: { type: string }
+        meta: { type: object, additionalProperties: { type: string } }

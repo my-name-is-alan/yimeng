@@ -23,6 +23,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 
 - 串流：`/api/stream/{id}?format=original|aac|mp3|opus|flac&bitrate=` 可选 ffmpeg 转码（`YIMENG_FFMPEG`，`off` 关闭；PATH 中无 ffmpeg 时仅原始文件）；转码缓存 `YIMENG_CACHE_DIR/transcode`，LRU 上限 `YIMENG_CACHE_MAX_BYTES`，并发 `YIMENG_TRANSCODE_CONCURRENCY`；每设备默认音质 `PUT /api/devices/me/stream-quality`。官方镜像（distroless static）不含 ffmpeg，需要转码请挂载静态 ffmpeg 并设 `YIMENG_FFMPEG`。
 - 随机播放：`POST /api/players/{id}/shuffle`（持久化的播放顺序视图，不改动队列）；`player.state` 带 `next`/`next_lease` 供无缝预取。
+- 歌词：`GET /api/tracks/{id}/lyrics`（同名 .lrc → 内嵌 USLT/LYRICS → 可选提供方，LRC 同步解析）。
 - 备份：每日 `VACUUM INTO` 快照（`YIMENG_BACKUP_DIR`/`_INTERVAL`/`_KEEP`），迁移前自动备份；`/api/system/backups`、`/api/system/export`、`/api/system/restore`（下次启动生效）。仅 admin 设备（首个配对设备）。设计取舍见 `docs/decisions.md`。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。

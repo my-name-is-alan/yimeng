@@ -37,6 +37,7 @@ type LibraryUseCases interface {
 
 	AlbumCredits(ctx context.Context, albumID string) ([]library.Credit, error)
 	TrackCredits(ctx context.Context, trackID string) ([]library.Credit, error)
+	Lyrics(ctx context.Context, trackID string, fetch library.LyricsFetcher) (library.TrackLyrics, error)
 
 	SplitConfig() library.SplitConfig
 	SetSplitConfig(ctx context.Context, c library.SplitConfig) (library.SplitConfig, error)
@@ -58,6 +59,8 @@ type Deps struct {
 	RestoreMaxBytes int64
 	SchemaVersion   int // newest schema this binary understands
 	Version         string
+	// LyricsFetcher is an optional remote lyrics provider chain.
+	LyricsFetcher library.LyricsFetcher
 }
 
 func NewRouter(d Deps) http.Handler {
@@ -104,6 +107,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /ws", d.ws)
 
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
+	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
 	mux.HandleFunc("POST /api/metadata/enrich", d.enrich)
 
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
