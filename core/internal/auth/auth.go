@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,8 @@ const (
 	ipFailLimit     = 5  // failed attempts per IP per window
 	globalFailLimit = 30 // failed attempts across all IPs per window
 	failWindow      = time.Minute
-	requestLimit    = 3 // unauthenticated code requests per IP per window
+	lockout         = 15 * time.Minute // escalation after hitting a limit
+	requestLimit    = 3                // unauthenticated code requests per IP per window
 )
 
 type Device struct {
@@ -67,10 +69,39 @@ type Service struct {
 	fails    map[string]*window
 	requests map[string]*window
 	global   window
+	locked   map[string]time.Time // ip ("*" = global) -> locked until
+	log      *slog.Logger
 }
 
-func New(db *sql.DB, codeTTL time.Duration) *Service {
-	return &Service{db: db, ttl: codeTTL, now: time.Now, fails: map[string]*window{}, requests: map[string]*window{}}
+func New(db *sql.DB, codeTTL time.Duration, log *slog.Logger) *Service {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Service{db: db, ttl: codeTTL, now: time.Now, fails: map[string]*window{}, requests: map[string]*window{},
+		locked: map[string]time.Time{}, log: log}
+}
+
+// lockedLocked reports whether ip (or everyone) is locked out.
+func (s *Service) isLockedLocked(ip string, now time.Time) bool {
+	for _, k := range []string{ip, "*"} {
+		if until, ok := s.locked[k]; ok {
+			if now.Before(until) {
+				return true
+			}
+			delete(s.locked, k)
+		}
+	}
+	return false
+}
+
+func (s *Service) lockLocked(key string, now time.Time, reason string) {
+	s.locked[key] = now.Add(lockout)
+	scope := "client"
+	if key == "*" {
+		scope = "global"
+	}
+	s.log.Warn("pairing locked out after repeated failures", "scope", scope, "ip", key, "reason", reason,
+		"until", now.Add(lockout).Format(time.RFC3339))
 }
 
 func hashCode(code string) [32]byte {
@@ -153,11 +184,18 @@ func (s *Service) NewCode() (string, time.Time, error) {
 // code; the server operator reads it from the Core log. Rate-limited per IP.
 func (s *Service) RequestCode(ip string) (string, time.Time, error) {
 	s.mu.Lock()
-	n := bump(s.requests, ip, s.now())
-	s.mu.Unlock()
-	if n > requestLimit {
+	now := s.now()
+	if s.isLockedLocked(ip, now) {
+		s.mu.Unlock()
 		return "", time.Time{}, ErrRateLimited
 	}
+	if bump(s.requests, ip, now) > requestLimit {
+		s.lockLocked(ip, now, "too many pairing code requests")
+		delete(s.requests, ip)
+		s.mu.Unlock()
+		return "", time.Time{}, ErrRateLimited
+	}
+	s.mu.Unlock()
 	return s.NewCode()
 }
 
@@ -166,8 +204,7 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 	s.mu.Lock()
 	now := s.now()
 	s.pruneLocked(now)
-	if w := s.fails[ip]; (w != nil && w.n >= ipFailLimit) ||
-		(now.Sub(s.global.start) <= failWindow && s.global.n >= globalFailLimit) {
+	if s.isLockedLocked(ip, now) {
 		s.mu.Unlock()
 		return Device{}, "", ErrRateLimited
 	}
@@ -180,11 +217,17 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 		}
 	}
 	if idx < 0 {
-		bump(s.fails, ip, now)
+		if bump(s.fails, ip, now) >= ipFailLimit {
+			s.lockLocked(ip, now, "too many invalid pairing codes")
+			delete(s.fails, ip)
+		}
 		if now.Sub(s.global.start) > failWindow {
 			s.global = window{start: now}
 		}
-		s.global.n++
+		if s.global.n++; s.global.n >= globalFailLimit {
+			s.lockLocked("*", now, "too many invalid pairing codes across clients")
+			s.global = window{start: now}
+		}
 		s.mu.Unlock()
 		return Device{}, "", ErrInvalidCode
 	}

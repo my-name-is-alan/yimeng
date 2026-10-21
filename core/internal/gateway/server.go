@@ -30,6 +30,9 @@ type LibraryUseCases interface {
 	AlbumCover(ctx context.Context, albumID string) (string, error)
 	TrackCover(ctx context.Context, trackID string) (string, error)
 	TrackFile(ctx context.Context, trackID string) (library.TrackFile, error)
+
+	SplitConfig() library.SplitConfig
+	SetSplitConfig(ctx context.Context, c library.SplitConfig) (library.SplitConfig, error)
 }
 
 type Deps struct {
@@ -70,6 +73,9 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}/cover", d.trackCover)
 	mux.HandleFunc("GET /api/search", d.search)
 	mux.HandleFunc("GET /api/stream/{id}", d.stream)
+
+	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
+	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
 
 	return securityHeaders(d.requireAuth(mux))
 }

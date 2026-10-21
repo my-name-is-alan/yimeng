@@ -21,7 +21,7 @@ func newSvc(t *testing.T) *Service {
 	if _, err := db.Migrate(context.Background(), d, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	return New(d, 5*time.Minute)
+	return New(d, 5*time.Minute, nil)
 }
 
 func TestPairFlow(t *testing.T) {
@@ -91,9 +91,15 @@ func TestRateLimit(t *testing.T) {
 	if _, _, err := s.Pair(context.Background(), "good", code, "x", ""); err != nil {
 		t.Fatal(err)
 	}
+	// escalated lockout: still locked after the 1-minute window ...
 	now = now.Add(failWindow + time.Second)
+	if _, _, err := s.Pair(context.Background(), "evil", "AAAA-AAAA", "x", ""); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("lockout should persist: %v", err)
+	}
+	// ... and released after 15 minutes
+	now = now.Add(lockout)
 	if _, _, err := s.Pair(context.Background(), "evil", "AAAA-AAAA", "x", ""); !errors.Is(err, ErrInvalidCode) {
-		t.Fatalf("window should reset: %v", err)
+		t.Fatalf("lockout should expire: %v", err)
 	}
 	for i := 0; i < requestLimit; i++ {
 		if _, _, err := s.RequestCode("r"); err != nil && !errors.Is(err, ErrTooManyCodes) {

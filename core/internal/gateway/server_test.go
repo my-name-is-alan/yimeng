@@ -68,8 +68,8 @@ func newEnv(t *testing.T) *env {
 	t.Cleanup(func() { d.Close() })
 	db.Migrate(context.Background(), d, migrations.FS)
 	sc := library.NewScanner(d, library.Options{Roots: []string{root}, CoverDir: filepath.Join(tmp, "c")})
-	a := auth.New(d, 5*time.Minute)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	a := auth.New(d, 5*time.Minute, log)
 	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()}, Auth: a, Log: log}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a}
@@ -214,5 +214,23 @@ func TestScanCatalogStream(t *testing.T) {
 		if res, _ := e.do("GET", "/api/stream/"+bad, "", tok); res.StatusCode != 404 {
 			t.Errorf("stream %s: %d", bad, res.StatusCode)
 		}
+	}
+}
+
+func TestSplitSettingsAPI(t *testing.T) {
+	e := newEnv(t)
+	res, body := e.do("GET", "/api/settings/artist-split", "", e.token)
+	if res.StatusCode != 200 || !strings.Contains(string(body), "AC/DC") {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	res, body = e.do("PUT", "/api/settings/artist-split", `{"exceptions":["Simon & Garfunkel"],"split_ampersand":true,"extra_separators":[" x "]}`, e.token)
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"split_ampersand":true`) {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	if res, _ := e.do("PUT", "/api/settings/artist-split", `{"extra_separators":["0123456789"]}`, e.token); res.StatusCode != 400 {
+		t.Fatal("validation")
+	}
+	if res, _ := e.do("PUT", "/api/settings/artist-split", `{}`, ""); res.StatusCode != 401 {
+		t.Fatal("auth")
 	}
 }

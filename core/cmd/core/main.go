@@ -66,11 +66,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 		CoverDir: filepath.Join(cfg.CacheDir, "covers"),
 		Logger:   log,
 	})
+	if err := scanner.LoadSettings(ctx); err != nil {
+		return err
+	}
 	if err := scanner.RecoverInterrupted(ctx); err != nil {
 		return err
 	}
 
-	authSvc := auth.New(database, cfg.PairCodeTTL)
+	authSvc := auth.New(database, cfg.PairCodeTTL, log)
 	if n, err := authSvc.DeviceCount(ctx); err == nil && n == 0 {
 		// First run: print a pairing code so the owner can pair the first client.
 		if code, exp, err := authSvc.NewCode(); err == nil {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -18,6 +18,7 @@ tags:
   - name: library
   - name: catalog
   - name: media
+  - name: settings
 
 paths:
   /healthz:
@@ -59,7 +60,7 @@ paths:
       tags: [pairing]
       security: []
       summary: Redeem a pairing code for a device token
-      description: Codes are single-use and short-lived (default 5 min). Failed attempts are rate-limited per IP and globally.
+      description: Codes are single-use and short-lived (default 5 min). 5 failures/min from one IP (or 30 globally) lock pairing for 15 minutes (logged at WARN). Tokens do not expire; revoke via DELETE /api/devices/{id}.
       requestBody:
         required: true
         content:
@@ -369,6 +370,24 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "416": { description: Range not satisfiable }
 
+  /api/settings/artist-split:
+    get:
+      tags: [settings]
+      summary: Artist split policy
+      responses:
+        "200": { description: Policy, content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [settings]
+      summary: Replace the artist split policy (re-merges the library synchronously)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } }
+      responses:
+        "200": { description: Saved (normalized), content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -388,6 +407,16 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    SplitConfig:
+      type: object
+      additionalProperties: false
+      description: |
+        Always-on separators: ; ； 、 / ／ and feat./ft./featuring (featured role).
+      properties:
+        exceptions: { type: array, maxItems: 1000, items: { type: string, maxLength: 200 }, description: "Names never split (case-insensitive), e.g. AC/DC" }
+        split_ampersand: { type: boolean, default: false, description: "Also split on & ＆" }
+        split_comma: { type: boolean, default: false, description: "Also split on , ，" }
+        extra_separators: { type: array, maxItems: 20, items: { type: string, maxLength: 8 }, description: 'Literal separators, spaces significant, e.g. " x "' }
     Error:
       type: object
       required: [error]

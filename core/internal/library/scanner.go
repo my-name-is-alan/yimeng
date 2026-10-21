@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/adapters/local"
@@ -62,6 +63,8 @@ type Scanner struct {
 
 	mu      sync.Mutex
 	running string // job id
+	mergeMu sync.Mutex
+	split   atomic.Pointer[Splitter]
 	wg      sync.WaitGroup
 }
 

@@ -5,14 +5,17 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
-	"regexp"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"golang.org/x/text/unicode/norm"
 )
 
-const UnknownArtist = "Unknown Artist"
+const (
+	UnknownArtist  = "Unknown Artist"
+	VariousArtists = "Various Artists"
+)
 
 // Link confidences recorded in track_links.
 const (
@@ -27,57 +30,6 @@ type ArtistCredit struct {
 	Role string // primary | feat
 }
 
-var (
-	featRe = regexp.MustCompile(`(?i)\s*[\(\[（]?\s*\b(?:feat\.?|ft\.?|featuring)\s+`)
-	sepRe  = regexp.MustCompile(`\s*(?:;|；|、|／|\s/\s|/)\s*`)
-	// Names that contain a separator character but are a single artist.
-	unsplittable = map[string]bool{"ac/dc": true, "his name is alive/": true}
-)
-
-// SplitArtists splits a tag value into individual artists. Separators: ; ； 、 / ／
-// and "feat." / "ft." / "featuring" (the latter mark featured artists).
-// "&" and "," are NOT split (too many real names contain them).
-func SplitArtists(s string) []ArtistCredit {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	main, feat := s, ""
-	if loc := featRe.FindStringIndex(s); loc != nil && loc[0] > 0 {
-		main, feat = s[:loc[0]], s[loc[1]:]
-		feat = strings.TrimRight(strings.TrimSpace(feat), ")]）")
-	}
-	var out []ArtistCredit
-	seen := map[string]bool{}
-	add := func(part, role string) {
-		for _, n := range splitSep(part) {
-			k := normKey(n)
-			if k == "" || seen[k] {
-				continue
-			}
-			seen[k] = true
-			out = append(out, ArtistCredit{Name: n, Role: role})
-		}
-	}
-	add(main, "primary")
-	add(feat, "feat")
-	return out
-}
-
-func splitSep(s string) []string {
-	s = strings.TrimSpace(s)
-	if unsplittable[strings.ToLower(s)] {
-		return []string{s}
-	}
-	var out []string
-	for _, p := range sepRe.Split(s, -1) {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
 // normKey normalizes for grouping: NFKC (fullwidth→ASCII), lower-case, collapsed spaces.
 func normKey(s string) string {
 	return strings.Join(strings.Fields(strings.ToLower(norm.NFKC.String(s))), " ")
@@ -89,9 +41,9 @@ func hid(prefix, key string) string {
 }
 
 type srcRow struct {
-	id, title, artist, album, albumArtist, genre, isrc, mbRec, mbRel, cover string
-	trackNo, discNo, year                                                   int
-	dur, created                                                            int64
+	id, path, title, artist, album, albumArtist, genre, isrc, mbRec, mbRel, cover string
+	trackNo, discNo, year                                                         int
+	dur, created                                                                  int64
 }
 
 type mTrack struct {
@@ -121,7 +73,10 @@ type mAlbum struct {
 //   - track: within an album, MB recording id → ISRC → normalized title +
 //     primary artist with duration within ±2s; otherwise one track per file.
 func (s *Scanner) Merge(ctx context.Context) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(title,''), COALESCE(artist,''), COALESCE(album,''),
+	s.mergeMu.Lock()
+	defer s.mergeMu.Unlock()
+	sp := s.splitter()
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(path,''), COALESCE(title,''), COALESCE(artist,''), COALESCE(album,''),
 		COALESCE(album_artist,''), COALESCE(genre,''), COALESCE(isrc,''), COALESCE(mb_recording_id,''),
 		COALESCE(mb_release_id,''), COALESCE(cover_path,''), COALESCE(track_no,0), COALESCE(disc_no,0),
 		COALESCE(year,0), COALESCE(duration_ms,0), created_at
@@ -132,7 +87,7 @@ func (s *Scanner) Merge(ctx context.Context) error {
 	var src []srcRow
 	for rows.Next() {
 		var r srcRow
-		if err := rows.Scan(&r.id, &r.title, &r.artist, &r.album, &r.albumArtist, &r.genre, &r.isrc, &r.mbRec,
+		if err := rows.Scan(&r.id, &r.path, &r.title, &r.artist, &r.album, &r.albumArtist, &r.genre, &r.isrc, &r.mbRec,
 			&r.mbRel, &r.cover, &r.trackNo, &r.discNo, &r.year, &r.dur, &r.created); err != nil {
 			rows.Close()
 			return err
@@ -158,8 +113,26 @@ func (s *Scanner) Merge(ctx context.Context) error {
 		return id
 	}
 
+	// Compilations: tracks without ALBUMARTIST that share a folder + album
+	// name but have different primary artists form one "Various Artists" album.
+	compArtists := map[string]map[string]bool{}
+	compKey := func(r srcRow) string { return filepath.Dir(r.path) + "\x00" + normKey(r.album) }
 	for _, r := range src {
-		credits := SplitArtists(r.artist)
+		if strings.TrimSpace(r.albumArtist) == "" && strings.TrimSpace(r.album) != "" && r.mbRel == "" {
+			k := compKey(r)
+			if compArtists[k] == nil {
+				compArtists[k] = map[string]bool{}
+			}
+			p := UnknownArtist
+			if c := sp.Split(r.artist); len(c) > 0 {
+				p = c[0].Name
+			}
+			compArtists[k][normKey(p)] = true
+		}
+	}
+
+	for _, r := range src {
+		credits := sp.Split(r.artist)
 		if len(credits) == 0 {
 			credits = []ArtistCredit{{Name: UnknownArtist, Role: "primary"}}
 		}
@@ -171,6 +144,10 @@ func (s *Scanner) Merge(ctx context.Context) error {
 				aaName = primary
 			}
 			key := fmt.Sprintf("t:%s\x00%s\x00%d", normKey(aaName), normKey(r.album), r.year)
+			if strings.TrimSpace(r.albumArtist) == "" && r.mbRel == "" && len(compArtists[compKey(r)]) > 1 {
+				aaName = VariousArtists
+				key = "va:" + compKey(r) // folder-scoped; year ignored (tracks often differ)
+			}
 			if r.mbRel != "" {
 				key = "mb:" + strings.ToLower(r.mbRel)
 			}
@@ -178,7 +155,7 @@ func (s *Scanner) Merge(ctx context.Context) error {
 			al = albums[id]
 			if al == nil {
 				al = &mAlbum{id: id, title: strings.TrimSpace(r.album), artistName: aaName, year: r.year,
-					mbRel: r.mbRel, genre: r.genre, created: r.created, artists: SplitArtists(aaName)}
+					mbRel: r.mbRel, genre: r.genre, created: r.created, artists: sp.Split(aaName)}
 				albums[id] = al
 			}
 			if al.cover == "" {
@@ -276,8 +253,10 @@ func (s *Scanner) Merge(ctx context.Context) error {
 	for _, a := range albums {
 		exec(`INSERT INTO albums(id, title, year, cover_path, mb_release_id, artist_name, genre, created_at, updated_at)
 			VALUES (?,?,?,?,?,?,?,?,?)
-			ON CONFLICT(id) DO UPDATE SET title=excluded.title, year=excluded.year, cover_path=excluded.cover_path,
-			mb_release_id=excluded.mb_release_id, artist_name=excluded.artist_name, genre=excluded.genre,
+			ON CONFLICT(id) DO UPDATE SET title=excluded.title, year=excluded.year,
+			cover_path=COALESCE(excluded.cover_path, CASE WHEN albums.cover_source='remote' THEN albums.cover_path END),
+			cover_source=CASE WHEN excluded.cover_path IS NULL AND albums.cover_source='remote' THEN 'remote' ELSE 'local' END,
+			mb_release_id=COALESCE(excluded.mb_release_id, albums.mb_release_id), artist_name=excluded.artist_name, genre=excluded.genre,
 			updated_at=excluded.updated_at`,
 			a.id, a.title, nzInt(a.year), nz(a.cover), nz(a.mbRel), a.artistName, nz(a.genre), a.created, now)
 		for i, c := range a.artists {
@@ -291,7 +270,7 @@ func (s *Scanner) Merge(ctx context.Context) error {
 			artist_name, genre, year, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET title=excluded.title, album_id=excluded.album_id, disc_no=excluded.disc_no,
 			track_no=excluded.track_no, duration_ms=excluded.duration_ms, isrc=excluded.isrc,
-			mb_recording_id=excluded.mb_recording_id, artist_name=excluded.artist_name, genre=excluded.genre,
+			mb_recording_id=COALESCE(excluded.mb_recording_id, tracks.mb_recording_id), artist_name=excluded.artist_name, genre=excluded.genre,
 			year=excluded.year, updated_at=excluded.updated_at`,
 			t.id, t.title, nz(t.albumID), nzInt(t.discNo), nzInt(t.trackNo), nzInt64(t.dur), nz(t.isrc), nz(t.mbRec),
 			t.artistName, nz(t.genre), nzInt(t.year), t.created, now)
