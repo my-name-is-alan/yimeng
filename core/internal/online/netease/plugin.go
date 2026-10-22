@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func (p *Plugin) StartQR(ctx context.Context) (online.QRChallenge, error) {
 	var r struct {
 		Unikey string `json:"unikey"`
 	}
-	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/unikey", map[string]any{"type": 3}, true)
+	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/unikey", map[string]any{"type": 3}, qrPC)
 	if err == nil {
 		err = decode(body, &r)
 	}
@@ -70,7 +71,7 @@ func (p *Plugin) StartQR(ctx context.Context) (online.QRChallenge, error) {
 }
 
 func (p *Plugin) PollQR(ctx context.Context, key string) (online.QRPoll, error) {
-	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/client/login", map[string]any{"key": key, "type": 3}, true)
+	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/client/login", map[string]any{"key": key, "type": 3}, qrPC)
 	if err != nil {
 		return online.QRPoll{}, err
 	}
@@ -727,3 +728,6 @@ func (p *Plugin) FMFeedback(ctx context.Context, nativeID, action string) error 
 	}
 	return online.ErrBadInput
 }
+
+// qrPC selects the desktop identity for QR login (YIMENG_NETEASE_QR_PC=1).
+var qrPC = os.Getenv("YIMENG_NETEASE_QR_PC") == "1"

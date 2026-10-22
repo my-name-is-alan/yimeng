@@ -364,4 +364,4 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - **Room events:** SSE at `/rooms/{id}/events`.
 - **Web page:** `/room/{code}`.
 - **Search streaming:** `/search?stream=1` streams local results first, then each platform as it finishes.
-- **NetEase login:** SMS login added (captcha/sent + w/login/cellphone with the PC identity). QR uses the PC client identity.
+- **NetEase login:** SMS login added (captcha/sent + w/login/cellphone with the PC identity). QR keeps the iPhone identity by default; PC identity is opt-in via YIMENG_NETEASE_QR_PC=1 (it got -462 on polling).
