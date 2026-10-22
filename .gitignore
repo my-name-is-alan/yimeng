@@ -9,3 +9,9 @@ core/data/
 master.key
 .env
 compose.yaml
+DerivedData/
+*.tgz
+*.log
+.secrets/
+xcuserdata/
+build/
