@@ -71,7 +71,12 @@ public sealed partial class MainWindow : Window
             ForceOpaque(hwnd);
         }
         catch { }
-        Activated += (_, _) => AttachGlassBlur();
+        Activated += (_, _) =>
+        {
+            AttachGlassBlur();
+            if (string.Equals(Environment.GetEnvironmentVariable("YIMENG_OPEN_PLAYER"), "1", StringComparison.Ordinal))
+                ShowPlayer();
+        };
         // Desktop landscape — NavigationSplitView shell
         try { AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 800)); } catch { }
     }
@@ -361,7 +366,33 @@ public sealed partial class MainWindow : Window
         return CanvasGeometry.CreatePath(b);
     }
 
-    private void SideHome_Click(object sender, PointerRoutedEventArgs e) { }
+    private void SideHome_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+    private void SideLibrary_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+    private void SideCollection_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+    private void SideSearch_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+    private void SideMe_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+
+    private void OpenPlayer_Click(object sender, PointerRoutedEventArgs e) => ShowPlayer();
+    private void ClosePlayer_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
+
+    private void ShowHome()
+    {
+        HomePane.Visibility = Visibility.Visible;
+        PlayerPane.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowPlayer()
+    {
+        HomePane.Visibility = Visibility.Collapsed;
+        PlayerPane.Visibility = Visibility.Visible;
+        _drawn = 0f;
+        _t = 0f;
+        DisposeMotif();
+        DoodleCanvas.Invalidate();
+    }
+
+    private void GlyphBack_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Back, ink: Color.FromArgb(204, 255, 255, 255));
 
     private void GlyphPause_Draw(CanvasControl sender, CanvasDrawEventArgs args)
         => DrawGlyph(sender, args, YMGlyph.Pause, filled: true, ink: Colors.White);
@@ -398,29 +429,6 @@ public sealed partial class MainWindow : Window
         YMIconPaths.DrawBrandMark(ds, sender, s, accentSparkle: true);
     }
 
-    private void IconStrip_Draw(CanvasControl sender, CanvasDrawEventArgs args)
-    {
-        var ds = args.DrawingSession;
-        float h = (float)sender.ActualHeight;
-        if (h < 1) return;
-        var glyphs = new[]
-        {
-            YMGlyph.Home, YMGlyph.Library, YMGlyph.Collection, YMGlyph.Search, YMGlyph.Me,
-            YMGlyph.Play, YMGlyph.Pause, YMGlyph.Previous, YMGlyph.Next,
-            YMGlyph.Heart, YMGlyph.Star, YMGlyph.Recognize,
-        };
-        float cell = h;
-        float gap = 6f;
-        float x = 0;
-        var ink = Color.FromArgb(180, 255, 255, 255);
-        foreach (var g in glyphs)
-        {
-            ds.Transform = Matrix3x2.CreateTranslation(x, 0);
-            YMIconPaths.DrawIcon(ds, sender, g, cell * 0.9f, ink, weight: 1.5f);
-            ds.Transform = Matrix3x2.Identity;
-            x += cell + gap;
-        }
-    }
 
     private static void DrawGlyph(CanvasControl sender, CanvasDrawEventArgs args, YMGlyph g, bool filled = false, Color? ink = null)
     {
