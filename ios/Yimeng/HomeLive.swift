@@ -48,6 +48,9 @@ struct HomeLive: View {
                     }
 
                     YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                    if NavidromeClient.core && library.connected && recent.isEmpty && home.data.frequent.isEmpty && home.data.playlists.isEmpty {
+                        NewAccountCard(name: library.user).padding(.horizontal, Theme.margin).padding(.top, 18).motionIn(0.2)
+                    }
                     if NavidromeClient.core {
                         PlatformHomeSections()
                         if !CoreState.platforms(can: "charts").isEmpty {
@@ -64,7 +67,7 @@ struct HomeLive: View {
                         }
                     }
                     albumSection("最近添加", newest, sort: "newest", i: 2).id("library")
-                    albumSection("最近播放", recent, sort: "recent", i: 3)
+                    albumSection("最近播放", recent, sort: "recent", i: 3).id("recent")
                     albumSection("常听", frequent, sort: "frequent", i: 4)
                     albumSection("随机专辑", random, sort: "random", i: 5)
                     if !artists.isEmpty {

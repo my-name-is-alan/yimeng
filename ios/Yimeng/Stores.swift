@@ -100,6 +100,7 @@ final class HomeStore: ObservableObject {
 
 extension HomeStore {
     func clearForServerChange() { data = HomePayload(); try? FileManager.default.removeItem(at: Self.file) }
+    func reloadForScope() { data = (try? Data(contentsOf: Self.file)).flatMap { try? JSONDecoder().decode(HomePayload.self, from: $0) } ?? HomePayload() }
     /// 译梦 Core: the whole home in one ETag'd `/home` call (library sections are factual only: added/played/frequent/random).
     func refreshCore() async {
         guard let h = try? await CoreClient.shared.home() else { return }
@@ -126,6 +127,7 @@ final class StarStore: ObservableObject {
     @Published private(set) var loaded = false
     @Published private(set) var failed = false
 
+    func resetForAccount() { albums = []; songs = []; artists = []; loaded = false; failed = false }
     func isStarred(album id: String) -> Bool { albums.contains { $0.id == id } }
     func isStarred(song id: String) -> Bool { songs.contains { $0.id == id } }
     func isStarred(artist id: String) -> Bool { artists.contains { $0.id == id } }

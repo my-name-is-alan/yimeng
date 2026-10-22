@@ -74,13 +74,16 @@ actor CoreClient {
             struct B: Encodable { let refreshToken: String }
             _ = try? await raw("POST", "/api/v1/auth/logout", body: try? Self.encoder.encode(B(refreshToken: refreshToken)))
         }
-        accessToken = ""; refreshToken = ""; CoreState.setPlatforms([])
+        accessToken = ""; refreshToken = ""; CoreState.setPlatforms([]); CoreState.setUser(nil); username = ""
         Keychain.delete(service: Self.svc, account: "access"); Keychain.delete(service: Self.svc, account: "refresh")
     }
     nonisolated static let svc = SourceKind.core.keychainService
     nonisolated static var deviceName: String { "译梦 iOS" }
+    private(set) var username = ""
     private func store(_ t: CoreTokens) {
         accessToken = t.accessToken; CoreState.token = t.accessToken
+        if let u = t.userId { CoreState.setUser(u) }
+        if let n = t.username { username = n }
         if let r = t.refreshToken, !r.isEmpty { refreshToken = r }
         Keychain.set(accessToken, service: Self.svc, account: "access")
         if !refreshToken.isEmpty { Keychain.set(refreshToken, service: Self.svc, account: "refresh") }
@@ -196,10 +199,27 @@ actor CoreClient {
         r.lines = r.lines?.filter { $0.meta != true }
         return r
     }
+    func sessions() async throws -> [CoreSession] {
+        struct R: Codable { var items: [CoreSession] }
+        let r: R = try await get("/api/v1/sessions"); return r.items
+    }
+    func handoff(to id: String) async throws {
+        struct B: Encodable { let to: String }
+        try await fire("POST", "/api/v1/sessions/handoff", body: B(to: id))
+    }
     func dream(_ trackId: String) async -> CoreDream? { try? await get("/api/v1/tracks/\(trackId)/dream", cache: true) }
     func charts(origin: String) async throws -> CoreCharts { try await get("/api/v1/charts", query: ["origin": origin], cache: true) }
     func playlists(scope: String) async throws -> [CorePlaylist] {
-        let p: CorePage<CorePlaylist> = try await page("/api/v1/playlists", ["scope": scope], offset: 0, limit: 200); return p.items
+        var all: [CorePlaylist] = []; var cursor: String?; var seen = Set<String>()
+        repeat {
+            var q = ["scope": scope, "limit": "500"]
+            if let c = cursor { q["cursor"] = c }
+            let p: CorePage<CorePlaylist> = try await get("/api/v1/playlists", query: q, cache: cursor == nil)
+            all += p.items
+            cursor = p.nextCursor.flatMap { $0.isEmpty || seen.contains($0) ? nil : $0 }
+            if let c = cursor { seen.insert(c) }
+        } while cursor != nil
+        return all
     }
     func suggest(_ q: String) async -> [String] { ((try? await get("/api/v1/search/suggest", query: ["q": q]) as CoreSuggest)?.items) ?? [] }
     func searchAll(_ q: String, online: Bool) async throws -> CoreSearch { try await get("/api/v1/search", query: ["q": q, "online": online ? "1" : "0"]) }
@@ -243,7 +263,7 @@ actor CoreClient {
     nonisolated static func coverURL(base: URL, idOrURL: String, size: Int) -> URL? {
         if idOrURL.hasPrefix("http") { return URL(string: idOrURL) }
         if idOrURL.hasPrefix("/") { return URL(string: idOrURL, relativeTo: base)?.absoluteURL }
-        return url(base, "/api/covers/\(path(idOrURL))", ["size": "\(bucket(size))", "format": "webp"])
+        return url(base, "/api/v1/covers/\(path(idOrURL))", ["size": "\(bucket(size))", "format": "webp"])
     }
     nonisolated static func bucket(_ s: Int) -> Int { [120, 300, 600, 1200].first { $0 >= s } ?? 1200 }
     nonisolated static func streamURL(base: URL, id: String) -> URL? {
@@ -255,6 +275,12 @@ actor CoreClient {
 // MARK: - Shared state readable from any thread (signed stream URLs, blurhashes, accounts, filter)
 
 enum CoreState {
+    /// Signed-in account id (not secret). Part of the cache/queue scope so accounts never share data.
+    nonisolated(unsafe) static var userId: String? = UserDefaults.standard.string(forKey: MusicSources.coreUserKey)
+    static func setUser(_ id: String?) {
+        userId = id
+        if let id, !id.isEmpty { UserDefaults.standard.set(id, forKey: MusicSources.coreUserKey) } else { UserDefaults.standard.removeObject(forKey: MusicSources.coreUserKey) }
+    }
     private final class Box: @unchecked Sendable {
         let lock = NSLock()
         var stream: [String: String] = [:]
@@ -283,7 +309,7 @@ enum CoreState {
     /// Cover identity independent of size/signature: `/api/covers/{id}` → id, else the path.
     static func coverKey(_ s: String) -> String {
         guard let u = URLComponents(string: s) else { return s }
-        if let r = u.path.range(of: "/api/covers/") { return String(u.path[r.upperBound...]) }
+        if let r = u.path.range(of: "/api/v1/covers/") ?? u.path.range(of: "/api/covers/") { return String(u.path[r.upperBound...]) }
         return u.path
     }
     static func blurhash(for url: URL) -> String? { with { $0.blur[coverKey(url.absoluteString)] } }

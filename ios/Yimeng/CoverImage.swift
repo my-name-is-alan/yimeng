@@ -108,7 +108,9 @@ final class CoverCache: @unchecked Sendable {
     /// Rewrite `size=` to the bucket ≥ points × screen scale (≈3× on iPhone).
     static func sized(_ url: URL, points: CGFloat) -> URL {
         let want = Int((points * min(3, UIScreen.main.scale)).rounded(.up))
-        let px = buckets.first { $0 >= want } ?? buckets.last!
+        // Core only accepts size ∈ {120, 300, 600, 1200} (400 invalid_query otherwise).
+        let isCore = url.path.contains("/covers/") && !url.path.contains("/rest/")
+        let px = isCore ? CoreClient.bucket(want) : (buckets.first { $0 >= want } ?? buckets.last!)
         guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         var q = c.queryItems ?? []
         q.removeAll { $0.name == "size" }; q.append(URLQueryItem(name: "size", value: "\(px)"))
@@ -118,7 +120,7 @@ final class CoverCache: @unchecked Sendable {
 
     private static func parts(_ url: URL) -> (id: String, size: Int)? {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if url.path.contains("/api/covers/") {   // 译梦 Core: id is in the path; sig/exp must not split the cache
+        if url.path.contains("/api/covers/") || url.path.contains("/api/v1/covers/") {   // 译梦 Core: id is in the path; sig/exp must not split the cache
             return (CoreState.coverKey(url.absoluteString), Int(q.first(where: { $0.name == "size" })?.value ?? "0") ?? 0)
         }
         guard let id = q.first(where: { $0.name == "id" })?.value else { return nil }
@@ -179,6 +181,9 @@ final class CoverCache: @unchecked Sendable {
         for (k, v) in CoreState.mediaHeaders(for: url) { req.setValue(v, forHTTPHeaderField: k) }
         let (data, resp) = try await session.data(for: req)
         let k = Self.key(url), px = Self.parts(url)?.size ?? 0
+        #if DEBUG
+        if (resp as? HTTPURLResponse)?.statusCode != 200 { NSLog("YMCOVER %d %@", (resp as? HTTPURLResponse)?.statusCode ?? -1, url.path) }
+        #endif
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         let img = await Task.detached(priority: .userInitiated) { Self.decode(data, maxPixel: px) }.value
         guard let img else { throw URLError(.cannotDecodeContentData) }

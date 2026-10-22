@@ -10,6 +10,7 @@ struct NowPlayingMoreSheet: View {
     @ObservedObject private var fx = FXStore.shared
     @Environment(\.dismiss) var dismiss
     @State private var askSleep = false
+    @State private var handoff = false
     @State private var appeared = false
     private let rates: [Float] = [0.75, 1, 1.25, 1.5, 2]
 
@@ -47,6 +48,7 @@ struct NowPlayingMoreSheet: View {
         .background(Color(white: 0.085).ignoresSafeArea())
         .environment(\.colorScheme, .dark)
         .onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.05)) { appeared = true } }
+        .sheet(isPresented: $handoff) { HandoffSheet().presentationDetents([.medium]) }
         .confirmationDialog("定时关闭", isPresented: $askSleep, titleVisibility: .visible) {
             ForEach([15, 30, 45, 60, 90], id: \.self) { m in Button("\(m) 分钟后") { player.setSleep(minutes: m); SheetCenter.shared.say("将在 \(m) 分钟后暂停") } }
             Button("播完本首") { player.setSleep(minutes: 0); SheetCenter.shared.say("本首播完后暂停") }
@@ -73,6 +75,7 @@ struct NowPlayingMoreSheet: View {
             round("moon.zzz", sleepLabel, on: player.sleepAt != nil || player.sleepAfterTrack) { askSleep = true }
             round("text.badge.plus", "加到歌单") { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { SheetCenter.shared.addToPlaylist = song } }
             ShareLink(item: "\(song.title) - \(song.artist)") { roundLabel("square.and.arrow.up", "分享", on: false) }.buttonStyle(.plain).frame(maxWidth: .infinity)
+            if NavidromeClient.core { round("arrow.triangle.turn.up.right.diamond", "接力") { handoff = true } }
             round("sparkles", "梦境氛围") { dismiss(); DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { onAmbience() } }
             ZStack { roundLabel("airplayaudio", "设备投放", on: AudioRoute.shared.portType.contains("AirPlay")); RoutePicker().frame(width: 52, height: 52).opacity(0.02).offset(y: -10) }
                 .frame(maxWidth: .infinity)

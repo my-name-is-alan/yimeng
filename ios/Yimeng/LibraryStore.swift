@@ -40,6 +40,14 @@ struct NDPlaylist: Identifiable, Hashable, Codable {
     var duration: Int? = nil
     var owner: String? = nil
     var origin: String? = nil
+    var ownerId: String? = nil
+    /// Edit controls only on the signed-in account's own playlists (Core D49). Other sources: always.
+    var isMine: Bool {
+        guard NavidromeClient.core else { return true }
+        if let o = origin, o != "local" { return false }
+        guard let me = CoreState.userId, !me.isEmpty, let oid = ownerId, !oid.isEmpty else { return ownerId == nil || ownerId == "" }
+        return oid == me
+    }
 }
 
 struct NDSong: Identifiable, Hashable, Codable {
@@ -255,7 +263,8 @@ final class LibraryStore: ObservableObject {
         // Sim/dev only: YIMENG_CORE_URL / _USER / _PASSWORD from the launch env (never logged); tokens then live in Keychain.
         let env = ProcessInfo.processInfo.environment
         if let u = env["YIMENG_CORE_URL"], let t = env["YIMENG_CORE_TOKEN"], !u.isEmpty, !t.isEmpty {
-            if CoreClient.normalize(cfg.host) != CoreClient.normalize(u) { PlayerStore.shared.clear(); HomeStore.shared.clearForServerChange() }
+            // Paired device token: owner comes from YIMENG_CORE_USER_ID (else unscoped by account).
+            CoreState.setUser(env["YIMENG_CORE_USER_ID"])
             // Device token from a pairing done outside the app (never logged); stored in Keychain like a normal login.
             liveMode = true
             try? await CoreClient.shared.configure(host: u)
@@ -271,16 +280,35 @@ final class LibraryStore: ObservableObject {
         status = "待连接译梦服务端"
     }
     func connectCore(host: String, username: String, password: String) async {
-        // Different Core = different ids: drop the last queue/home so nothing points at the old server.
-        if CoreClient.normalize(SourceStore.shared.config(for: .core).host) != CoreClient.normalize(host) { PlayerStore.shared.clear(); HomeStore.shared.clearForServerChange() }
+        // Different Core or account = different data (D49): drop the visible queue/home first.
+        let before = MusicSources.scopeId
         loading = true; status = "连接中…"
         defer { loading = false }
         do {
             try await CoreClient.shared.configure(host: host)
             if username.isEmpty { try await CoreClient.shared.pair(code: password) }   // 配对码
             else { try await CoreClient.shared.login(username: username, password: password) }
-            await finishCore(username: username, host: host)
+            if MusicSources.scopeId != before { accountSwitched() }
+            await finishCore(username: CoreClient.shared.username.isEmpty ? username : CoreClient.shared.username, host: host)
         } catch { connected = false; status = error.localizedDescription }
+    }
+    /// In-memory state of the previous server/account. Disk caches are scoped per server+account, so they stay.
+    private func accountSwitched() {
+        PlayerStore.shared.resetInMemory()
+        HomeStore.shared.reloadForScope()
+        LibraryCache.shared.resetMemory(); StarStore.shared.resetForAccount(); PlaylistEvents.shared.lists = nil
+        albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
+    }
+    /// 退出登录: revoke on the server, then forget everything this account showed on this device.
+    func logoutCore() async {
+        PlayerStore.shared.clear()
+        HomeStore.shared.clearForServerChange()
+        LibraryCache.shared.clear(); StarStore.shared.resetForAccount(); PlaylistEvents.shared.lists = nil
+        await CoreClient.shared.logout()
+        CoreEvents.shared.stop()
+        reset()
+        SourceStore.shared.disconnect(.core)
+        var c = SourceStore.shared.config(for: .core); c.username = ""; SourceStore.shared.upsert(c)
     }
     private func finishCore(username: String, host: String) async {
         let c = CoreClient.shared
@@ -299,6 +327,9 @@ final class LibraryStore: ObservableObject {
             SourceStore.shared.upsert(cfg)
             CoreEvents.shared.start()
             await PlatformStore.shared.refresh()
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-debugLogout") { try? await Task.sleep(for: .seconds(3)); await logoutCore() }
+            #endif
         } catch { connected = false; status = error.localizedDescription }
     }
 

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage("ym.appearance") private var appearance = 0
     @AppStorage("ym.lyricTrans") private var lyricTrans = true
     @AppStorage("ym.liveActivity") private var liveActivity = true
+    @State private var confirmLogout = false
     @State private var pick: PhotosPickerItem?
     @State private var showSources = false
     @State private var editingName = false
@@ -35,6 +36,11 @@ struct SettingsView: View {
                     row("server.rack", NavidromeClient.emby ? library.embyProduct : NavidromeClient.core ? (library.coreServerName.isEmpty ? "译梦服务端" : library.coreServerName) : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : (library.status.isEmpty || library.status == "待连接译梦服务端" ? "未连接" : library.status))
                     if NavidromeClient.core && library.connected {
                         row("person.badge.key", "账号", library.user.isEmpty ? "设备配对" : library.user)
+                        divider
+                        Button { confirmLogout = true } label: { row("rectangle.portrait.and.arrow.right", "退出登录", "") }.buttonStyle(.plain)
+                            .confirmationDialog("退出译梦服务端账号？", isPresented: $confirmLogout, titleVisibility: .visible) {
+                                Button("退出登录", role: .destructive) { Task { await library.logoutCore() } }
+                            } message: { Text("本机上该账号的播放队列和缓存会被清除。") }
                     }
                     divider
                     row("square.stack", "曲库", [library.albumTotal.map { "\($0) 张专辑" }, library.songTotal.map { "\($0) 首" }].compactMap { $0 }.joined(separator: " · "))

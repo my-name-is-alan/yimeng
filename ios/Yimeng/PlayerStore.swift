@@ -267,6 +267,12 @@ final class PlayerStore: ObservableObject {
         return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
     }
 
+    /// Account/server switch: stop and forget the visible queue without deleting any saved queue.
+    func resetInMemory() {
+        tearDownPlayer()
+        song = nil; queue = []; index = 0
+        isPlaying = false; elapsed = 0; duration = 0; coverURL = nil; coverId = nil
+    }
     func clear() {
         tearDownPlayer()
         song = nil; queue = []; index = 0

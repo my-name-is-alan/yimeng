@@ -116,8 +116,17 @@ struct CorePlaylist: Codable, Hashable, Sendable {
     var kind: String?
     var origin: String?
     var owner: String?
+    var ownerId: String?
     var description: String?
     var tracks: [CoreTrack]?
+}
+/// GET /sessions item: one of the caller's own devices (D49). Handoff may only target these.
+struct CoreSession: Codable, Hashable, Sendable, Identifiable {
+    struct Dev: Codable, Hashable, Sendable { var id: String; var name: String?; var deviceType: String? }
+    var device: Dev
+    var current: Bool?
+    var online: Bool?
+    var id: String { device.id }
 }
 
 struct CorePage<T: Codable & Sendable>: Codable, Sendable {
@@ -168,7 +177,11 @@ struct CoreTokens: Codable, Sendable {
     var accessToken: String
     var refreshToken: String?
     var expiresIn: Int?
-    enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token }
+    /// Owning account (D49): device.user_id / user.id, and the account name.
+    var userId: String?
+    var username: String?
+    enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token, device, user }
+    private struct Who: Codable { var id: String?; var userId: String?; var username: String? }
     init(accessToken: String, refreshToken: String?, expiresIn: Int?) { self.accessToken = accessToken; self.refreshToken = refreshToken; self.expiresIn = expiresIn }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
@@ -179,6 +192,10 @@ struct CoreTokens: Codable, Sendable {
         accessToken = a
         refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken) ?? tok
         expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+        let dev = (try? c.decodeIfPresent(Who.self, forKey: .device)) ?? nil
+        let usr = (try? c.decodeIfPresent(Who.self, forKey: .user)) ?? nil
+        userId = dev?.userId ?? usr?.id
+        username = usr?.username ?? dev?.username
     }
     func encode(to e: Encoder) throws {
         var c = e.container(keyedBy: K.self)

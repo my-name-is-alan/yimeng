@@ -55,6 +55,7 @@
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
+		C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72941A55FA85EAEF903A950A /* CoreV28.swift */; };
 		C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14B0D85AF014834401939FD /* FnosClient.swift */; };
 		C2912B6E871B28DFF296207C /* OFL-SourceHanSerif.txt in Resources */ = {isa = PBXBuildFile; fileRef = 98F0C3866E2A62B252C48EBE /* OFL-SourceHanSerif.txt */; };
 		C39A8C9E18A03049A2A06D4E /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF11FEF0B55F7446317FCA11 /* CoreModels.swift */; };
@@ -160,6 +161,7 @@
 		673E45F12B4A88C9F60BEDEF /* DreamData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamData.swift; sourceTree = "<group>"; };
 		6C66FE3A48511F18C8FF2DEF /* Banner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Banner.swift; sourceTree = "<group>"; };
 		71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		72941A55FA85EAEF903A950A /* CoreV28.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV28.swift; sourceTree = "<group>"; };
 		74444C3DE3123F7866B6EEEB /* OFL-LXGWWenKai.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-LXGWWenKai.txt"; sourceTree = "<group>"; };
 		77F48F48AC5D21B981D4F21F /* LiveLyrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLyrics.swift; sourceTree = "<group>"; };
 		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
@@ -275,6 +277,7 @@
 				BF11FEF0B55F7446317FCA11 /* CoreModels.swift */,
 				3AE81EDA4F41B8F0C14A4393 /* CoreUI.swift */,
 				544698022D347A02756EACDB /* CoreV25.swift */,
+				72941A55FA85EAEF903A950A /* CoreV28.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
@@ -503,6 +506,7 @@
 				C39A8C9E18A03049A2A06D4E /* CoreModels.swift in Sources */,
 				AC913D8D096240B2BA9F5FD5 /* CoreUI.swift in Sources */,
 				DC1B124F0048EB2638F0DC50 /* CoreV25.swift in Sources */,
+				C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,

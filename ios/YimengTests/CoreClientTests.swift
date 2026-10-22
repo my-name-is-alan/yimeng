@@ -26,6 +26,8 @@ final class CoreClientTests: XCTestCase {
         XCTAssertEqual(s.preview, true); XCTAssertEqual(s.artist, "A"); XCTAssertEqual(s.origin, "qq")
         let tok = try CoreClient.decoder.decode(CoreTokens.self, from: Data(#"{"token":"ymd_x","device":{"id":"d"}}"#.utf8))
         XCTAssertEqual(tok.accessToken, "ymd_x")
+        let s = try CoreClient.decoder.decode(CoreTokens.self, from: Data(#"{"access_token":"a","refresh_token":"r","expires_in":900,"device":{"id":"d","user_id":"usr_1"},"user":{"id":"usr_1","username":"yimeng-test"}}"#.utf8))
+        XCTAssertEqual(s.userId, "usr_1"); XCTAssertEqual(s.username, "yimeng-test"); XCTAssertEqual(s.refreshToken, "r")
         let d = try CoreClient.decoder.decode(CoreDaily.self, from: Data(#"{"date":"2026-10-22","items":[{"id":"qq:1","title":"t"}]}"#.utf8))
         XCTAssertEqual(d.list.count, 1)
     }

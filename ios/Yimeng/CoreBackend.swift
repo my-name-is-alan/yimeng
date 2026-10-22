@@ -40,7 +40,7 @@ extension CoreClient {
     nonisolated static func nd(_ p: CorePlaylist) -> NDPlaylist {
         CoreState.remember(cover: p.cover)
         var x = NDPlaylist(id: p.id, name: p.name, songCount: p.trackCount, coverId: p.cover?.url ?? p.coverUrl, comment: p.description ?? p.subtitle, owner: p.owner)
-        x.origin = p.origin
+        x.origin = p.origin; x.ownerId = p.ownerId
         return x
     }
     private nonisolated static func sort(_ type: String) -> String {

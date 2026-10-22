@@ -89,8 +89,8 @@ struct PlaylistDetailView: View {
                 .songMenu(s)
                 .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
-            .onDelete(perform: remove)
-            .onMove(perform: move)
+            .onDelete(perform: shown.isMine ? remove : nil)
+            .onMove(perform: shown.isMine ? move : nil)
             Color.clear.frame(height: 170).listRowSeparator(.hidden).listRowBackground(Color.clear)
         }
         .listStyle(.plain)
@@ -129,7 +129,7 @@ struct PlaylistDetailView: View {
             HStack {
                 Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
                 Spacer()
-                Menu {
+                if shown.isMine { Menu {
                     Button { draft = shown.name; renaming = true } label: { Label("重命名", systemImage: "pencil") }
                     Button { draft = shown.comment ?? ""; editingDesc = true } label: { Label("编辑描述", systemImage: "text.alignleft") }
                     Button {
@@ -138,7 +138,7 @@ struct PlaylistDetailView: View {
                     } label: { Label((shown.isPublic ?? false) ? "设为私密" : "设为公开", systemImage: (shown.isPublic ?? false) ? "lock" : "globe") }
                     Divider()
                     Button(role: .destructive) { confirmDelete = true } label: { Label("删除歌单", systemImage: "trash") }
-                } label: { CircleIconButton(icon: "ellipsis") }
+                } label: { CircleIconButton(icon: "ellipsis") } }
             }
             .buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 8)
 
@@ -181,6 +181,11 @@ struct PlaylistDetailView: View {
             info = p
             if s.map(\.id) != songs.map(\.id) { songs = s }
             PlaylistEvents.updated(p)
+        } catch let e as CoreAPIError where e.status == 404 {
+            // D49: another account's (or a deleted) playlist reads as "doesn't exist".
+            PlaylistEvents.deleted(playlist.id)
+            if !state.path.isEmpty { state.path.removeLast() }
+            SheetCenter.shared.say("歌单不存在或已被删除")
         } catch { self.error = error.localizedDescription }
         loading = false
     }

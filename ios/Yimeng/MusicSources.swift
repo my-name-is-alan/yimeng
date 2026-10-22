@@ -78,9 +78,11 @@ enum MusicSources {
     /// Core never paints its ids (e.g. a stale mock queue) into this server's UI.
     static var scopeId: String {
         guard activeId == SourceKind.core.rawValue, let h = UserDefaults.standard.string(forKey: coreScopeKey), !h.isEmpty else { return activeId }
-        return "core-" + h.map { $0.isLetter || $0.isNumber ? $0 : "_" }.reduce("") { $0 + String($1) }
+        let u = UserDefaults.standard.string(forKey: coreUserKey) ?? ""
+        return "core-" + (h + (u.isEmpty ? "" : "-" + u)).map { $0.isLetter || $0.isNumber ? $0 : "_" }.reduce("") { $0 + String($1) }
     }
     static let coreScopeKey = "ym.core.scope"
+    static let coreUserKey = "ym.core.user"
     nonisolated(unsafe) static var activeId: String = UserDefaults.standard.string(forKey: SourceStore.activeKey) ?? SourceKind.navidrome.rawValue
 }
 
