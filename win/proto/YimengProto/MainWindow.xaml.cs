@@ -1,14 +1,16 @@
 using System;
 using System.Numerics;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.UI;
 using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI;
-using Microsoft.UI.Composition.SystemBackdrops;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Hosting;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 
 namespace YimengProto;
 
@@ -16,47 +18,119 @@ public sealed partial class MainWindow : Window
 {
     private float _drawn;
     private float _t;
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) };
+    private float _beatAgo = 0.15f;
+    private const float Bpm = 96f;
+    private const float Intensity = 0.7f;
+    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) }; // 30fps
+    private bool _calm;
+    private CanvasRenderTarget? _fieldCache;
+    private bool _fieldCached;
 
     public MainWindow()
     {
         InitializeComponent();
-        TrySetMica();
+        // No Mica / Acrylic — solid base; glass via Composition blur on panels.
+        SystemBackdrop = null;
+        _calm = !new UISettings().AnimationsEnabled;
+        _timer.Interval = TimeSpan.FromMilliseconds(_calm ? 250 : 33);
         _timer.Tick += (_, _) =>
         {
-            _t += 0.033f;
-            if (_drawn < 1f) _drawn = MathF.Min(1f, _drawn + 0.033f / 1.6f);
+            float dt = (float)_timer.Interval.TotalSeconds * (_calm ? 0.08f : 1f);
+            _t += dt;
+            _beatAgo += (float)_timer.Interval.TotalSeconds;
+            float period = 60f / Bpm;
+            if (_beatAgo >= period) _beatAgo -= period;
+            if (_drawn < 1f)
+            {
+                float wall = _t / ( _calm ? 0.08f : 1f);
+                float p = Math.Clamp(wall / 1.6f, 0f, 1f);
+                _drawn = p * p * (3 - 2 * p); // ease ≈ cubic-bezier
+            }
             DoodleCanvas.Invalidate();
-            FieldCanvas.Invalidate();
+            if (!_fieldCached) FieldCanvas.Invalidate();
+            else if (!_calm) FieldCanvas.Invalidate(); // breathing only
         };
         _timer.Start();
         ExtendsContentIntoTitleBar = true;
+        Activated += (_, _) => AttachGlassBlur();
     }
 
-    private void TrySetMica()
+    private void AttachGlassBlur()
     {
-        if (!MicaController.IsSupported()) return;
-        SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base };
+        try
+        {
+            ApplyBlur(MiniPlayerGlass, 20f, extraTint: true);
+            ApplyBlur(TabGlass, 20f, extraTint: false);
+            ApplyBlur(OrbGlass, 20f, extraTint: false, orb: true);
+        }
+        catch { /* Designer machine may lack composition blur; solid tint remains. */ }
+    }
+
+    private void ApplyBlur(UIElement el, float blurPx, bool extraTint, bool orb = false)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(el);
+        var compositor = visual.Compositor;
+        var backdrop = compositor.CreateBackdropBrush();
+        var blur = new GaussianBlurEffect
+        {
+            Name = "Blur",
+            BlurAmount = blurPx,
+            BorderMode = EffectBorderMode.Hard,
+            Source = new CompositionEffectSourceParameter("backdrop"),
+        };
+        var factory = compositor.CreateEffectFactory(blur);
+        var brush = factory.CreateBrush();
+        brush.SetSourceParameter("backdrop", backdrop);
+        var sprite = compositor.CreateSpriteVisual();
+        sprite.Brush = brush;
+        sprite.Size = new Vector2((float)el.ActualSize.X, (float)el.ActualSize.Y);
+        el.SizeChanged += (_, __) => sprite.Size = new Vector2((float)el.ActualSize.X, (float)el.ActualSize.Y);
+        ElementCompositionPreview.SetElementChildVisual(el, sprite);
+        // black 14% tint + optional mini #0A0A0C 55% sit in XAML Background under the sprite
+        _ = extraTint; _ = orb;
     }
 
     private void FieldCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         var ds = args.DrawingSession;
-        ds.Clear(Color.FromArgb(255, 0x0A, 0x0A, 0x0C));
-        var blobs = new[]
-        {
-            Color.FromArgb(140, 0x7A, 0x1C, 0xFF),
-            Color.FromArgb(140, 0xFF, 0x5F, 0xA8),
-            Color.FromArgb(140, 0x33, 0xD1, 0x7A),
-            Color.FromArgb(140, 0xFF, 0xD3, 0x6B),
-        };
         float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
-        for (int i = 0; i < blobs.Length; i++)
+        if (w < 1 || h < 1) return;
+
+        if (_fieldCache == null || _fieldCache.Size.Width != w || _fieldCache.Size.Height != h)
         {
-            float cx = w * (0.25f + 0.2f * i);
-            float cy = h * (0.30f + 0.08f * MathF.Sin(_t * 0.35f + i));
-            ds.FillCircle(cx, cy, MathF.Min(w, h) * 0.35f, blobs[i]);
+            _fieldCache?.Dispose();
+            _fieldCache = new CanvasRenderTarget(sender, w, h, 96);
+            using var cds = _fieldCache.CreateDrawingSession();
+            cds.Clear(Color.FromArgb(255, 0x0A, 0x0A, 0x0C));
+            // 4 static circles (cached) — soft blobs
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x7A, 0x1A), w * 0.10f, h * 0.08f, w * 0.52f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xD2, 0x3F), w * 0.90f, h * 0.32f, w * 0.48f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x3D, 0x2E), w * 0.05f, h * 0.68f, w * 0.50f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xB0, 0x00), w * 0.95f, h * 0.92f, w * 0.45f);
+            _fieldCached = true;
         }
+        ds.DrawImage(_fieldCache);
+        // Breathing: fixed 20→420 radial, only opacity, only “real playback” demo
+        if (!_calm)
+        {
+            float pulse = MathF.Exp(-7f * _beatAgo);
+            var c = Color.FromArgb((byte)(255 * 0.22f * pulse), 0xFF, 0x7A, 0x1A);
+            using var rb = new CanvasRadialGradientBrush(sender, c, Color.FromArgb(0, 0, 0, 0))
+            {
+                Center = new Vector2(w * 0.5f, h * 0.42f),
+                RadiusX = 420, RadiusY = 420,
+            };
+            ds.FillCircle(w * 0.5f, h * 0.42f, 420, rb);
+        }
+    }
+
+    private static void DrawSoft(CanvasDrawingSession ds, Color c, float x, float y, float r)
+    {
+        using var brush = new CanvasRadialGradientBrush(ds, c, Color.FromArgb(0, c.R, c.G, c.B))
+        {
+            Center = new Vector2(x, y), RadiusX = r, RadiusY = r,
+        };
+        ds.FillCircle(x, y, r, brush);
     }
 
     private void DoodleCanvas_CreateResources(CanvasControl sender, CanvasCreateResourcesEventArgs args) { }
@@ -66,40 +140,36 @@ public sealed partial class MainWindow : Window
         var ds = args.DrawingSession;
         float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
         if (w < 1 || h < 1) return;
+        float k = w / 402f;
+        float left = 51 * k, top = 150 * k, side = 300 * k;
 
-        float left = w * 0.14f, top = h * 0.22f, side = w * 0.72f;
         using var builder = new CanvasPathBuilder(sender);
-        // Outer rounded frame
-        builder.BeginFigure(left - 14, top);
-        builder.AddLine(left + side + 14, top);
-        builder.AddLine(left + side + 14, top + side);
-        builder.AddLine(left - 14, top + side);
+        // cloud motif frame + clouds (simplified from DoodlePaths)
+        float o = 14;
+        builder.BeginFigure(left - o, top);
+        builder.AddLine(left + side + o, top);
+        builder.AddLine(left + side + o, top + side);
+        builder.AddLine(left - o, top + side);
         builder.EndFigure(CanvasFigureLoop.Closed);
-        // Cloud-ish arcs (simplified)
-        builder.BeginFigure(left + 10, top - 10);
-        builder.AddCubicBezier(new Vector2(left + 10, top - 40), new Vector2(left + 80, top - 50), new Vector2(left + 110, top - 10));
+        builder.BeginFigure(left - 50, top + 40);
+        builder.AddCubicBezier(new Vector2(left - 50 - 8, top + 70), new Vector2(left - 20, top + 50), new Vector2(left - 20, top + 55));
         builder.EndFigure(CanvasFigureLoop.Open);
 
         using var geo = CanvasGeometry.CreatePath(builder);
         float len = geo.ComputePathLength();
-        // Trim via dashed stroke: visible = len*_drawn
         var style = new CanvasStrokeStyle
         {
-            DashStyle = CanvasDashStyle.Solid,
-            StartCap = CanvasCapStyle.Round,
-            EndCap = CanvasCapStyle.Round,
-            DashCap = CanvasCapStyle.Round,
-            CustomDashStyle = new float[] { MathF.Max(0.01f, len * EaseInOut(_drawn)), len },
+            StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round,
+            CustomDashStyle = new float[] { MathF.Max(0.01f, len * _drawn), len },
         };
-        float pulse = 0.025f * 0.75f * MathF.Max(0, MathF.Sin(_t * (96f / 60f) * MathF.PI * 2f));
-        float scale = 1f + 0.04f * 0.75f * (pulse * 20f);
+        float pulse = _calm ? 0 : 0.04f * Intensity * MathF.Exp(-7f * _beatAgo);
+        float scale = 1f + pulse;
         var mid = new Vector2(left + side / 2, top + side / 2);
         ds.Transform = Matrix3x2.CreateScale(scale, mid);
-        var white = Color.FromArgb((byte)(255 * (0.6f + 0.3f * 0.75f)), 255, 255, 255);
-        ds.DrawGeometry(geo, white, 2.2f, style);
+        var glow = Color.FromArgb(128, 255, 255, 255);
+        ds.DrawGeometry(geo, glow, 2.23f + 8f, style);
+        var white = Color.FromArgb((byte)(255 * (0.6f + 0.3f * Intensity)), 255, 255, 255);
+        ds.DrawGeometry(geo, white, 2.23f, style);
         ds.Transform = Matrix3x2.Identity;
     }
-
-    private static float EaseInOut(float t) =>
-        t < 0.5f ? 2 * t * t : 1 - MathF.Pow(-2 * t + 2, 2) / 2;
 }

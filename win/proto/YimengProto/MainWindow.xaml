@@ -6,34 +6,27 @@
     xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     Title="译梦 · 玻璃 + 涂鸦 PoC">
 
-  <Grid Background="{StaticResource YmBaseBrush}">
-    <!-- Dream field blobs (simplified) -->
+  <Grid x:Name="RootGrid" Background="#FF0A0A0C">
     <canvas:CanvasControl x:Name="FieldCanvas" Draw="FieldCanvas_Draw"/>
-
-    <!-- Doodle layer -->
     <canvas:CanvasControl x:Name="DoodleCanvas" Draw="DoodleCanvas_Draw" CreateResources="DoodleCanvas_CreateResources"/>
 
-    <Grid VerticalAlignment="Bottom" Margin="16,0,16,16" RowSpacing="10">
+    <Grid VerticalAlignment="Bottom" Margin="20,0,20,16" RowSpacing="12">
       <Grid.RowDefinitions>
         <RowDefinition Height="56"/>
         <RowDefinition Height="62"/>
       </Grid.RowDefinitions>
 
-      <!-- Mini player: Acrylic (in-app backdrop blur) + tint — design-spec glass role -->
-      <Border Grid.Row="0" CornerRadius="28" Padding="8,0,16,0">
-        <Border.Background>
-          <AcrylicBrush TintColor="#24000000" TintOpacity="0.55" FallbackColor="#8C0A0A0C"
-                        BackgroundSource="Backdrop"/>
-        </Border.Background>
+      <!-- Glass via Composition BackdropBrush+GaussianBlur (code-behind); no AcrylicBrush / no Mica -->
+      <Border x:Name="MiniPlayerGlass" Grid.Row="0" CornerRadius="28" Padding="8,0,16,0" Background="#24000000">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="40"/><ColumnDefinition Width="12"/>
             <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <Ellipse Width="40" Height="40" Fill="#FF5FA8"/>
+          <Ellipse Width="40" Height="40" Fill="#FFFF7A1A"/>
           <StackPanel Grid.Column="2" VerticalAlignment="Center">
-            <TextBlock Text="海阔天空" Foreground="White" FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="Beyond" Foreground="#B3FFFFFF" FontSize="12"/>
+            <TextBlock Text="橘子海" Foreground="White" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="陈粒" Foreground="#B3FFFFFF" FontSize="12" TextTrimming="CharacterEllipsis"/>
           </StackPanel>
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
             <FontIcon Glyph="&#xE769;" Foreground="White" FontSize="18"/>
@@ -42,37 +35,30 @@
         </Grid>
       </Border>
 
-      <!-- Tab bar Acrylic + centre orb -->
       <Grid Grid.Row="1">
-        <Border CornerRadius="31">
-          <Border.Background>
-            <AcrylicBrush TintColor="#24000000" TintOpacity="0.55" FallbackColor="#8C0A0A0C"
-                          BackgroundSource="Backdrop"/>
-          </Border.Background>
+        <Border x:Name="TabGlass" CornerRadius="31" Background="#24000000">
           <Grid Padding="4,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="76"/>
               <ColumnDefinition/><ColumnDefinition/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="首页" Foreground="{StaticResource YmAccentBrush}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
-            <TextBlock Grid.Column="1" Text="曲库" Foreground="#BFFFFFFF"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
-            <TextBlock Grid.Column="3" Text="搜索" Foreground="#BFFFFFFF"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
-            <TextBlock Grid.Column="4" Text="我的" Foreground="#BFFFFFFF"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <Border Grid.Column="0" Height="54" CornerRadius="27" Background="#20FFFFFF" Margin="2,0">
+              <TextBlock Text="首页" Foreground="#FFC8F542" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+            </Border>
+            <TextBlock Grid.Column="1" Text="曲库" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <TextBlock Grid.Column="3" Text="搜索" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <TextBlock Grid.Column="4" Text="我的" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
           </Grid>
         </Border>
-        <Border Width="64" Height="64" CornerRadius="32" VerticalAlignment="Top"
-                Margin="0,-18,0,0" HorizontalAlignment="Center" BorderBrush="#66FFFFFF" BorderThickness="0.8">
-          <Border.Background>
-            <AcrylicBrush TintColor="#6B7A1CFF" TintOpacity="0.55" FallbackColor="#AA7A1CFF"
-                          BackgroundSource="Backdrop"/>
-          </Border.Background>
+        <Border x:Name="OrbGlass" Width="64" Height="64" CornerRadius="32" VerticalAlignment="Top"
+                Margin="0,-18,0,0" HorizontalAlignment="Center" BorderBrush="#66FFFFFF" BorderThickness="0.8"
+                Background="#6B6B4BD8">
           <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock Text="☽" Foreground="White" FontSize="22" HorizontalAlignment="Center"/>
-            <TextBlock Text="典藏" Foreground="#D9FFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+            <TextBlock Text="☽" Foreground="#E6FFFFFF" FontSize="22" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+              <TextBlock.RenderTransform><RotateTransform Angle="-12"/></TextBlock.RenderTransform>
+            </TextBlock>
+            <TextBlock Text="典藏" Foreground="#EBFFFFFF" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <Ellipse Width="5" Height="5" Fill="#FFC8F542" HorizontalAlignment="Center" Margin="0,2,0,0"/>
           </StackPanel>
         </Border>
       </Grid>
@@ -80,7 +66,7 @@
 
     <StackPanel Margin="20,16,20,0" VerticalAlignment="Top">
       <TextBlock Text="译梦 · 玻璃 + 涂鸦 PoC" Foreground="White" FontSize="20" FontWeight="Bold"/>
-      <TextBlock Text="Mica 窗口底 + Acrylic 玻璃条；Win2D 涂鸦描线（需在 Win11 上构建运行）"
+      <TextBlock Text="Composition BackdropBrush + GaussianBlur；无 Acrylic / 无 Mica；Win2D 涂鸦"
                  Foreground="#99FFFFFF" FontSize="13" TextWrapping="WrapWholeWords"/>
     </StackPanel>
   </Grid>

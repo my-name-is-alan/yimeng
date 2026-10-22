@@ -13,50 +13,79 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import kotlin.math.PI
-import kotlin.math.sin
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import kotlin.math.exp
 
-/** Soft blob field stand-in for DreamField (iOS 17 blur-circles path). */
+/**
+ * Static 4-circle field (blur 70, cached look) + beat breathing radial only during real playback.
+ * Cap 30fps. Reduced motion: background×0.12 @ 4fps, no beat glow.
+ */
 @Composable
-fun DreamField(modifier: Modifier = Modifier) {
-    var t by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
-        val start = withFrameNanos { it }
+fun DreamField(
+    track: DreamTrack,
+    modifier: Modifier = Modifier,
+    realPlayback: Boolean = true,
+    lastBeatAgoSec: Float = 0.2f,
+    reduceMotion: Boolean = false,
+) {
+    var pulse by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(realPlayback, reduceMotion) {
+        if (!realPlayback) { pulse = 0f; return@LaunchedEffect }
+        val fps = if (reduceMotion) 4 else 30
+        val frameNs = 1_000_000_000L / fps
+        var last = 0L
         while (true) {
             withFrameNanos { now ->
-                t = (now - start) / 1_000_000_000f
+                if (now - last < frameNs) return@withFrameNanos
+                last = now
+                val p = if (reduceMotion) 0.12f else exp(-7.0 * lastBeatAgoSec.toDouble()).toFloat()
+                pulse = p
             }
         }
     }
     Canvas(modifier.fillMaxSize()) {
-        drawRect(YmTheme.idleField)
-        YmTheme.blobs.forEachIndexed { i, c ->
-            val ox = size.width * (0.25f + 0.2f * i)
-            val oy = size.height * (0.30f + 0.08f * sin(t * 0.35f + i))
+        drawRect(track.base)
+        // 4 static circles — positions match iOS 17 path; soft radial ≈ blur 70
+        val w = size.width; val h = size.height
+        softBlob(track.blobs[0], Offset(w * 0.10f, h * 0.08f), w * 1.05f / 2f)
+        softBlob(track.blobs[1], Offset(w * 0.90f, h * 0.32f), w * 0.95f / 2f)
+        softBlob(track.blobs[2], Offset(w * 0.05f, h * 0.68f), w * 1.00f / 2f)
+        softBlob(track.blobs[3], Offset(w * 0.95f, h * 0.92f), w * 0.90f / 2f)
+        if (realPlayback && pulse > 0.001f) {
+            // Fixed radius 20→420 radial, opacity blob0×0.22×pulse, screen blend approx
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(c.copy(alpha = 0.55f), Color.Transparent),
-                    center = Offset(ox, oy),
-                    radius = size.minDimension * 0.45f,
+                    colors = listOf(track.blobs[0].copy(alpha = 0.22f * pulse), Color.Transparent),
+                    center = Offset(w * 0.5f, h * 0.42f),
+                    radius = 420f,
+                    tileMode = TileMode.Clamp,
                 ),
-                radius = size.minDimension * 0.45f,
-                center = Offset(ox, oy),
+                radius = 420f,
+                center = Offset(w * 0.5f, h * 0.42f),
             )
         }
-        // Top/bottom readability scrims
         drawRect(
             brush = Brush.verticalGradient(
-                0f to Color.Black.copy(alpha = 0.10f),
+                0f to Color.Black.copy(0.10f),
                 0.5f to Color.Transparent,
-                1f to Color.Black.copy(alpha = 0.28f),
+                1f to Color.Black.copy(0.28f),
             ),
         )
-        // Beat glow (demo)
-        val pulse = (0.5f + 0.5f * sin(t * (96f / 60f) * 2f * PI.toFloat())).coerceIn(0f, 1f)
-        drawCircle(
-            color = YmTheme.blobs[0].copy(alpha = 0.22f * pulse),
-            radius = 20f + 400f * pulse,
-            center = Offset(size.width * 0.5f, size.height * 0.42f),
-        )
     }
+}
+
+private fun DrawScope.softBlob(c: Color, center: Offset, radius: Float) {
+    drawCircle(
+        brush = Brush.radialGradient(
+            0f to c.copy(alpha = 0.55f),
+            0.55f to c.copy(alpha = 0.25f),
+            1f to Color.Transparent,
+            center = center,
+            radius = radius,
+        ),
+        radius = radius,
+        center = center,
+    )
 }
