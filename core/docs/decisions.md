@@ -476,6 +476,7 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - **NetEase entitlement.**
   - A paid-album song (fee 4) without a trial privilege is now `unavailable`, not `preview`. The platform returns no URL for it at all (purchase required).
   - `preview` is used only when a trial clip exists: a trial privilege, or a VIP (fee 1) song. Previews stream the official clip.
+  - What the platform actually serves wins. When a stream request returns no URL, the track is shown as `unavailable` in detail, listings and playlists, even if the listing hinted `preview`. This verdict is kept in memory for 6 h and is also written to `external_status`.
   - Unavailable tracks still try source switching (D50). Alternative search now also queries by title alone, because platforms spell artists differently (e.g. "SNH48周诗雨").
   - There is still no unblock or DRM bypass.
 - **Profiles.**

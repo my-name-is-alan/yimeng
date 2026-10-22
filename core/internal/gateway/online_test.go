@@ -47,6 +47,8 @@ func gwTrack(id, title string, e online.Entitlement) online.Track {
 var gwTracks = map[string]online.Track{
 	"full": gwTrack("full", "Song Full", online.EntFull), "prev": gwTrack("prev", "Song Preview", online.EntPreview),
 	"none": gwTrack("none", "Song Gone", online.EntUnavailable), "expire": gwTrack("expire", "Song Expire", online.EntFull),
+	// listed as trial-capable, but the platform serves no URL (paid album)
+	"paid": gwTrack("paid", "Song Paid Album", online.EntPreview),
 }
 
 func (p *gwPlugin) Search(ctx context.Context, q string, limit int) (online.SearchResult, error) {
@@ -105,6 +107,9 @@ func (p *gwPlugin) Resolve(ctx context.Context, id string, q online.Quality) (on
 	t, ok := gwTracks[id]
 	if !ok {
 		return online.Stream{}, online.ErrUnavailable
+	}
+	if id == "paid" {
+		return online.Stream{Entitlement: online.EntUnavailable, Reason: "付费专辑歌曲，需要购买"}, nil
 	}
 	s := online.Stream{Entitlement: t.Playable, Quality: q, Format: "mp3", ExpiresAt: time.Now().Add(time.Hour)}
 	if t.Playable != online.EntUnavailable {

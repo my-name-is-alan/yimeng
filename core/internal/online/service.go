@@ -29,9 +29,10 @@ type Service struct {
 	Cache *Cache
 	Log   *slog.Logger
 
-	mu     sync.Mutex
-	leases map[string]Resolution
-	now    func() time.Time
+	mu       sync.Mutex
+	verdicts sync.Map // track id -> verdictEntry (D58)
+	leases   map[string]Resolution
+	now      func() time.Time
 }
 
 func NewService(reg *Registry, lib LibraryPort, cache *Cache, log *slog.Logger) *Service {
@@ -150,6 +151,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int, only []string
 
 // rememberTracks caches track DTOs so later materialization needs no fetch.
 func (s *Service) rememberTracks(ctx context.Context, ts []Track) {
+	s.applyVerdicts(ts)
 	s.recordStatus(ctx, ts)
 	for _, t := range ts {
 		o, n, err := split(t.ID)
@@ -202,6 +204,7 @@ func (s *Service) Tracks(ctx context.Context, ids []string) ([]Track, error) {
 			res = append(res, t)
 		}
 	}
+	s.applyVerdicts(res) // cached DTOs predate a stream verdict
 	return res, nil
 }
 
@@ -538,8 +541,10 @@ func (s *Service) resolve(ctx context.Context, id string, q Quality) (Resolution
 	st, err := s.resolveOne(ctx, id, q)
 	switch {
 	case err == nil:
+		s.verdict(id, st.Entitlement)
 		s.setStatus(ctx, map[string]string{id: string(st.Entitlement)})
 	case errors.Is(err, ErrUnavailable):
+		s.verdict(id, EntUnavailable)
 		s.setStatus(ctx, map[string]string{id: string(EntUnavailable)})
 	}
 	if err == nil && st.Entitlement == EntFull {
@@ -734,4 +739,34 @@ func (s *Service) recordStatus(ctx context.Context, ts []Track) {
 		}
 	}
 	s.setStatus(ctx, st)
+}
+
+// Resolve verdicts (D58): what the platform actually served when asked for a
+// stream beats the listing's privilege hint (e.g. NetEase lists a paid-album
+// song as trial-capable but returns no URL). Kept in memory for verdictTTL.
+const verdictTTL = 6 * time.Hour
+
+type verdictEntry struct {
+	e  Entitlement
+	at time.Time
+}
+
+func (s *Service) verdict(id string, e Entitlement) {
+	if e == "" || e == EntUnknown {
+		return
+	}
+	s.verdicts.Store(id, verdictEntry{e, time.Now()})
+}
+
+func (s *Service) applyVerdicts(ts []Track) {
+	for i := range ts {
+		if v, ok := s.verdicts.Load(ts[i].ID); ok {
+			ve := v.(verdictEntry)
+			if time.Since(ve.at) > verdictTTL {
+				s.verdicts.Delete(ts[i].ID)
+				continue
+			}
+			ts[i].Playable = ve.e
+		}
+	}
 }
