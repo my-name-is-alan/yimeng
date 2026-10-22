@@ -270,7 +270,7 @@ struct RemoteBackdrop: View {
                                 .frame(width: geo.size.width, height: geo.size.width)
                                 .scaleEffect(2.6)
                                 .position(x: geo.size.width / 2, y: height * 0.4)
-                        }.opacity(w)
+                        }.opacity(w).transition(.opacity)
                     }
                 }
                 LinearGradient(stops: [.init(color: Theme.base(scheme).opacity(0), location: 0),
@@ -282,6 +282,7 @@ struct RemoteBackdrop: View {
             .drawingGroup()
         }
         .frame(height: height).allowsHitTesting(false)
-
+        .animation(.easeOut(duration: 0.7), value: diff.rev)
+        .task(id: urls.compactMap { $0?.absoluteString }.joined()) { for u in urls { diff.load(u) } }
     }
 }

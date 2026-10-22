@@ -89,12 +89,10 @@ struct GenreView: View {
             }
         }
         .background(alignment: .top) {
-            RemoteBackdrop(urls: albums.prefix(3).map { library.coverURL($0) }, progress: 0, height: 520).ignoresSafeArea()
+            RemoteBackdrop(urls: albums.prefix(1).map { library.coverURL($0, size: 600) }, progress: 0, height: 640).ignoresSafeArea()
         }
         .background(Theme.base(scheme))
         .task { await cache.load(genre.name) }
-        .onChange(of: albums.count) { _, _ in for a in albums.prefix(3) { RemoteDiffusion.shared.load(library.coverURL(a)) } }
-        .onAppear { for a in albums.prefix(3) { RemoteDiffusion.shared.load(library.coverURL(a)) } }
     }
 }
 
