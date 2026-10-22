@@ -235,7 +235,7 @@ class H(BaseHTTPRequestHandler):
             plat = next((x for x in PLATFORMS if x["origin"] == o), None)
             if not plat or not plat["logged_in"]: return self.send_json({"code": "not_logged_in"}, 404, False)
             def mk(t): return dict(t, origin=o)
-            if rest == "daily" and "daily" in plat["capabilities"]: return self.send_json({"date": time.strftime("%Y-%m-%d"), "tracks": [mk(t) for t in TRACKS[10:22]]}, etag=False)
+            if rest == "daily" and "daily" in plat["capabilities"]: return self.send_json({"date": time.strftime("%Y-%m-%d"), "items": [mk(t) for t in TRACKS[10:22]]}, etag=False)
             if rest == "fm" and "fm" in plat["capabilities"]: return self.send_json({"items": [mk(t) for t in random.sample(TRACKS, 3)]}, etag=False)
             if rest == "fm/feedback": return self.send_json({}, etag=False)
             if rest == "recommend/playlists" and "recommend_playlists" in plat["capabilities"]:

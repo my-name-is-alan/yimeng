@@ -1000,7 +1000,7 @@ struct SourceConnectView: View {
             guard kind == .core, !draft.host.isEmpty else { return }
             try? await Task.sleep(for: .milliseconds(500))
             try? await CoreClient.shared.configure(host: draft.host)
-            coreName = (try? await CoreClient.shared.serverInfo())?.name ?? ""
+            let i = try? await CoreClient.shared.serverInfo(); coreName = i?.serverName ?? i?.name ?? ""
         }
         .onAppear {
             var c = store.config(for: kind)
@@ -1057,7 +1057,7 @@ struct SourceConnectView: View {
             }
             HStack {
                 field(kind == .emby ? (embyMode == .apiKey ? "API Key" : "密码（可留空）")
-                      : (kind == .core ? "密码" : (kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key")),
+                      : (kind == .core ? "密码 / 配对码（用户名留空）" : (kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key")),
                       text: $draft.secret, secure: !showSecret)
                 Button { showSecret.toggle() } label: {
                     Image(systemName: showSecret ? "eye" : "eye.slash").opacity(0.6)

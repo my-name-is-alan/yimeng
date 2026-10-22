@@ -34,7 +34,7 @@ final class YueqianStore: ObservableObject {
         guard LibraryStore.shared.connected else { return }
         var pick: NDSong?, origin: String?
         if NavidromeClient.core, let p = CoreState.platforms(can: "daily").first,
-           let d = try? await CoreClient.shared.daily(p.origin), let t = d.tracks.first {
+           let d = try? await CoreClient.shared.daily(p.origin), let t = d.list.first {
             pick = CoreClient.nd(t); origin = p.origin
         }
         if pick == nil { pick = await Self.dayPick() }

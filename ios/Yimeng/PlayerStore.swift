@@ -369,6 +369,7 @@ final class PlayerStore: ObservableObject {
                 let now = Date().timeIntervalSinceReferenceDate
                 if let l = self.embyLive {
                     self.embyLive = (l.id, self.elapsed)
+                    self.coreScrobbleIfDue()
                     if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false); if NavidromeClient.core { let e = self.elapsed; Task { await CoreClient.shared.putProgress(l.id, ms: Int(e * 1000)) } } }
                 }
                 if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
@@ -438,6 +439,15 @@ final class PlayerStore: ObservableObject {
     // Emby/Jellyfin: report start / progress / stop so play counts, 最近播放 and resume work server-side.
     private var embyLive: (id: String, pos: TimeInterval)?
     private static var autopaused = false
+    /// 译梦 Core history = scrobbles only: report once per play at ≥50% or 4 min (Last.fm-style rule, same as Core players).
+    private var coreScrobbled: String?
+    fileprivate func coreScrobbleIfDue() {
+        guard NavidromeClient.core, let s = song, coreScrobbled != s.id, duration > 30,
+              elapsed >= min(duration * 0.5, 240) else { return }
+        coreScrobbled = s.id
+        let id = s.id, ms = Int(elapsed * 1000)
+        Task { await CoreClient.shared.scrobble(id, listenedMs: ms, completed: false); await HomeStore.shared.refreshPlayed() }
+    }
     private var embyLastProgress: TimeInterval = 0
     private func embyReport(_ e: EmbyClient.PlayEvent, id: String, pos: TimeInterval, paused: Bool) {
         guard NavidromeClient.emby else { return }

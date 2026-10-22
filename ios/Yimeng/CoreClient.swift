@@ -52,9 +52,20 @@ actor CoreClient {
         return i
     }
     func login(username: String, password: String) async throws {
-        struct Body: Encodable { let username: String; let password: String; let deviceName: String }
-        let t: CoreTokens = try await send("POST", "/api/v1/auth/login", body: Body(username: username, password: password, deviceName: Self.deviceName), auth: false)
+        struct Body: Encodable { let username: String; let password: String; let deviceName: String; let deviceType: String }
+        let t: CoreTokens = try await send("POST", "/api/v1/auth/login", body: Body(username: username, password: password, deviceName: Self.deviceName, deviceType: "ios"), auth: false)
         store(t)
+    }
+    /// Pairing code (Core prints it to its log / admin shows it) → device token. Single use, ~5 min.
+    func pair(code: String) async throws {
+        struct Body: Encodable { let code: String; let name: String; let deviceType: String }
+        let t: CoreTokens = try await send("POST", "/api/v1/pair", body: Body(code: code, name: Self.deviceName, deviceType: "ios"), auth: false)
+        store(t)
+    }
+    /// Scrobble: Core history only comes from scrobbles (progress PUT never writes history).
+    func scrobble(_ id: String, listenedMs: Int, completed: Bool) async {
+        struct B: Encodable { let trackId: String; let durationMs: Int; let completed: Bool }
+        try? await fire("POST", "/api/v1/scrobble", body: B(trackId: id, durationMs: listenedMs, completed: completed))
     }
     func restore(access: String, refresh: String) { accessToken = access; refreshToken = refresh; CoreState.token = access }
     func logout() async {
@@ -113,6 +124,13 @@ actor CoreClient {
                       etag: String? = nil) async throws -> (Data, Int, HTTPURLResponse?) {
         var res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag)
         if auth, res.1 == 401, await refresh() { res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag) }
+        if !(200..<300).contains(res.1), res.1 != 304,
+           let j = try? JSONSerialization.jsonObject(with: res.0) as? [String: Any], let code = (j["code"] ?? j["error"]) as? String {
+            let msg = j["message"] as? String ?? ""
+            if res.1 == 401 { throw CoreAPIError(status: 401, code: code, message: auth ? "译梦服务端登录已失效，请重新登录" : (code == "invalid_credentials" ? "用户名或密码错误" : (msg.isEmpty ? "配对码无效或已过期" : msg))) }
+            if res.1 == 429 { throw CoreAPIError(status: 429, code: code, message: "尝试次数过多，请 15 分钟后再试") }
+            throw CoreAPIError(status: res.1, code: code, message: msg)
+        }
         switch res.1 {
         case 200..<300, 304: return res
         case 401: throw NavidromeError.api(auth ? "译梦服务端登录已失效，请重新登录" : "用户名或密码错误")
@@ -167,7 +185,14 @@ actor CoreClient {
     func home() async throws -> CoreHome {
         try await get("/api/v1/home", cache: true)
     }
-    func lyrics(_ trackId: String) async -> CoreLyrics? { try? await get("/api/v1/lyrics/best", query: ["track_id": trackId], cache: true) }
+    func lyrics(_ s: NDSong) async -> CoreLyrics? {
+        var q = ["track_id": s.id, "title": s.title]
+        if !s.artist.isEmpty { q["artist"] = s.artist }
+        if let a = s.album, !a.isEmpty { q["album"] = a }
+        if let d = s.duration { q["duration_ms"] = "\(d * 1000)" }
+        if let i = s.isrc { q["isrc"] = i }
+        return try? await get("/api/v1/lyrics/best", query: q, cache: true)
+    }
     func dream(_ trackId: String) async -> CoreDream? { try? await get("/api/v1/tracks/\(trackId)/dream", cache: true) }
     func charts(origin: String) async throws -> CoreCharts { try await get("/api/v1/charts", query: ["origin": origin], cache: true) }
     func playlists(scope: String) async throws -> [CorePlaylist] {
@@ -179,9 +204,9 @@ actor CoreClient {
         guard !ids.isEmpty, let l: CoreProgressList = try? await get("/api/v1/progress", query: ["ids": ids.joined(separator: ",")]) else { return [:] }
         return Dictionary(l.items.map { ($0.trackId, $0.positionMs) }, uniquingKeysWith: { a, _ in a })
     }
-    func putProgress(_ id: String, ms: Int) async {
-        struct B: Encodable { let positionMs: Int }
-        try? await fire("PUT", "/api/v1/progress/\(Self.path(id))", body: B(positionMs: ms))
+    func putProgress(_ id: String, ms: Int, durationMs: Int? = nil) async {
+        struct B: Encodable { let positionMs: Int; let durationMs: Int?; let updatedAt: String }
+        try? await fire("PUT", "/api/v1/progress/\(Self.path(id))", body: B(positionMs: ms, durationMs: durationMs, updatedAt: ISO8601DateFormatter().string(from: Date())))
     }
     func renamePlaylist(_ id: String, name: String) async throws {
         struct B: Encodable { let name: String }
@@ -193,7 +218,7 @@ actor CoreClient {
     /// nil = platform has no FM (404 not_supported).
     func fm(_ origin: String) async throws -> [CoreTrack]? {
         do { let p: CorePage<CoreTrack> = try await get("/api/v1/online/\(origin)/fm"); return p.items }
-        catch NavidromeError.api(let m) where m.contains("找不到") { return nil }
+        catch let e as CoreAPIError where e.code == "not_supported" || e.code == "not_logged_in" { return nil }
     }
     func fmFeedback(_ origin: String, trackId: String, action: String) async {
         struct B: Encodable { let trackId: String; let action: String }

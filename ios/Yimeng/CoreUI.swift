@@ -171,10 +171,17 @@ final class PlatformStore: ObservableObject {
         let c = CoreClient.shared
         var d: [Daily] = [], r: [(String, [NDPlaylist])] = []
         for p in CoreState.platforms(can: "daily") {
-            if let x = try? await c.daily(p.origin), !x.tracks.isEmpty { d.append(Daily(origin: p.origin, tracks: x.tracks.map(CoreClient.nd), date: x.date)) }
+            if let x = try? await c.daily(p.origin), !x.list.isEmpty { d.append(Daily(origin: p.origin, tracks: x.list.map(CoreClient.nd), date: x.date)) }
         }
-        for p in CoreState.platforms(can: "recommend_playlists") {
-            if let l = try? await c.recommendPlaylists(p.origin), !l.isEmpty { r.append((p.origin, l.map(CoreClient.nd))) }
+        // /home carries the platforms' own recommended playlists (one ETag'd call); fall back per platform.
+        if let h = try? await c.home(), let secs = h.sections {
+            for s in secs where s.id.hasSuffix(".playlists") && s.error == nil {
+                if let o = s.origin, let l = s.playlists, !l.isEmpty { r.append((o, l.map(CoreClient.nd))) }
+            }
+        } else {
+            for p in CoreState.platforms(can: "recommend_playlists") {
+                if let l = try? await c.recommendPlaylists(p.origin), !l.isEmpty { r.append((p.origin, l.map(CoreClient.nd))) }
+            }
         }
         dailies = d; recommend = r
         fmOrigins = CoreState.platforms(can: "fm").map(\.origin)

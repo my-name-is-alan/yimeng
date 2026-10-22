@@ -64,6 +64,7 @@ final class HomeStore: ObservableObject {
         guard !refreshing else { return }
         guard force || Date().timeIntervalSince(data.savedAt) > Self.ttl || data.isEmpty else { await refreshPlayed(); return }
         refreshing = true; defer { refreshing = false }
+        if NavidromeClient.core { await refreshCore(); return }
         let c = NavidromeClient.shared
         async let n = c.albumList(type: "newest", offset: 0, size: 20)
         async let r = c.albumList(type: "recent", offset: 0, size: 20)
@@ -94,6 +95,24 @@ final class HomeStore: ObservableObject {
         let urls = (next.banner.map { lib.coverURL($0, size: 800) } + next.banner.map { lib.coverURL($0, size: 600) }
                     + (next.newest + next.random).prefix(30).map { lib.coverURL($0, size: 300) }).compactMap { $0 }
         for u in urls { _ = try? await CoverCache.shared.fetch(u) }
+    }
+}
+
+extension HomeStore {
+    func clearForServerChange() { data = HomePayload(); try? FileManager.default.removeItem(at: Self.file) }
+    /// 译梦 Core: the whole home in one ETag'd `/home` call (library sections are factual only: added/played/frequent/random).
+    func refreshCore() async {
+        guard let h = try? await CoreClient.shared.home() else { return }
+        var next = HomePayload()
+        next.banner = (h.banner ?? []).prefix(5).map(CoreClient.nd)
+        next.newest = (h.recentlyAdded ?? []).map(CoreClient.nd)
+        next.recent = (h.recentlyPlayed ?? []).map(CoreClient.nd)
+        next.frequent = (h.frequent ?? []).map(CoreClient.nd)
+        next.random = (h.random ?? []).map(CoreClient.nd)
+        next.artists = (h.topArtists ?? []).map(CoreClient.nd)
+        next.playlists = (h.playlists ?? []).map(CoreClient.nd)
+        next.savedAt = Date()
+        withAnimation(.smooth(duration: 0.35)) { data = next }; persist()
     }
 }
 

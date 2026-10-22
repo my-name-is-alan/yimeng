@@ -1,6 +1,6 @@
 import Foundation
 
-// 译梦 Core — draft API models (openapi.yaml pending). Everything optional + lenient so field renames stay local to
+// 译梦 Core API v1.1 models (aligned with core/api/openapi.yaml @ fc189b0). Everything optional + lenient so field renames stay local to
 // this file. Decoded with `.convertFromSnakeCase` (`duration_ms` → `durationMs`).
 
 struct CoreCover: Codable, Hashable, Sendable {
@@ -20,6 +20,17 @@ struct CoreAudio: Codable, Hashable, Sendable {
 struct CoreRef: Codable, Hashable, Sendable { var id: String?; var name: String? }
 
 struct CorePreviewWindow: Codable, Hashable, Sendable { var startMs: Int?; var endMs: Int? }
+/// `preview` is `false`/`true` on online search/list items and `{start_ms,end_ms}` (nullable) on full tracks.
+enum CorePreviewField: Codable, Hashable, Sendable {
+    case flag(Bool), window(CorePreviewWindow)
+    init(from d: Decoder) throws {
+        let c = try d.singleValueContainer()
+        if let b = try? c.decode(Bool.self) { self = .flag(b) } else { self = .window(try c.decode(CorePreviewWindow.self)) }
+    }
+    func encode(to e: Encoder) throws { var c = e.singleValueContainer(); switch self { case .flag(let b): try c.encode(b); case .window(let w): try c.encode(w) } }
+    var window: CorePreviewWindow? { if case .window(let w) = self { return w }; return nil }
+    var isOn: Bool { switch self { case .flag(let b): b; case .window: true } }
+}
 
 /// `artist` may come as a plain string or an object; `artists` as [{id,name}].
 struct CoreTrack: Codable, Hashable, Sendable {
@@ -28,12 +39,19 @@ struct CoreTrack: Codable, Hashable, Sendable {
     var name: String?
     var artist: CoreLoose?
     var artists: [CoreRef]?
+    var artistName: String?
     var album: CoreLoose?
     var albumId: String?
+    var albumTitle: String?
     var origin: String?            // "local" | "netease" | "qq" | "kugou" …
     var playable: Bool?
-    var preview: Bool?
+    /// full | preview | unavailable (online tracks; non-VIP gets the official preview only)
+    var entitlement: String?
+    var preview: CorePreviewField?
     var previewWindow: CorePreviewWindow?
+    var coverUrl: String?
+    var format: String?
+    var playCount: Int?
     var unplayableReason: String?
     var durationMs: Int?
     var hasLyrics: Bool?
@@ -68,9 +86,12 @@ struct CoreAlbum: Codable, Hashable, Sendable {
     var title: String?
     var artist: CoreLoose?
     var artists: [CoreRef]?
+    var artistName: String?
     var year: Int?
     var trackCount: Int?
     var cover: CoreCover?
+    var coverUrl: String?
+    var hasCover: Bool?
     var origin: String?
     var sortLetter: String?
     var tracks: [CoreTrack]?
@@ -90,6 +111,9 @@ struct CorePlaylist: Codable, Hashable, Sendable {
     var name: String
     var trackCount: Int?
     var cover: CoreCover?
+    var coverUrl: String?
+    var subtitle: String?
+    var kind: String?
     var origin: String?
     var owner: String?
     var description: String?
@@ -98,13 +122,16 @@ struct CorePlaylist: Codable, Hashable, Sendable {
 
 struct CorePage<T: Codable & Sendable>: Codable, Sendable {
     var items: [T]
-    var nextCursor: String?
+    var nextCursor: String?        // opaque — passed back unchanged
     var updatedAt: String?
     var total: Int?
 }
 
 struct CoreServerInfo: Codable, Sendable {
+    var serverName: String?
     var name: String?
+    var apiVersion: String?
+    var authenticated: Bool?
     var version: String?
     var features: CoreFlags?
     var platforms: [CorePlatform]?
@@ -113,8 +140,10 @@ struct CoreServerInfo: Codable, Sendable {
 /// account-based picks, passed through and labelled with the platform.
 struct CorePlatform: Codable, Hashable, Sendable {
     var origin: String
+    var name: String?
     var enabled: Bool?
     var loggedIn: Bool?
+    var vip: Bool?
     var nickname: String?
     var capabilities: [String]?
     var active: Bool { (enabled ?? true) && (loggedIn ?? false) }
@@ -132,10 +161,34 @@ struct CoreFlags: Codable, Sendable {
     func has(_ k: String) -> Bool { on.contains(k) }
 }
 
+/// Login / pairing / refresh. Live servers answer either `{access_token, refresh_token, expires_in}` or the
+/// openapi `Session {token, device, user}` (`POST /pair` → `{device, token}`); the ymd_ device token then doubles as
+/// the refresh token for `POST /auth/refresh`.
 struct CoreTokens: Codable, Sendable {
     var accessToken: String
     var refreshToken: String?
     var expiresIn: Int?
+    enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token }
+    init(accessToken: String, refreshToken: String?, expiresIn: Int?) { self.accessToken = accessToken; self.refreshToken = refreshToken; self.expiresIn = expiresIn }
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        let tok = try c.decodeIfPresent(String.self, forKey: .token)
+        guard let a = try c.decodeIfPresent(String.self, forKey: .accessToken) ?? tok else {
+            throw DecodingError.keyNotFound(K.accessToken, .init(codingPath: [], debugDescription: "no access_token/token"))
+        }
+        accessToken = a
+        refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken) ?? tok
+        expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+    }
+    func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: K.self)
+        try c.encode(accessToken, forKey: .accessToken); try c.encodeIfPresent(refreshToken, forKey: .refreshToken); try c.encodeIfPresent(expiresIn, forKey: .expiresIn)
+    }
+}
+/// `{error, code, message}`
+struct CoreAPIError: LocalizedError, Sendable {
+    let status: Int; let code: String; let message: String
+    var errorDescription: String? { message.isEmpty ? code : message }
 }
 
 struct CoreChartsEntry: Codable, Hashable, Sendable { var title: String?; var origins: [String]?; var cover: CoreCover? }
@@ -149,6 +202,21 @@ struct CoreHome: Codable, Sendable {
     var topArtists: [CoreArtist]?
     var playlists: [CorePlaylist]?
     var charts: CoreChartsEntry?
+    var recentlyPlayedTracks: [CoreTrack]?
+    var frequentTracks: [CoreTrack]?
+    var localTracks: Int?
+    var mode: String?
+    /// Per-platform pass-through sections (`{id, title, origin, kind, playlists|tracks, error?}`).
+    var sections: [CoreHomeSection]?
+}
+struct CoreHomeSection: Codable, Sendable {
+    var id: String
+    var title: String?
+    var origin: String?
+    var kind: String?
+    var playlists: [CorePlaylist]?
+    var tracks: [CoreTrack]?
+    var error: String?
 }
 
 struct CoreChart: Codable, Hashable, Sendable {
@@ -158,6 +226,10 @@ struct CoreChart: Codable, Hashable, Sendable {
     var cover: CoreCover?
     var updateFrequency: String?
     var updatedAt: String?
+    var subtitle: String?
+    var description: String?
+    var coverUrl: String?
+    var trackCount: Int?
     var preview: [CoreTrack]?      // top few tracks for the card
 }
 struct CoreCharts: Codable, Sendable { var origins: [String]?; var charts: [CoreChart] }
@@ -188,14 +260,24 @@ struct CoreSearch: Codable, Sendable {
     var albums: [CoreAlbum]?
     var artists: [CoreArtist]?
     var playlists: [CorePlaylist]?
-    var online: [String: [CoreTrack]]?
+    var online: [CoreOnlineGroup]?
 }
+struct CoreOnlineGroup: Codable, Sendable {
+    var origin: String
+    var name: String?
+    var result: CoreOnlineResult?
+    var error: String?
+}
+struct CoreOnlineResult: Codable, Sendable { var tracks: [CoreTrack]?; var albums: [CoreAlbum]?; var playlists: [CorePlaylist]? }
 struct CoreSuggest: Codable, Sendable { var items: [String]? }
 
-struct CoreProgress: Codable, Sendable { var trackId: String; var positionMs: Int }
+struct CoreProgress: Codable, Sendable { var trackId: String; var positionMs: Int; var durationMs: Int?; var finished: Bool? }
 struct CoreProgressList: Codable, Sendable { var items: [CoreProgress] }
 
-struct CoreDaily: Codable, Sendable { var date: String?; var title: String?; var tracks: [CoreTrack]; var cover: CoreCover? }
+struct CoreDaily: Codable, Sendable {
+    var date: String?; var title: String?; var tracks: [CoreTrack]?; var items: [CoreTrack]?; var cover: CoreCover?
+    var list: [CoreTrack] { tracks ?? items ?? [] }
+}
 
 enum CoreOrigin {
     static let all = ["local", "netease", "qq", "kugou"]

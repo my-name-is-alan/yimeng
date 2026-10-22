@@ -240,7 +240,11 @@ final class LibraryStore: ObservableObject {
     func bootstrapCore() async {
         let cfg = SourceStore.shared.config(for: .core)
         let svc = SourceKind.core.keychainService
-        if !cfg.host.isEmpty, let a = Keychain.get(service: svc, account: "access"), !a.isEmpty {
+        var envToken = false
+        #if DEBUG
+        envToken = ProcessInfo.processInfo.environment["YIMENG_CORE_TOKEN"]?.isEmpty == false
+        #endif
+        if !envToken, !cfg.host.isEmpty, let a = Keychain.get(service: svc, account: "access"), !a.isEmpty {
             liveMode = true
             try? await CoreClient.shared.configure(host: cfg.host)
             await CoreClient.shared.restore(access: a, refresh: Keychain.get(service: svc, account: "refresh") ?? "")
@@ -249,6 +253,16 @@ final class LibraryStore: ObservableObject {
         #if DEBUG
         // Sim/dev only: YIMENG_CORE_URL / _USER / _PASSWORD from the launch env (never logged); tokens then live in Keychain.
         let env = ProcessInfo.processInfo.environment
+        if let u = env["YIMENG_CORE_URL"], let t = env["YIMENG_CORE_TOKEN"], !u.isEmpty, !t.isEmpty {
+            if CoreClient.normalize(cfg.host) != CoreClient.normalize(u) { PlayerStore.shared.clear(); HomeStore.shared.clearForServerChange() }
+            // Device token from a pairing done outside the app (never logged); stored in Keychain like a normal login.
+            liveMode = true
+            try? await CoreClient.shared.configure(host: u)
+            await CoreClient.shared.restore(access: t, refresh: t)
+            Keychain.set(t, service: svc, account: "access"); Keychain.set(t, service: svc, account: "refresh")
+            var c = SourceStore.shared.config(for: .core); c.host = u; SourceStore.shared.upsert(c)
+            await finishCore(username: "", host: u); return
+        }
         if let u = env["YIMENG_CORE_URL"], let n = env["YIMENG_CORE_USER"], let p = env["YIMENG_CORE_PASSWORD"], !u.isEmpty, !n.isEmpty {
             liveMode = true; await connectCore(host: u, username: n, password: p); return
         }
@@ -256,11 +270,14 @@ final class LibraryStore: ObservableObject {
         status = "待连接译梦服务端"
     }
     func connectCore(host: String, username: String, password: String) async {
+        // Different Core = different ids: drop the last queue/home so nothing points at the old server.
+        if CoreClient.normalize(SourceStore.shared.config(for: .core).host) != CoreClient.normalize(host) { PlayerStore.shared.clear(); HomeStore.shared.clearForServerChange() }
         loading = true; status = "连接中…"
         defer { loading = false }
         do {
             try await CoreClient.shared.configure(host: host)
-            try await CoreClient.shared.login(username: username, password: password)
+            if username.isEmpty { try await CoreClient.shared.pair(code: password) }   // 配对码
+            else { try await CoreClient.shared.login(username: username, password: password) }
             await finishCore(username: username, host: host)
         } catch { connected = false; status = error.localizedDescription }
     }
@@ -268,7 +285,7 @@ final class LibraryStore: ObservableObject {
         let c = CoreClient.shared
         do {
             let info = try? await c.serverInfo()
-            coreServerName = info?.name ?? "译梦服务端"
+            coreServerName = info?.serverName ?? info?.name ?? "译梦服务端"
             coreBase = await c.snapshot().base
             albums = try await c.albumList(type: "newest", offset: 0, size: 30)
             artists = Array(try await c.artists().prefix(40))

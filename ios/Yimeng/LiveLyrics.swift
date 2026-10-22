@@ -24,7 +24,7 @@ final class LyricsStore: ObservableObject {
     }
     static func fetch(_ s: NDSong) async -> ([CoreLyricLine], String) {
         if NavidromeClient.core {
-            guard let r = await CoreClient.shared.lyrics(s.id) else { return ([], "暂无歌词") }
+            guard let r = await CoreClient.shared.lyrics(s) else { return ([], "暂无歌词") }
             if r.found == false { return ([], r.message ?? "暂无歌词") }
             return (r.lines ?? [], r.message ?? "暂无歌词")
         }

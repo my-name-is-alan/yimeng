@@ -109,7 +109,6 @@ final class CoverCache: @unchecked Sendable {
     static func sized(_ url: URL, points: CGFloat) -> URL {
         let want = Int((points * min(3, UIScreen.main.scale)).rounded(.up))
         let px = buckets.first { $0 >= want } ?? buckets.last!
-        if url.query?.contains("sig=") == true { return url }   // 译梦 Core pre-signed: size may be part of the signature
         guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         var q = c.queryItems ?? []
         q.removeAll { $0.name == "size" }; q.append(URLQueryItem(name: "size", value: "\(px)"))

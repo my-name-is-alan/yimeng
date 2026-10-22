@@ -34,7 +34,7 @@ struct HomeLive: View {
                         }
                         Spacer()
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(banner.isEmpty ? Theme.fg(scheme) : .white)
                     .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
 
                     if !banner.isEmpty {
@@ -150,6 +150,10 @@ struct HomeLive: View {
                 if args[i + 1] == "charts" { state.path.append(.charts) }
                 if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); state.path.append(.yueqian) }
                 if args[i + 1] == "daily", let d = PlatformStore.shared.dailies.first { state.path.append(.trackList(DailyMixCard.spec(d.origin, d.tracks))) }
+                if args[i + 1].hasPrefix("daily-play"), let d = PlatformStore.shared.dailies.first, !d.tracks.isEmpty {
+                    PlayerStore.shared.play(songs: d.tracks, startAt: 0); state.nowPlaying = true
+                    if args[i + 1] == "daily-play-lyrics" { try? await Task.sleep(for: .seconds(1)); state.lyricsMode = true }
+                }
             }
             if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {

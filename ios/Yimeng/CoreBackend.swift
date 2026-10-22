@@ -6,24 +6,28 @@ import Foundation
 extension CoreClient {
     nonisolated static func nd(_ t: CoreTrack) -> NDSong {
         CoreState.remember(t)
-        let artist = t.artists?.compactMap(\.name).joined(separator: " / ").nilIfEmpty ?? t.artist?.name ?? ""
-        var s = NDSong(id: t.id, title: t.title ?? t.name ?? "未知歌曲", artist: artist, album: t.album?.name, albumId: t.albumId ?? t.album?.id,
-                       coverId: t.cover?.url, duration: t.durationMs.map { $0 / 1000 }, track: t.trackNo)
+        let artist = t.artistName?.nilIfEmpty ?? t.artists?.compactMap(\.name).joined(separator: " / ").nilIfEmpty ?? t.artist?.name ?? ""
+        var s = NDSong(id: t.id, title: t.title ?? t.name ?? "未知歌曲", artist: artist, album: t.album?.name ?? t.albumTitle, albumId: t.albumId ?? t.album?.id,
+                       coverId: t.cover?.url ?? t.coverUrl, duration: t.durationMs.map { $0 / 1000 }, track: t.trackNo)
         if let a = t.audio {
             s.suffix = a.codec?.lowercased(); s.samplingRate = a.sampleRate; s.bitDepth = a.bitDepth; s.channelCount = a.channels
             s.bitRate = a.bitrate.map { $0 > 100_000 ? $0 / 1000 : $0 }
         }
-        s.origin = t.origin; s.playable = t.playable; s.preview = t.preview
-        s.previewStartMs = t.previewWindow?.startMs; s.previewEndMs = t.previewWindow?.endMs
+        if s.suffix == nil { s.suffix = t.format?.lowercased() }
+        s.origin = t.origin ?? (t.id.contains(":") ? String(t.id.split(separator: ":")[0]) : "local")
+        s.playable = t.playable.map { $0 && t.entitlement != "unavailable" } ?? (t.entitlement == "unavailable" ? false : nil)
+        s.preview = t.entitlement == "preview" || t.preview == .flag(true) || (t.preview?.window != nil)
+        let w = t.preview?.window ?? t.previewWindow
+        s.previewStartMs = w?.startMs; s.previewEndMs = w?.endMs
         s.unplayableReason = t.unplayableReason; s.sortLetter = t.sortLetter; s.isrc = t.isrc; s.popularity = t.popularity
         s.hasLyrics = t.hasLyrics; s.colors = t.cover?.colors
         return s
     }
     nonisolated static func nd(_ a: CoreAlbum) -> NDAlbum {
         CoreState.remember(cover: a.cover)
-        var x = NDAlbum(id: a.id, name: a.name ?? a.title ?? "未知专辑",
-                        artist: a.artists?.compactMap(\.name).joined(separator: " / ").nilIfEmpty ?? a.artist?.name ?? "",
-                        artistId: a.artists?.first?.id ?? a.artist?.id, coverId: a.cover?.url, year: a.year, songCount: a.trackCount)
+        var x = NDAlbum(id: a.id, name: a.title ?? a.name ?? "未知专辑",
+                        artist: a.artistName?.nilIfEmpty ?? a.artists?.compactMap(\.name).joined(separator: " / ").nilIfEmpty ?? a.artist?.name ?? "",
+                        artistId: a.artists?.first?.id ?? a.artist?.id, coverId: a.cover?.url ?? a.coverUrl ?? (a.hasCover == false ? nil : a.id), year: a.year, songCount: a.trackCount)
         x.sortLetter = a.sortLetter; x.origin = a.origin; x.colors = a.cover?.colors
         return x
     }
@@ -35,22 +39,24 @@ extension CoreClient {
     }
     nonisolated static func nd(_ p: CorePlaylist) -> NDPlaylist {
         CoreState.remember(cover: p.cover)
-        var x = NDPlaylist(id: p.id, name: p.name, songCount: p.trackCount, coverId: p.cover?.url, comment: p.description, owner: p.owner)
+        var x = NDPlaylist(id: p.id, name: p.name, songCount: p.trackCount, coverId: p.cover?.url ?? p.coverUrl, comment: p.description ?? p.subtitle, owner: p.owner)
         x.origin = p.origin
         return x
     }
     private nonisolated static func sort(_ type: String) -> String {
-        switch type { case "newest": "added"; case "recent": "played"; case "frequent": "plays"; case "random": "random"; case "starred": "favorite"; default: "name" }
+        // openapi /albums sort: artist | title | year | added (+ order asc|desc)
+        switch type { case "newest": "added"; case "alphabeticalByArtist": "artist"; case "byYear": "year"; default: "title" }
     }
+    /// /tracks defaults to origin=local — always send it explicitly (全部 → all).
     private func originQ(_ q: [String: String]) -> [String: String] {
-        var q = q; if let o = CoreState.originFilter { q["origin"] = o }; return q
+        var q = q; q["origin"] = CoreState.originFilter ?? "all"; return q
     }
 }
 
 extension CoreClient: LibraryBackend {
     func albums(offset: Int, size: Int) async throws -> [NDAlbum] { try await albumList(type: "alphabeticalByName", offset: offset, size: size) }
     func albumList(type: String, offset: Int, size: Int) async throws -> [NDAlbum] {
-        let p: CorePage<CoreAlbum> = try await page("/api/v1/albums", originQ(["sort": Self.sort(type)]), offset: offset, limit: size)
+        let p: CorePage<CoreAlbum> = try await page("/api/v1/albums", originQ(["sort": Self.sort(type), "order": type == "newest" ? "desc" : "asc"]), offset: offset, limit: size)
         return p.items.map(Self.nd)
     }
     func album(id: String) async throws -> (NDAlbum, [NDSong]) {
@@ -59,7 +65,7 @@ extension CoreClient: LibraryBackend {
     }
     func search(_ q: String, count: Int) async throws -> (albums: [NDAlbum], artists: [NDArtist], songs: [NDSong]) {
         let r = try await searchAll(q, online: true)
-        let online = CoreOrigin.all.flatMap { r.online?[$0] ?? [] } + (r.online?.filter { !CoreOrigin.all.contains($0.key) }.flatMap(\.value) ?? [])
+        let online = (r.online ?? []).flatMap { $0.result?.tracks ?? [] }
         return ((r.albums ?? []).map(Self.nd), (r.artists ?? []).map(Self.nd), ((r.tracks ?? []) + online).prefix(count * 2).map(Self.nd))
     }
     func artists() async throws -> [NDArtist] {
@@ -67,7 +73,7 @@ extension CoreClient: LibraryBackend {
         return p.items.map(Self.nd)
     }
     func songs(offset: Int, count: Int) async throws -> [NDSong] {
-        let p: CorePage<CoreTrack> = try await page("/api/v1/tracks", originQ(["sort": "name"]), offset: offset, limit: count)
+        let p: CorePage<CoreTrack> = try await page("/api/v1/tracks", originQ(["sort": "title"]), offset: offset, limit: count)
         if offset == 0 { lastTrackTotal = p.total }
         return p.items.map(Self.nd)
     }
@@ -75,13 +81,13 @@ extension CoreClient: LibraryBackend {
         let p: CorePage<CoreAlbum> = try await page("/api/v1/artists/\(Self.path(id))/albums", [:], offset: 0, limit: 200); return p.items.map(Self.nd)
     }
     func artistTracks(_ id: String, size: Int) async throws -> [NDSong] {
-        let p: CorePage<CoreTrack> = try await page("/api/v1/artists/\(Self.path(id))/tracks", ["sort": "plays"], offset: 0, limit: size); return p.items.map(Self.nd)
+        let p: CorePage<CoreTrack> = try await page("/api/v1/artists/\(Self.path(id))/tracks", ["sort": "plays", "order": "desc"], offset: 0, limit: size); return p.items.map(Self.nd)
     }
     func genres() async throws -> [NDGenre] { [] }   // not in the draft
     func songsByGenre(_ genre: String, offset: Int, count: Int) async throws -> [NDSong] { [] }
     func songTotal() async -> Int? {
         if let t = lastTrackTotal { return t }
-        let p: CorePage<CoreTrack>? = try? await page("/api/v1/tracks", originQ(["sort": "name"]), offset: 0, limit: 1)
+        let p: CorePage<CoreTrack>? = try? await page("/api/v1/tracks", originQ(["sort": "title"]), offset: 0, limit: 1)
         return p?.total
     }
     func favorites() async throws -> (albums: [NDAlbum], songs: [NDSong], artists: [NDArtist]) {
