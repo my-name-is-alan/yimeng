@@ -329,9 +329,13 @@ paths:
   /api/albums/{id}/cover:
     get:
       tags: [media]
-      summary: Album cover image
+      summary: Album cover image (optional sized thumbnail)
+      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
       security: [{ bearer: [] }, { queryToken: [] }]
-      parameters: [{ $ref: "#/components/parameters/Id" }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
       responses:
         "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -376,9 +380,13 @@ paths:
   /api/tracks/{id}/cover:
     get:
       tags: [media]
-      summary: Track cover (embedded or folder art)
+      summary: Track cover (embedded or folder art) (optional sized thumbnail)
+      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
       security: [{ bearer: [] }, { queryToken: [] }]
-      parameters: [{ $ref: "#/components/parameters/Id" }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
       responses:
         "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
+	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
@@ -68,6 +69,7 @@ type Deps struct {
 	System        *system.Collector
 	Presence      *Presence
 	Admin         AdminLibrary
+	Covers        *covers.Cache
 }
 
 type contextT = context.Context

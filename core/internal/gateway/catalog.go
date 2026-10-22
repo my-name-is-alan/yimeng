@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 )
 
@@ -172,12 +173,36 @@ func (d Deps) search(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) albumCover(w http.ResponseWriter, r *http.Request) {
 	path, err := d.Library.AlbumCover(r.Context(), r.PathValue("id"))
-	d.serveFile(w, r, path, err, "", "private, max-age=86400")
+	d.serveCover(w, r, path, err)
 }
 
 func (d Deps) trackCover(w http.ResponseWriter, r *http.Request) {
 	path, err := d.Library.TrackCover(r.Context(), r.PathValue("id"))
-	d.serveFile(w, r, path, err, "", "private, max-age=86400")
+	d.serveCover(w, r, path, err)
+}
+
+func (d Deps) serveCover(w http.ResponseWriter, r *http.Request, path string, err error) {
+	if err != nil || path == "" || d.Covers == nil {
+		d.serveFile(w, r, path, err, "", "private, max-age=86400")
+		return
+	}
+	q := r.URL.Query()
+	if q.Get("size") == "" && q.Get("format") == "" {
+		d.serveFile(w, r, path, nil, "", "private, max-age=86400")
+		return
+	}
+	size, err := covers.ParseSize(q.Get("size"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_query", err.Error())
+		return
+	}
+	format := q.Get("format")
+	thumb, ct, err := d.Covers.Thumb(path, size, format)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_query", err.Error())
+		return
+	}
+	d.serveFile(w, r, thumb, nil, ct, "private, max-age=604800")
 }
 
 var audioTypes = map[string]string{

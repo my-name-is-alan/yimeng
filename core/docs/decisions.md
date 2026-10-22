@@ -105,3 +105,8 @@ alternative considered. Newest items at the bottom.
 - Album merge moves tracks then deletes source albums; split moves tracks to a
   new/existing album and leaves an empty source (no auto-delete) so a mistaken
   split can be merged back.
+
+## D11 Cover thumbnails
+- Optional `?size=&format=` on cover endpoints. Pure-Go decode (jpeg/png/gif/webp)
+  + Catmull-Rom resize + encode jpeg/webp/png. Cache key includes source
+  path/mtime/size so edits invalidate. Original (no query) still served as-is.

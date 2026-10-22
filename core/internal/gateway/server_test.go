@@ -16,6 +16,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
+	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
@@ -92,6 +93,7 @@ func newEnv(t *testing.T) *env {
 		UserData:  &userdata.Store{DB: d},
 		Playlists: sc,
 		Admin:     sc,
+		Covers:    &covers.Cache{Dir: filepath.Join(tmp, "thumbs")},
 		System: &system.Collector{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Roots: sc.Roots,
 			CacheMaxBytes: 1 << 30, Transcoder: tc, Backup: &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 			LatestScan: sc.Latest, Version: "test", SchemaVersion: db.Latest(migrations.FS), Started: time.Now(),
@@ -284,5 +286,24 @@ func TestCreditsAndEnrich(t *testing.T) {
 	}
 	if res, _ := e.do("GET", "/api/tracks/nope/credits", "", e.token); res.StatusCode != 404 {
 		t.Fatal("404")
+	}
+}
+
+func TestCoverThumbnail(t *testing.T) {
+	e := newEnv(t)
+	flacTrack(t, e)
+	var albums library.Page[library.Album]
+	_, body := e.do("GET", "/api/albums", "", e.token)
+	json.Unmarshal(body, &albums)
+	if albums.Total < 1 {
+		t.Fatal(string(body))
+	}
+	id := albums.Items[0].ID
+	res, body := e.do("GET", "/api/albums/"+id+"/cover?size=64&format=webp", "", e.token)
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "image/webp" || len(body) < 50 {
+		t.Fatalf("%d %s len=%d", res.StatusCode, res.Header.Get("Content-Type"), len(body))
+	}
+	if res, _ := e.do("GET", "/api/albums/"+id+"/cover?size=0", "", e.token); res.StatusCode != 400 {
+		t.Fatal("bad size")
 	}
 }

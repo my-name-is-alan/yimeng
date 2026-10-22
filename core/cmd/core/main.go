@@ -17,6 +17,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
+	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/discovery"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
@@ -219,6 +220,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			UserData:        ud,
 			Playlists:       scanner,
 			Admin:           scanner,
+			Covers:          &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
