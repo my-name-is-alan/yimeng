@@ -126,12 +126,15 @@ struct DoodleLayer: View {
     var intensity: Double = 0.7
     var beat = true
     @State private var drawn: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceEnv
+    private var calm: Bool { YMMotion.calm(reduceEnv) }
 
     var body: some View {
         GeometryReader { g in
-            TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
-                let t = tl.date.timeIntervalSinceReferenceDate
-                let pulse = beat ? 1 + (PlayerStore.shared.hasRealPlayback ? 0.04 * intensity * BeatStore.pulse(serverBPM: track.serverBPM) : 0.025 * intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))) : 1
+            // Reduce Motion: no beat pulse, wobble slowed to a near-still drift, low frame rate.
+            TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 30)) { tl in
+                let t = tl.date.timeIntervalSinceReferenceDate * (calm ? 0.08 : 1)
+                let pulse = (beat && !calm) ? 1 + (PlayerStore.shared.hasRealPlayback ? 0.04 * intensity * BeatStore.pulse(serverBPM: track.serverBPM) : 0.025 * intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))) : 1
                 ZStack {
                     switch ambience {
                     case .doodle:

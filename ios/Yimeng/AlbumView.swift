@@ -331,7 +331,7 @@ struct LibrarySearchView: View {
                         }.frame(height: 52).padding(.horizontal, Theme.margin).motionIn(stagger(i, base: 0.16))
                     }
                     SectionHeader(title: "浏览分类", more: false).motionIn(0.4)
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 16) {
+                    LazyVGrid(columns: YMLayout.grid(), spacing: 16) {
                         ForEach(Array(cats.enumerated()), id: \.offset) { i, x in let (n, c) = x;
                             Text(n).font(.system(size: 16, weight: .bold)).foregroundStyle(.white).padding(12)
                                 .frame(maxWidth: .infinity, minHeight: 96, alignment: .bottomLeading)

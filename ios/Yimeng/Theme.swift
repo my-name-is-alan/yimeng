@@ -3,7 +3,8 @@ import SwiftUI
 enum Theme {
     static let lime = Color(red: 0.784, green: 0.961, blue: 0.259)       // #C8F542
     static let limeLight = Color(red: 0.31, green: 0.42, blue: 0.0)       // #4F6B00
-    static let margin: CGFloat = 20
+    /// Side margin: 20 on iPhone; wider on iPad (set by the iPad content column, see YMLayout).
+    static var margin: CGFloat { YMLayout.margin }
     static func accent(_ s: ColorScheme) -> Color { s == .dark ? lime : limeLight }
     static func base(_ s: ColorScheme) -> Color { s == .dark ? Color(red: 0.039, green: 0.039, blue: 0.047) : .white }
     static func fg(_ s: ColorScheme) -> Color { s == .dark ? .white : Color(white: 0.07) }

@@ -102,7 +102,7 @@ struct HomeView: View {
             }
             .background(alignment: .top) {
                 if liveOnly {
-                    Theme.base(scheme).ignoresSafeArea()
+                    YMBackdrop()
                 } else {
                     DiffusedBackdrop(images: images, progress: p).motionIn(0, from: .fade).ignoresSafeArea()
                 }

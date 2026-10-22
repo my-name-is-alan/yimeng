@@ -94,7 +94,7 @@ struct OptionalSongMenu: ViewModifier {
 
 struct RemoteCover: View {
     let url: URL?
-    var size: CGFloat = 148
+    var size: CGFloat = YMLayout.cover(148)
     var corner: CGFloat = 12
     var body: some View {
         CoverImage(url: url, points: size)

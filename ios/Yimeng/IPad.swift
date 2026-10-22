@@ -92,7 +92,9 @@ extension Shell {
                 .toolbar(.hidden, for: .navigationBar)
         } content: {
             GeometryReader { g in
+                let _ = { YMLayout.pad = true; YMLayout.width = g.size.width }()
                 padRoot
+                    .id(YMLayout.bucket(g.size.width))
                     // Portrait hides the sidebar: keep the floating glass tab bar so every tab stays one tap away.
                     .overlay(alignment: .bottom) { if padPortrait { padTabBar.padding(.horizontal, 16).padding(.bottom, 8) } }
                     .frame(width: g.size.width, height: g.size.height)
@@ -249,7 +251,6 @@ struct PadPlayerColumn: View {
     var body: some View {
         GeometryReader { g in
             ZStack {
-                DreamField(track: state.track).ignoresSafeArea()
                 if player.song == nil {
                     VStack(spacing: 14) {
                         NoteScribble().stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 2.4, lineCap: .round)).frame(width: 60, height: 60)
@@ -258,12 +259,10 @@ struct PadPlayerColumn: View {
                     }.foregroundStyle(.white)
                 } else {
                     let side = min(g.size.width - 64, g.size.height * 0.34, 380)
-                    DoodleLayer(track: state.track, slot: CoverSlot(rect: CGRect(x: (g.size.width - side) / 2, y: 20, width: side, height: side), radius: 18),
-                                ambience: state.ambience == .aurora ? .pure : state.ambience, intensity: state.intensity * 0.7, beat: state.beatSync)
-                        .allowsHitTesting(false)
                     VStack(spacing: 14) {
                         CoverImage(url: state.remoteCoverURL ?? player.coverURL, points: side)
                             .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .anchorPreference(key: PadCoverAnchor.self, value: .bounds) { $0 }
                             .shadow(color: .black.opacity(0.35), radius: 24, y: 16)
                             .modifier(CoverSwipe())
                             .padding(.top, 20)
@@ -290,6 +289,18 @@ struct PadPlayerColumn: View {
                     .foregroundStyle(.white)
                 }
             }
+        }
+        // Doodles are laid out around the cover's measured bounds (same space as the layer), so the frame hugs the art.
+        .backgroundPreferenceValue(PadCoverAnchor.self) { a in
+            GeometryReader { g in
+                ZStack {
+                    DreamField(track: state.track)
+                    if let a, player.song != nil {
+                        DoodleLayer(track: state.track, slot: CoverSlot(rect: g[a], radius: 18),
+                                    ambience: state.ambience == .aurora ? .pure : state.ambience, intensity: state.intensity * 0.7, beat: state.beatSync)
+                    }
+                }.allowsHitTesting(false)
+            }.ignoresSafeArea()
         }
         .toolbar(.hidden, for: .navigationBar)
         .fullScreenCover(isPresented: $state.padFull) { PadFullPlayer().environmentObject(state) }
@@ -457,3 +468,8 @@ enum PadDebug {
     }
 }
 #endif
+
+struct PadCoverAnchor: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? = nil
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) { value = value ?? nextValue() }
+}

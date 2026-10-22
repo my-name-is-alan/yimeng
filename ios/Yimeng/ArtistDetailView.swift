@@ -69,7 +69,7 @@ struct ArtistDetailView: View {
                 if let albums = detail?.albums, !albums.isEmpty {
                     SectionHeader(title: "专辑", more: false)
                     let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
+                    LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
                         ForEach(albums) { a in
                             Button { state.path.append(.ndAlbum(a)) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
@@ -103,7 +103,7 @@ struct ArtistDetailView: View {
             }
         }
         .background(alignment: .top) { CoverBloom(url: heroURL, height: 700).ignoresSafeArea() }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
         .ignoresSafeArea(edges: .top)
         .task(id: artist.id) { await load() }
     }

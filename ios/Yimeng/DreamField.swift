@@ -4,12 +4,14 @@ import SwiftUI
 struct DreamField: View {
     let track: DreamTrack
     var animated = true
+    @Environment(\.accessibilityReduceMotion) private var reduceEnv
     var body: some View {
+        let calm = YMMotion.calm(reduceEnv)
         ZStack {
             track.base
             if #available(iOS 18.0, *) {
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: !animated)) { tl in
-                    let t = Float(tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 600))
+                TimelineView(.animation(minimumInterval: calm ? 1 / 4 : 1 / 30, paused: !animated)) { tl in
+                    let t = Float((tl.date.timeIntervalSinceReferenceDate * (calm ? 0.12 : 1)).truncatingRemainder(dividingBy: 600))
                     MeshGradient(width: 3, height: 3, points: Self.points(t), colors: meshColors)
                 }
             } else {
@@ -23,7 +25,7 @@ struct DreamField: View {
                     }.blur(radius: 70)
                 }
             }
-            if animated && PlayerStore.shared.hasRealPlayback {
+            if animated && !calm && PlayerStore.shared.hasRealPlayback {
                 // Background breathing on the beat (doodles + field only; controls/text never move).
                 TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
                     let p = BeatStore.pulse(serverBPM: track.serverBPM)
@@ -45,5 +47,15 @@ struct DreamField: View {
         return [[0, 0], [0.5, 0], [1, 0],
                 [0, 0.5 + s(1)], [0.5 + s(2), 0.5 + s(3)], [1, 0.5 + s(4)],
                 [0, 1], [0.5 + s(5), 1], [1, 1]]
+    }
+}
+
+/// Reduce Motion (system setting, or `-reduceMotion` in debug builds for screenshots).
+enum YMMotion {
+    static func calm(_ env: Bool) -> Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-reduceMotion") { return true }
+        #endif
+        return env
     }
 }

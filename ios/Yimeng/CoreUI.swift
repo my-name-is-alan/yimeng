@@ -101,7 +101,7 @@ struct ChartsView: View {
                 Color.clear.frame(height: 160)
             }
         }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
         .task {
             let caps = CoreState.platforms(can: "charts").map(\.origin)
             origins = caps.isEmpty ? CoreState.platforms.filter { $0.enabled ?? true }.map(\.origin).filter { $0 != "local" } : caps
@@ -264,6 +264,23 @@ struct PlatformHomeSections: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     var body: some View {
+        if YMLayout.cardColumns > 1 {
+            // iPad: daily picks + FM as a 2–3 column card grid instead of one long iPhone column.
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 20, alignment: .top), count: YMLayout.cardColumns), alignment: .leading, spacing: 4) {
+                ForEach(store.dailies) { d in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false).padding(.horizontal, -Theme.margin)
+                        DailyMixCard(origin: d.origin, songs: d.tracks)
+                    }
+                }
+                ForEach(store.fmOrigins, id: \.self) { o in
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false).padding(.horizontal, -Theme.margin)
+                        FMCard(origin: o)
+                    }.id("fm")
+                }
+            }.padding(.horizontal, Theme.margin)
+        } else {
         ForEach(store.dailies) { d in
             SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false)
             DailyMixCard(origin: d.origin, songs: d.tracks).padding(.horizontal, Theme.margin)
@@ -273,6 +290,7 @@ struct PlatformHomeSections: View {
             SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false)
             FMCard(origin: o).padding(.horizontal, Theme.margin)
         }
+        }
         ForEach(store.recommend, id: \.origin) { r in
             SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -280,8 +298,8 @@ struct PlatformHomeSections: View {
                     ForEach(r.lists) { p in
                         Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: r.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
                             VStack(alignment: .leading, spacing: 6) {
-                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: 140)
-                                Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: 140, alignment: .leading)
+                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: YMLayout.cover(140))
+                                Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: YMLayout.cover(140), alignment: .leading)
                             }
                         }.buttonStyle(.plain)
                     }

@@ -94,7 +94,7 @@ struct HomeLive: View {
                             HStack(spacing: 16) {
                                 ForEach(playlists) { pl in
                                     VStack(alignment: .leading, spacing: 4) {
-                                        PlaylistCover(playlist: pl, size: 132, corner: 12)
+                                        PlaylistCover(playlist: pl, size: YMLayout.cover(132), corner: 12)
                                         Text(pl.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
                                         Text("\(pl.songCount ?? 0) 首").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                                     }
@@ -142,7 +142,7 @@ struct HomeLive: View {
             #endif
             }
         }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
         .refreshable { await home.refresh(force: true) }
         .task {
             await home.refresh()
@@ -200,7 +200,7 @@ struct HomeLive: View {
         if !albums.isEmpty {
             Group {
                 header(title) { state.albumSort = sort; state.librarySeg = .albums; state.tab = .library }
-                RemoteAlbumRow(albums: albums, size: 140)
+                RemoteAlbumRow(albums: albums, size: YMLayout.cover(140))
             }.motionIn(stagger(i))
         }
     }

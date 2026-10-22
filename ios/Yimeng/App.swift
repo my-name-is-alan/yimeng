@@ -73,7 +73,10 @@ final class AppState: ObservableObject {
     func applyDream(_ id: String, _ d: CoreDream) {
         guard track.id == id else { return }
         var t = track
-        if let c = d.colors, c.count >= 2 { t = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: Self.blobs(c), bpm: d.bpm.map { Int($0) } ?? t.bpm, energy: t.energy, genre: t.genre, duration: t.duration, lyrics: t.lyrics) }
+        let st = DreamStyle.decide(id: id, tags: d.tags ?? [], bpm: d.bpm, measured: Self.measured[id])
+        Self.decided[id] = st
+        t = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: (d.colors?.count ?? 0) >= 2 ? Self.blobs(d.colors) : t.blobs,
+                       bpm: d.bpm.map { Int($0) } ?? t.bpm, energy: st.energy, genre: st.genre, duration: t.duration, lyrics: t.lyrics)
         t.serverBPM = d.bpm; t.tags = d.tags ?? []
         track = t
     }
@@ -90,13 +93,37 @@ final class AppState: ObservableObject {
             base: Color(hex: 0x1a1028),
             blobs: Self.blobs(s.colors),
             bpm: 100,
-            energy: 0.45,
-            genre: "navidrome",
+            energy: (Self.decided[s.id] ?? DreamStyle.decide(id: s.id, tags: [], bpm: nil, measured: Self.measured[s.id])).energy,
+            genre: (Self.decided[s.id] ?? DreamStyle.decide(id: s.id, tags: [], bpm: nil, measured: Self.measured[s.id])).genre,
             duration: max(dur, 1),
             lyrics: []
         )
         isPlaying = playing
         trackStart = Date()
+        scheduleMeasure(s.id)
+    }
+    /// Per-track style memory (stable within a session; on-device energy measured once per track).
+    static var decided: [String: (energy: Double, genre: String)] = [:]
+    static var measured: [String: Double] = [:]
+    private var measureTask: Task<Void, Never>?
+    private func scheduleMeasure(_ id: String) {
+        guard Self.measured[id] == nil else { return }
+        measureTask?.cancel()
+        measureTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(9))
+            guard !Task.isCancelled, let self, self.track.id == id else { return }
+            let r = BeatStore.read()
+            guard r.live else { return }
+            Self.measured[id] = r.energy
+            let t = self.track
+            let st = DreamStyle.decide(id: id, tags: t.tags, bpm: t.serverBPM ?? (r.bpm > 0 ? r.bpm : nil), measured: r.energy)
+            Self.decided[id] = st
+            NSLog("[ym] DREAMSTYLE id=%@ e=%.2f bpm=%.0f tags=%@ → energy=%.2f genre=%@", id, r.energy, r.bpm, t.tags.joined(separator: ","), st.energy, st.genre)
+            guard abs(st.energy - t.energy) > 0.01 || st.genre != t.genre else { return }
+            var n = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: t.blobs, bpm: t.bpm, energy: st.energy, genre: st.genre, duration: t.duration, lyrics: t.lyrics)
+            n.serverBPM = t.serverBPM; n.tags = t.tags
+            withAnimation(.easeInOut(duration: 0.8)) { self.track = n }
+        }
     }
 
     init() {
@@ -162,6 +189,7 @@ struct YimengApp: App {
 }
 
 struct Shell: View {
+    @State var glassRects: [CGRect] = []
     @AppStorage("ym.appearance") var padAppearance = 0
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
@@ -220,7 +248,8 @@ struct Shell: View {
 
     @Environment(\.horizontalSizeClass) var hsc
     var phoneTabs: some View {
-        ZStack(alignment: .bottom) {
+        let _ = { YMLayout.pad = false }()
+        return ZStack(alignment: .bottom) {
             Group {
                 switch state.tab {
                 case .home:
@@ -262,6 +291,8 @@ struct Shell: View {
                     .zIndex(2)
             }
         }
+        .coordinateSpace(.named("shell"))
+        .onPreferenceChange(GlassFrameKey.self) { r in if YMGlass.legacy { glassRects = r } }
     }
 
     @ViewBuilder func routeView(_ r: Route) -> some View {
@@ -315,7 +346,7 @@ struct Shell: View {
     var chrome: some View {
         VStack(spacing: 12) {
             if player.hasRealPlayback {
-                MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }.modifier(MiniSwipe())
+                MiniPlayer().glassFrame().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }.modifier(MiniSwipe())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             ZStack(alignment: .bottom) {
@@ -324,7 +355,7 @@ struct Shell: View {
                         if t == .collection { Color.clear.frame(width: 76) } else { tabItem(t) }
                     }
                 }
-                .padding(.horizontal, 4).frame(height: 62).background(GlassCapsule())
+                .padding(.horizontal, 4).frame(height: 62).background(GlassCapsule()).glassFrame()
                 centreButton.offset(y: -18)
             }
         }

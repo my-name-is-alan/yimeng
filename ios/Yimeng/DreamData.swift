@@ -89,3 +89,42 @@ struct SeededRNG: RandomNumberGenerator {
     }
     mutating func d(_ a: Double, _ b: Double) -> Double { Double.random(in: a...b, using: &self) }
 }
+
+// MARK: - Real-playback doodle style (v39): metadata tags first, then the on-device beat/energy analysis. Stable per track.
+
+enum DreamStyle {
+    static let inkWords = ["folk", "acoustic", "jazz", "classical", "piano", "ambient", "lofi", "lo-fi", "new age", "chill",
+                           "民谣", "古风", "爵士", "古典", "钢琴", "轻音乐", "纯音乐", "治愈", "安静", "国风", "器乐"]
+    static let zigWords = ["rock", "metal", "punk", "edm", "electronic", "electro", "dance", "house", "techno", "dubstep", "drum", "hip hop", "hip-hop", "rap", "trap",
+                           "摇滚", "金属", "朋克", "电子", "舞曲", "说唱", "嘻哈", "燃", "热血"]
+    /// Genre class from tags / genre text: "folk" (→ ink), "rock" (→ zig) or nil (no opinion).
+    static func genreClass(_ texts: [String]) -> String? {
+        let t = texts.map { $0.lowercased() }
+        if t.contains(where: { s in zigWords.contains { s.contains($0) } }) { return "rock" }
+        if t.contains(where: { s in inkWords.contains { s.contains($0) } }) { return "folk" }
+        return nil
+    }
+    /// Stable per-track jitter in −0.06…0.06 (same id → same value, across launches).
+    static func jitter(_ id: String) -> Double {
+        let h = id.utf8.reduce(UInt64(1469598103934665603)) { ($0 ^ UInt64($1)) &* 1099511628211 }
+        return Double(h % 1000) / 1000 * 0.12 - 0.06
+    }
+    /// Energy 0…1 from tempo + on-device loudness/onset energy (either may be missing).
+    static func energy(bpm: Double?, measured: Double?, id: String) -> Double {
+        var parts: [Double] = []
+        if let b = bpm, b > 0 { parts.append(max(0, min(1, (b - 70) / 90))) }
+        if let m = measured { parts.append(max(0, min(1, m))) }
+        let base = parts.isEmpty ? 0.45 : parts.reduce(0, +) / Double(parts.count)
+        return max(0, min(1, base + jitter(id)))
+    }
+    /// Decide (energy, genre) for DreamTrack so `motif` yields zig / ink / cloud for real songs.
+    static func decide(id: String, tags: [String], bpm: Double?, measured: Double?) -> (energy: Double, genre: String) {
+        let g = genreClass(tags)
+        var e = energy(bpm: bpm, measured: measured, id: id)
+        if g == "rock" { e = max(e, 0.75) }
+        if g == "folk" { e = min(e, 0.6) }
+        // No metadata opinion: very calm, slow material reads as ink, loud fast as zig (via energy).
+        let genre = g ?? ((e < 0.28 && (bpm ?? 90) < 95) ? "folk" : "pop")
+        return (e, genre)
+    }
+}

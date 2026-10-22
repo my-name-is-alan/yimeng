@@ -53,7 +53,7 @@ struct LibraryView: View {
                 }
             }
         }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
         .onAppear { visited.insert(state.librarySeg) }
         .onChange(of: state.librarySeg) { _, s in visited.insert(s) }
         .task { await cache.open(LibraryView.key(state.librarySeg, sort: state.albumSort), albumSort: state.albumSort) }
@@ -253,12 +253,12 @@ private struct AlbumsGrid: View {
                     EmptyState(kind: .albums)
                 } else {
                     DoodleLoader()
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
+                    LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
                         ForEach(0..<6, id: \.self) { _ in SkeletonTile(size: w) }
                     }.padding(.horizontal, Theme.margin)
                 }
             }
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
+            LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
                 ForEach(Array(albums.enumerated()), id: \.element.id) { i, a in
                     Button { state.path.append(.ndAlbum(a)) } label: {
                         VStack(alignment: .leading, spacing: 6) {

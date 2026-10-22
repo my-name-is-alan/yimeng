@@ -38,7 +38,7 @@ struct CollectionView: View {
                     Text("暂无专辑").foregroundStyle(Theme.secondary(scheme))
                         .padding(.horizontal, Theme.margin).padding(.top, 24)
                 } else {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
+                    LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
                         ForEach(library.albums) { a in
                             Button { state.path.append(.ndAlbum(a)) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
@@ -55,7 +55,7 @@ struct CollectionView: View {
                 Color.clear.frame(height: 170)
             }
         }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
     }
 
     private var dreamBody: some View {
