@@ -125,7 +125,7 @@ export const player = {
         }
         this.skips = 0;
         if (r.entitlement === "preview") toast(`「${t.title}」仅可试听（平台限制）`, "ok", 3500);
-        start(); this.emit("track");
+        start(); this.emit("track"); warmNext();
       }).catch((e) => { if (seq === this.loadSeq) { toast(`无法播放「${t.title}」：${e.message}`, "err"); this.emit("track"); } });
     } else start();
     this.loadLyrics(); this.media(); this.emit("track");
@@ -225,6 +225,17 @@ function maybePreload() {
   const t = player.queue[player.order[p]]; if (!t || t.playable === false || t.entitlement === "unavailable") return;
   preloaded = { pos: p, id: t.id };
   spare.src = streamURL(t.id); spare.load();
+}
+// Perf: resolve the next online track's upstream URL in the background
+// (server keeps it as a lease), so skipping / auto-advance starts without the
+// platform round-trip. Cheap JSON call; no audio is fetched.
+let warmed = "";
+function warmNext() {
+  const p = nextPos(); if (p < 0) return;
+  const t = player.queue[player.order[p]];
+  if (!t || !isOnline(t.id) || t.playable === false || t.entitlement === "unavailable" || warmed === t.id) return;
+  warmed = t.id;
+  setTimeout(() => get(`/online/resolve/${encodeURIComponent(t.id)}`).catch(() => {}), 1500);
 }
 function dropPreload() { preloaded = null; spare.pause(); spare.removeAttribute("src"); }
 // Swap in the preloaded element; false = fall back to a normal load.

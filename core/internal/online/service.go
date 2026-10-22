@@ -2,9 +2,11 @@ package online
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/my-name-is-alan/yimeng/core/internal/search"
+	"hash/fnv"
 	"log/slog"
 	"sort"
 	"strings"
@@ -24,6 +26,8 @@ type LibraryPort interface {
 
 // Service is the platform-neutral facade used by the gateway.
 type Service struct {
+	remembered sync.Map // track id -> rememberMemo (perf: skip rewriting unchanged DTOs)
+
 	Reg   *Registry
 	Lib   LibraryPort
 	Cache *Cache
@@ -152,13 +156,44 @@ func (s *Service) Search(ctx context.Context, q string, limit int, only []string
 // rememberTracks caches track DTOs so later materialization needs no fetch.
 func (s *Service) rememberTracks(ctx context.Context, ts []Track) {
 	s.applyVerdicts(ts)
-	s.recordStatus(ctx, ts)
+	// Perf: listings served from cache repeat the same tracks on every page
+	// view; skip the per-track DB writes when an identical DTO was remembered
+	// recently (rememberFresh), so hot pages stay read-only.
+	now := time.Now()
+	fresh := make([]Track, 0, len(ts))
 	for _, t := range ts {
+		b, err := json.Marshal(t)
+		if err != nil {
+			continue
+		}
+		h := fnv.New64a()
+		h.Write(b)
+		sum := h.Sum64()
+		if v, ok := s.remembered.Load(t.ID); ok {
+			if m := v.(rememberMemo); m.sum == sum && now.Sub(m.at) < rememberFresh {
+				continue
+			}
+		}
+		s.remembered.Store(t.ID, rememberMemo{sum, now})
+		fresh = append(fresh, t)
+	}
+	if len(fresh) == 0 {
+		return
+	}
+	s.recordStatus(ctx, fresh)
+	for _, t := range fresh {
 		o, n, err := split(t.ID)
 		if err == nil {
 			s.Cache.Put(ctx, Key(o, "track", n), t, TTLTrack)
 		}
 	}
+}
+
+const rememberFresh = 10 * time.Minute
+
+type rememberMemo struct {
+	sum uint64
+	at  time.Time
 }
 
 // Tracks returns full track DTOs for full ids (cache first).

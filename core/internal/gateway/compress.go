@@ -71,12 +71,12 @@ func (g *gzWriter) decide(final bool) {
 	if code == 0 {
 		code = http.StatusOK
 	}
+	if !final && len(g.buf) < gzipMin && code == http.StatusOK && h.Get("Content-Encoding") == "" && compressible(h.Get("Content-Type")) {
+		return // keep buffering until we know the body is big enough
+	}
 	ok := code == http.StatusOK && h.Get("Content-Encoding") == "" && h.Get("Content-Range") == "" && compressible(h.Get("Content-Type"))
 	if ok && final && len(g.buf) < gzipMin {
 		ok = false
-	}
-	if !ok && !final && len(g.buf) < gzipMin && compressible(h.Get("Content-Type")) && code == http.StatusOK && h.Get("Content-Encoding") == "" {
-		return // keep buffering
 	}
 	g.decided = true
 	if ok {
