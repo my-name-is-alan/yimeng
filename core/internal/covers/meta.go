@@ -1,7 +1,6 @@
 package covers
 
 import (
-	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -9,7 +8,6 @@ import (
 	"fmt"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/safehttp"
 	"image"
-	"io"
 	"math"
 	"net/http"
 	"os"
@@ -88,50 +86,6 @@ func ETag(path string) string {
 var ErrRemote = errors.New("remote cover unavailable")
 
 var remoteClient = &http.Client{Timeout: 15 * time.Second, Transport: safehttp.Transport()}
-
-// Remote downloads an online cover once into the disk cache (immutable:
-// platform CDN cover URLs are content-addressed) and returns the local path.
-func (c *Cache) Remote(ctx context.Context, url string) (string, error) {
-	url = strings.Replace(url, "http://", "https://", 1)
-	if !strings.HasPrefix(url, "https://") {
-		return "", ErrRemote
-	}
-	h := sha1.Sum([]byte(url))
-	key := hex.EncodeToString(h[:16])
-	out := filepath.Join(c.Dir, "remote", key[:2], key+".img")
-	if _, err := os.Stat(out); err == nil {
-		return out, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", ErrRemote
-	}
-	resp, err := remoteClient.Do(req)
-	if err != nil {
-		return "", ErrRemote
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "image/") {
-		return "", ErrRemote
-	}
-	os.MkdirAll(filepath.Dir(out), 0o755)
-	tmp := fmt.Sprintf("%s.%d.tmp", out, time.Now().UnixNano())
-	f, err := os.Create(tmp)
-	if err != nil {
-		return "", err
-	}
-	n, err := io.Copy(f, io.LimitReader(resp.Body, 12<<20))
-	f.Close()
-	if err != nil || n == 0 || n >= 12<<20 {
-		os.Remove(tmp)
-		return "", ErrRemote
-	}
-	if _, err := decodeFile(tmp); err != nil {
-		os.Remove(tmp)
-		return "", ErrRemote
-	}
-	return out, os.Rename(tmp, out)
-}
 
 // ── blurhash (https://blurha.sh algorithm, own implementation) ───────────
 
@@ -290,11 +244,9 @@ func Palette(img image.Image, n int) []string {
 }
 
 // RemoteCached returns the disk copy of a remote cover if already fetched.
-func (c *Cache) RemoteCached(url string) (string, bool) {
-	url = strings.Replace(url, "http://", "https://", 1)
-	h := sha1.Sum([]byte(url))
-	key := hex.EncodeToString(h[:16])
-	out := filepath.Join(c.Dir, "remote", key[:2], key+".img")
+func (c *Cache) RemoteCached(u string) (string, bool) {
+	u = normURL(u)
+	out := c.remotePath(Key(u))
 	_, err := os.Stat(out)
 	return out, err == nil
 }

@@ -523,3 +523,43 @@ Feishin, play:Sub…) and new apps/scripts that want the richer JSON API.
 
 **Rejected.** Accepting the account login password over Subsonic (MD5 token auth
 would require storing it reversibly); OAuth (too heavy for a home NAS for now).
+
+## D60 — Image cache for album covers and artist pictures
+
+**Context.** Online covers were handed to clients as CDN URLs (each client hit
+NetEase/QQ/Kugou, broke during platform risk control and leaked client IPs), and
+artists only had admin-uploaded pictures.
+
+**Decision.**
+- One disk cache (`<cache>/thumbs`, `covers.Cache`): remote originals are fetched
+  **once** (single-flight), verified (type, ≤12 MiB, ≤10000 px edge / 40 MP, full
+  decode), then 120/300/600/1200 px JPEGs and blurhash/colours are pre-rendered in
+  the background. Local covers use the same sized cache.
+- **LRU** by last access under `YIMENG_IMAGE_CACHE_MB` (default 1024; 0 = unlimited),
+  separate from the platform JSON cache (D44, `YIMENG_ONLINE_CACHE_MB`) because image
+  bytes dwarf metadata and have a different life cycle.
+- **TTL** `YIMENG_IMAGE_CACHE_TTL_HOURS` (default 720 h): expired originals are served
+  immediately and refreshed in the background; a failed refresh keeps the old copy
+  (works through platform risk control).
+- **Fetching is SSRF-safe**: https only, port 443, host allow-list (NetEase, QQ, Kugou,
+  Spotify, Cover Art Archive; `YIMENG_IMAGE_HOSTS` adds more), every redirect hop
+  re-checked, plus the existing safehttp dialer (no private/loopback/link-local IPs
+  after DNS). Cache paths are hashes; keys are validated (`^[0-9a-f]{32}$`).
+- **`GET /api/v1/images/{key}`** serves registered remote images (key = hash of a URL
+  Core itself emitted). It is public — the content is public CDN imagery and only
+  registered allow-listed URLs resolve — so `<img>` tags and Subsonic clients can use
+  it without tokens. Online `cover.url` now points here (`source_url` keeps the CDN URL).
+- **Artist pictures** (`/api/v1/artists/{id}/image`, Subsonic `getCoverArt?id=ar-…`):
+  admin upload → online artist picture (id→URL alias remembered on disk, so it still
+  works when the platform API is rate-limited) → auto-match for local artists via the
+  configured metadata providers (Spotify client credentials, anonymous NetEase/QQ
+  search; **exact normalised name match only**, paced 1 per 1.5 s, retried weekly;
+  `YIMENG_ARTIST_IMAGE_AUTO=false` disables) → newest album cover.
+- Subsonic: `coverArt: ar-<id>` on artists, `artistImageUrl`, new `getArtistInfo2` /
+  `getAlbumInfo2` (biography for online artists; image URLs when a cached remote
+  picture exists).
+- Admin: `/api/settings/cache` now includes `images` stats; `DELETE ?kind=images`
+  clears image files but keeps URL/alias records so images refetch on demand.
+
+**Rejected.** fanart.tv / Last.fm artist images (API keys, ToS); scraping platform
+web pages; caching per account (images are not user data; isolation is unaffected).

@@ -82,3 +82,21 @@ No secrets are recorded here.
 - **Accepted risk.** MD5 token auth is weak by design of Subsonic; recommend apiKey
   to client authors. Legacy `p=ymd_…` device tokens still work for old setups.
 - **Follow-ups.** Per-key rate limits; OAuth device flow for public apps.
+
+## D60 image cache review (2026-10-22)
+
+- **SSRF.** Remote image fetches are https-only on port 443, limited to an allow-list
+  of image CDNs (suffix match on a label boundary, so `music.126.net.evil.com` fails),
+  re-checked on every redirect (max 3), and dialled through safehttp (public IPs only,
+  checked after DNS → no rebinding to LAN/metadata IPs). URLs with userinfo are refused.
+- **Not an open proxy.** `/api/v1/images/{key}` only resolves keys Core registered
+  from platform/metadata responses; the key format is validated, so no path traversal.
+- **Resource limits.** ≤12 MiB per image, Content-Type must be an image type, the
+  decoder checks dimensions before full decode (≤10000 px edge, ≤40 MP, against
+  decompression bombs), downloads time out after 20 s, single-flight prevents
+  stampedes, LRU cap bounds disk use, the public endpoint is rate-limited.
+- **Privacy.** Clients no longer contact platform CDNs directly for cached images.
+  Automatic artist matching sends local artist names to the configured metadata
+  providers (same as manual matching); can be disabled with `YIMENG_ARTIST_IMAGE_AUTO=false`.
+- **Accepted risk.** The image endpoint is unauthenticated; it reveals only public CDN
+  images whose key (URL hash) the requester already knows.

@@ -40,6 +40,8 @@ type envelope struct {
 	LyricsList    *lyricsList     `xml:"lyricsList,omitempty" json:"lyricsList,omitempty"`
 	User          *user           `xml:"user,omitempty" json:"user,omitempty"`
 	PlayQueue     *playQueue      `xml:"playQueue,omitempty" json:"playQueue,omitempty"`
+	ArtistInfo2   *artistInfo     `xml:"artistInfo2,omitempty" json:"artistInfo2,omitempty"`
+	AlbumInfo     *albumInfo      `xml:"albumInfo,omitempty" json:"albumInfo,omitempty"`
 }
 
 type subErr struct {

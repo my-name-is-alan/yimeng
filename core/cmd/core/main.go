@@ -467,29 +467,30 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Auth:     authSvc,
 			Log:      log,
 
-			Backup:         bk,
-			BackupInterval: cfg.Backup.Interval,
-			Alerts:         &secalert.Store{DB: database, Hub: hub},
-			UserData:       ud,
-			Playlists:      scanner,
-			Admin:          scanner,
-			Covers:         &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
-			LyricsFetcher:  lyricsFetcher,
-			Providers:      reg,
-			TrustedProxies: tp,
-			RateLimits:     rl,
-			Subsonic:       sub,
-			Sources:        streamReg,
-			Online:         onlineSvc,
-			OnlineLib:      scanner,
-			Vault:          vlt,
-			LastFM:         lfm,
-			UserEdits:      scanner,
-			LyricsSearch:   lyricsSearch(lrclibSearch, anonSrc),
-			ArtistAliases:  artistAliases,
-			Matcher:        matcher,
-			ServerSettings: rcStore,
-			Logs:           logRing,
+			Backup:          bk,
+			BackupInterval:  cfg.Backup.Interval,
+			Alerts:          &secalert.Store{DB: database, Hub: hub},
+			UserData:        ud,
+			Playlists:       scanner,
+			Admin:           scanner,
+			Covers:          imageCache(cfg.CacheDir),
+			ArtistImageAuto: os.Getenv("YIMENG_ARTIST_IMAGE_AUTO") != "false",
+			LyricsFetcher:   lyricsFetcher,
+			Providers:       reg,
+			TrustedProxies:  tp,
+			RateLimits:      rl,
+			Subsonic:        sub,
+			Sources:         streamReg,
+			Online:          onlineSvc,
+			OnlineLib:       scanner,
+			Vault:           vlt,
+			LastFM:          lfm,
+			UserEdits:       scanner,
+			LyricsSearch:    lyricsSearch(lrclibSearch, anonSrc),
+			ArtistAliases:   artistAliases,
+			Matcher:         matcher,
+			ServerSettings:  rcStore,
+			Logs:            logRing,
 			Runtime: map[string]any{
 				"version": version, "bind": cfg.Bind, "library_roots": cfg.LibraryRoots,
 				"db_path": cfg.DBPath, "cache_dir": cfg.CacheDir, "cache_max_bytes": cfg.CacheMaxBytes,
@@ -589,4 +590,20 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// imageCache builds the D60 image cache: YIMENG_IMAGE_CACHE_MB (default 1024,
+// 0 = unlimited), YIMENG_IMAGE_CACHE_TTL_HOURS (default 720 = 30 days),
+// YIMENG_IMAGE_HOSTS (extra allow-listed CDN hosts, comma-separated).
+func imageCache(cacheDir string) *covers.Cache {
+	mb, ttl := int64(1024), 720
+	if v, err := strconv.ParseInt(os.Getenv("YIMENG_IMAGE_CACHE_MB"), 10, 64); err == nil && v >= 0 {
+		mb = v
+	}
+	if v, err := strconv.Atoi(os.Getenv("YIMENG_IMAGE_CACHE_TTL_HOURS")); err == nil && v > 0 {
+		ttl = v
+	}
+	hosts := append([]string{}, covers.DefaultHosts...)
+	hosts = append(hosts, splitList(os.Getenv("YIMENG_IMAGE_HOSTS"))...)
+	return &covers.Cache{Dir: filepath.Join(cacheDir, "thumbs"), MaxBytes: mb << 20, TTL: time.Duration(ttl) * time.Hour, AllowHosts: hosts}
 }

@@ -277,7 +277,8 @@ export async function settings(main) {
   const ro = (k, v) => [k, v ?? "—"];
   const liveSec = srv ? serverSettingsSec(sec, srv, reload) : null;
   const cacheStats = admin ? await get("/settings/cache").catch(() => null) : null;
-  const cacheSec = cacheStats ? platformCacheSec(sec, cacheStats, reload) : "";
+  const cacheSec = cacheStats && cacheStats.kinds ? platformCacheSec(sec, cacheStats, reload) : "";
+  const imgSec = cacheStats?.images ? imageCacheSec(sec, cacheStats.images, reload) : "";
   const scanSec = sec("启动配置", "以下为 Core 启动时的配置（来自配置文件 / 环境变量），修改后需重启 Core 生效。" + (srv ? "文件监听、定时重扫、MusicBrainz 与后台补全已移到上方「运行设置」，即时生效。" : ""), kv([
     ...(srv ? [] : [ro("文件监听", h("span", null, bool(rt.watch_mode && rt.watch_mode !== "off", rt.watch_mode || "auto"), " 防抖 ", rt.watch_debounce)),
     ro("定时重扫", rt.rescan_interval === "0s" ? "关闭" : rt.rescan_interval)]), ro("启动时扫描", bool(rt.scan_on_start)),
@@ -383,7 +384,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, imgSec, tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";
@@ -454,6 +455,25 @@ function platformCacheSec(sec, st, reload) {
     ...rows,
     h("div", { class: "row", style: { marginTop: "12px" } }, h("span", { class: "dim mono" }, "上限：YIMENG_ONLINE_CACHE_MB"), h("span", { class: "spacer" }),
       h("button", { class: "btn sm", disabled: !st.entries, onclick: () => clear() }, icon("trash"), "清除全部")));
+}
+
+// Image cache (D60): album covers + artist pictures, LRU under a size cap.
+function imageCacheSec(sec, st, reload) {
+  const pct = st.max_bytes ? Math.min(100, Math.round((st.bytes / st.max_bytes) * 100)) : 0;
+  const bar = h("div", { class: "meter", role: "img", "aria-label": `已用 ${pct}%`, style: { height: "8px", borderRadius: "999px", background: "var(--fill)", overflow: "hidden", margin: "4px 0 10px" } },
+    h("i", { style: { display: "block", height: "100%", width: `${pct}%`, background: "var(--accent)" } }));
+  const clear = async () => {
+    if (!(await confirmDlg("清除图片缓存？", "专辑封面和艺人图片会在下次访问时重新下载并生成各尺寸。已记住的图片地址会保留。", "清除", true))) return;
+    try { const r = await del("/settings/cache?kind=images"); toast(`已清除 ${fmtNum(r.deleted)} 个文件`); reload(); } catch (e) { errToast(e); }
+  };
+  return sec("图片缓存", "专辑封面与艺人图片（本地、网易云 / QQ / 酷狗、Spotify 等元数据来源）只下载一次，保存原图并生成 120/300/600/1200 尺寸和模糊占位色；超过上限按最近最少使用淘汰；平台风控时继续使用缓存。",
+    kv([["占用", `${fmtBytes(st.bytes)} / ${st.max_bytes ? fmtBytes(st.max_bytes) : "不限"}`], ["文件 / 原图", `${fmtNum(st.files)} / ${fmtNum(st.originals)}`],
+      ["命中率（本次启动）", st.hits + st.misses ? `${Math.round(st.hit_rate * 100)}%（${fmtNum(st.hits)} / ${fmtNum(st.hits + st.misses)}）` : "—"],
+      ["下载 / 失败", `${fmtNum(st.fetches)} / ${fmtNum(st.fetch_errors)}`], ["过期后台刷新 / 用旧图兜底", `${fmtNum(st.refreshes)} / ${fmtNum(st.stale_served)}`],
+      ["LRU 淘汰", fmtNum(st.evictions)], ["刷新周期", st.ttl_hours ? `${Math.round(st.ttl_hours / 24)} 天` : "—"]]),
+    st.max_bytes ? bar : "",
+    h("div", { class: "row", style: { marginTop: "4px" } }, h("span", { class: "dim mono" }, "YIMENG_IMAGE_CACHE_MB · YIMENG_IMAGE_CACHE_TTL_HOURS"), h("span", { class: "spacer" }),
+      h("button", { class: "btn sm", disabled: !st.files, onclick: clear }, icon("trash"), "清除图片缓存")));
 }
 
 function serverSettingsSec(sec, srv, reload) {

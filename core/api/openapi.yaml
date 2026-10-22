@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.18.0
+  version: 0.19.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -1114,9 +1114,18 @@ paths:
   /api/v1/artists/{id}/image:
     get:
       tags: [catalog]
-      summary: Artist image chosen by an admin (JPEG/PNG/WebP)
-      description: "`?token=` is accepted (for <img>). 404 when none is set."
-      parameters: [{ $ref: "#/components/parameters/Id" }]
+      summary: Artist image (local or online artist), served from the image cache (D60)
+      description: |
+        Resolution order: image uploaded by an admin → online artist picture
+        (NetEase/QQ/Kugou; remembered so it still works during platform risk
+        control) → picture auto-matched from metadata providers (exact name match
+        only, background, `YIMENG_ARTIST_IMAGE_AUTO=false` disables) → the artist's
+        newest album cover. `?access_token=` / signed URLs are accepted (for <img>).
+        404 when nothing is available.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048 }, description: "Long edge in px; 120/300/600/1200 are pre-rendered" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png] } }
       responses:
         "200": { description: Image bytes, content: { image/*: { schema: { type: string, format: binary } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1168,20 +1177,25 @@ paths:
 
   /api/v1/settings/cache:
     get:
-      summary: Platform cache stats (admin)
+      summary: Platform cache stats plus image cache stats (admin)
       tags: [settings]
       responses:
         "200":
-          description: Stats
+          description: Stats (platform cache fields at top level, image cache under `images`)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/CacheStats" }
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/CacheStats" }
+                  - type: object
+                    properties:
+                      images: { $ref: "#/components/schemas/ImageCacheStats" }
     delete:
-      summary: Clear platform cache entries (admin)
+      summary: Clear platform cache entries, or the image cache with kind=images (admin)
       tags: [settings]
       parameters:
         - { name: origin, in: query, schema: { type: string }, description: "netease|qq|kugou… (empty = all)" }
-        - { name: kind, in: query, schema: { type: string }, description: "charts|playlist|album|… (empty = all)" }
+        - { name: kind, in: query, schema: { type: string }, description: "charts|playlist|album|… (empty = all); `images` clears cached covers/artist pictures (URL records are kept, images re-download on demand)" }
       responses:
         "200":
           description: Deleted count
@@ -1699,7 +1713,10 @@ paths:
         getIndexes, getArtists, getArtist, getAlbum, getSong, getAlbumList2 (getAlbumList),
         search3 (search2), getPlaylists, getPlaylist, createPlaylist, updatePlaylist,
         deletePlaylist, star, unstar, getStarred2 (getStarred), scrobble, stream, download,
-        getCoverArt, getLyrics, getLyricsBySongId, getUser, savePlayQueue, getPlayQueue.
+        getCoverArt (album, track and `ar-<artist id>`), getArtistInfo2 (getArtistInfo),
+        getAlbumInfo2 (getAlbumInfo), getLyrics, getLyricsBySongId, getUser, savePlayQueue, getPlayQueue.
+        Artists carry `coverArt: ar-<id>`; `artistImageUrl` / `*ImageUrl` are absolute
+        `/api/v1/images/{key}` URLs when a cached remote picture exists.
 
         Auth (one of):
         - `apiKey=yk_…` (extension apiKeyAuthentication; sending `u` too → error 43, bad key → 44)
@@ -2174,6 +2191,27 @@ paths:
         - { name: q, in: query, required: true, schema: { type: string } }
       responses:
         "200": { description: "{q, items:[string]}" }
+  /api/v1/images/{key}:
+    get:
+      tags: [media]
+      security: []
+      summary: Cached remote image (album cover / artist picture) by key (D60)
+      description: |
+        `key` is a hash of a CDN URL that Core itself returned (e.g. `cover.url` of
+        online tracks/playlists, Subsonic `artistImageUrl`). Only allow-listed image
+        hosts (NetEase, QQ, Kugou, Spotify, Cover Art Archive + `YIMENG_IMAGE_HOSTS`)
+        are fetched; it is not an open proxy. Public (no token) because the content is
+        public CDN imagery; rate limits apply. Fetched once, kept on disk (LRU, cap
+        `YIMENG_IMAGE_CACHE_MB`, refresh after `YIMENG_IMAGE_CACHE_TTL_HOURS`), and
+        served from cache when the platform is unreachable.
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}$" } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048 }, description: "120/300/600/1200 are pre-rendered" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png] } }
+      responses:
+        "200": { description: Image, headers: { ETag: { schema: { type: string } } }, content: { image/*: { schema: { type: string, format: binary } } } }
+        "304": { description: Not modified }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/covers/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
@@ -2460,7 +2498,8 @@ components:
     CoverRef:
       type: object
       properties:
-        url: { type: string, description: "Signed /api/v1/covers/{id} URL; append &size=120|300|600|1200" }
+        url: { type: string, description: "Signed /api/v1/covers/{id} URL; append &size=120|300|600|1200. For online items (D60): /api/v1/images/{key} (append ?size=) when the CDN host is allow-listed, else the CDN URL." }
+        source_url: { type: string, description: "Online items only: the original CDN URL (D60)" }
         blurhash: { type: string, nullable: true }
         colors: { type: array, items: { type: string } }
     ListEnvelope:
@@ -2539,6 +2578,22 @@ components:
     ArtistImageCandidate:
       type: object
       properties: { provider: { type: string }, external_id: { type: string }, name: { type: string }, image_url: { type: string }, followers: { type: integer }, score: { type: number } }
+    ImageCacheStats:
+      type: object
+      properties:
+        files: { type: integer }
+        bytes: { type: integer }
+        max_bytes: { type: integer, description: "0 = unlimited" }
+        originals: { type: integer, description: "Downloaded originals" }
+        hits: { type: integer }
+        misses: { type: integer }
+        fetches: { type: integer }
+        fetch_errors: { type: integer }
+        stale_served: { type: integer, description: "Expired copies served while refreshing" }
+        refreshes: { type: integer }
+        evictions: { type: integer }
+        hit_rate: { type: number }
+        ttl_hours: { type: integer }
     CacheStats:
       type: object
       properties:

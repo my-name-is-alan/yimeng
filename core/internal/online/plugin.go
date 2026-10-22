@@ -155,9 +155,10 @@ type Track struct {
 
 // CoverRef mirrors library.CoverRef (url + blurhash + colours).
 type CoverRef struct {
-	URL      string   `json:"url"`
-	Blurhash string   `json:"blurhash,omitempty"`
-	Colors   []string `json:"colors,omitempty"`
+	URL       string   `json:"url"`                  // Core image-cache URL (/api/v1/images/…) when the host is allow-listed, else the CDN URL
+	SourceURL string   `json:"source_url,omitempty"` // original CDN URL (D60)
+	Blurhash  string   `json:"blurhash,omitempty"`
+	Colors    []string `json:"colors,omitempty"`
 }
 
 type Album struct {

@@ -10,11 +10,13 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
@@ -28,8 +30,16 @@ const (
 var allowed = map[string]bool{"jpeg": true, "jpg": true, "webp": true, "png": true}
 
 type Cache struct {
-	Dir string
-	mu  sync.Mutex
+	Dir        string
+	MaxBytes   int64         // LRU cap for the whole cache dir (0 = unlimited)
+	TTL        time.Duration // remote images older than this are refreshed in the background
+	AllowHosts []string      // remote image hosts (suffix match); empty = DefaultHosts
+	Client     *http.Client  // optional (tests); default is the SSRF-guarded client
+	AnyPort    bool          // tests only: allow non-443 ports
+
+	mu     sync.Mutex
+	stOnce sync.Once
+	state  *state
 }
 
 // Thumb returns a resized cover. size is the long edge in pixels (1..2048);
@@ -59,8 +69,11 @@ func (c *Cache) Thumb(src string, size int, format string) (path, contentType st
 	dir := filepath.Join(c.Dir, key[:2])
 	out := filepath.Join(dir, key+"."+fileExt(format))
 	if _, err := os.Stat(out); err == nil {
+		c.st().c.hits.Add(1)
+		c.touch(out)
 		return out, mimeOf(format), nil
 	}
+	c.st().c.misses.Add(1)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, err := os.Stat(out); err == nil {
@@ -89,6 +102,8 @@ func (c *Cache) Thumb(src string, size int, format string) (path, contentType st
 		os.Remove(tmp)
 		return "", "", err
 	}
+	c.noteWrite(out)
+	go c.evictIfNeeded()
 	return out, mimeOf(format), nil
 }
 

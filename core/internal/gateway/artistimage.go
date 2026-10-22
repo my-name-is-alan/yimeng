@@ -15,11 +15,6 @@ import (
 // MusicBrainz when it has one). Stored like uploaded album covers
 // (artist_images), so images survive rescans. Local artists only.
 
-func (d Deps) artistImage(w http.ResponseWriter, r *http.Request) {
-	path, err := d.UserEdits.ArtistImage(r.Context(), r.PathValue("id"))
-	d.serveCover(w, r, path, err)
-}
-
 func (d Deps) putArtistImage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !d.requireLocal(w, r, "artist", id) {

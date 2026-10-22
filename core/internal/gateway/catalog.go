@@ -196,6 +196,9 @@ func (d Deps) getArtist(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
+		one := []library.Artist{a}
+		d.decorateArtists(ctx, one) // image_url + cover (D60)
+		a = one[0]
 		al, err := d.Library.ListAlbums(ctx, library.ListParams{ArtistID: a.ID, Sort: "year", Limit: 200})
 		if err != nil {
 			return nil, err
@@ -260,7 +263,13 @@ func (d Deps) trackCover(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) serveCover(w http.ResponseWriter, r *http.Request, path string, err error) {
 	if err == nil && (strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "http://")) {
-		// online covers live on the platform CDN
+		// online covers: served from the image cache (D60); CDN redirect only as a last resort
+		if d.Covers != nil {
+			if lp, rerr := d.Covers.Remote(r.Context(), path); rerr == nil {
+				d.serveSized(w, r, lp)
+				return
+			}
+		}
 		w.Header().Set("Cache-Control", "private, max-age=86400")
 		http.Redirect(w, r, strings.Replace(path, "http://", "https://", 1), http.StatusFound)
 		return

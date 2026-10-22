@@ -10,7 +10,9 @@ const extHref = (kind, id) => { const i = id.indexOf(":"); return `#/online/${id
 export const albumHref = (id) => ext(id) ? extHref("album", id) : `#/album/${id}`;
 export const artistHref = (id) => ext(id) ? extHref("artist", id) : `#/artist/${id}`;
 const netImg = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
-export const trackArt = (t, size = 80) => t.cover_url ? netImg(t.cover_url, size) : t.album_id ? coverURL(t.album_id, size) : "";
+const PRESET = [120, 300, 600, 1200];
+const cached = (u, s) => `${u}?size=${PRESET.find((p) => p >= s * (window.devicePixelRatio || 1)) || 1200}`;
+export const trackArt = (t, size = 80) => t.cover?.url?.startsWith("/api/v1/images/") ? cached(t.cover.url, size) : t.cover_url ? netImg(t.cover_url, size) : t.album_id ? coverURL(t.album_id, size) : "";
 // 试听 = small lime outlined pill (designer spec); unplayable rows are dimmed
 // instead of badged, and explain themselves on tap.
 export function playBadge(t) {

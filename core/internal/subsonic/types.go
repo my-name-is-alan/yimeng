@@ -19,11 +19,28 @@ type indexes struct {
 	Index []artistIndex `xml:"index" json:"index"`
 }
 type artist struct {
-	ID         string `xml:"id,attr" json:"id"`
-	Name       string `xml:"name,attr" json:"name"`
-	AlbumCount int    `xml:"albumCount,attr,omitempty" json:"albumCount,omitempty"`
-	CoverArt   string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
-	Starred    string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+	ID             string `xml:"id,attr" json:"id"`
+	Name           string `xml:"name,attr" json:"name"`
+	AlbumCount     int    `xml:"albumCount,attr,omitempty" json:"albumCount,omitempty"`
+	CoverArt       string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	Starred        string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+	ArtistImageURL string `xml:"artistImageUrl,attr,omitempty" json:"artistImageUrl,omitempty"`
+}
+
+type artistInfo struct {
+	Biography      string `xml:"biography,omitempty" json:"biography,omitempty"`
+	MusicBrainzID  string `xml:"musicBrainzId,omitempty" json:"musicBrainzId,omitempty"`
+	SmallImageURL  string `xml:"smallImageUrl,omitempty" json:"smallImageUrl,omitempty"`
+	MediumImageURL string `xml:"mediumImageUrl,omitempty" json:"mediumImageUrl,omitempty"`
+	LargeImageURL  string `xml:"largeImageUrl,omitempty" json:"largeImageUrl,omitempty"`
+}
+
+type albumInfo struct {
+	Notes          string `xml:"notes,omitempty" json:"notes,omitempty"`
+	MusicBrainzID  string `xml:"musicBrainzId,omitempty" json:"musicBrainzId,omitempty"`
+	SmallImageURL  string `xml:"smallImageUrl,omitempty" json:"smallImageUrl,omitempty"`
+	MediumImageURL string `xml:"mediumImageUrl,omitempty" json:"mediumImageUrl,omitempty"`
+	LargeImageURL  string `xml:"largeImageUrl,omitempty" json:"largeImageUrl,omitempty"`
 }
 
 type artistDetail struct {

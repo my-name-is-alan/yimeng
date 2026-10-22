@@ -227,6 +227,9 @@ func (d Deps) onlineCover(u string) *online.CoverRef {
 	if d.Covers == nil {
 		return ref
 	}
+	if cu := d.imageURL(u); cu != "" {
+		ref.URL, ref.SourceURL = cu, strings.Replace(u, "http://", "https://", 1) // D60: served from Core's cache
+	}
 	if lp, ok := d.Covers.RemoteCached(u); ok {
 		if m, ok := d.Covers.MetaCached(lp); ok {
 			ref.Blurhash, ref.Colors = m.Blurhash, m.Colors

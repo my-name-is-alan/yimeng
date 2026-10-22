@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
@@ -85,7 +86,12 @@ func (h *Handler) getArtist(w http.ResponseWriter, r *http.Request, _ auth.Devic
 		writeErr(w, r, 0, "internal error")
 		return
 	}
-	det := &artistDetail{artist: artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount}}
+	det := &artistDetail{artist: artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, CoverArt: "ar-" + a.ID}}
+	if h.ArtistInfo != nil {
+		if _, img := h.ArtistInfo(r.Context(), a.ID); img != "" {
+			det.ArtistImageURL = absURL(r, img, 600)
+		}
+	}
 	for _, x := range al.Items {
 		det.Album = append(det.Album, mapAlbum(x))
 	}
@@ -262,7 +268,7 @@ func (h *Handler) getStarred2(w http.ResponseWriter, r *http.Request, _ auth.Dev
 	if favs, err := h.UserData.Favorites(ctx, "artist", 500, 0); err == nil {
 		for _, f := range favs {
 			if a, err := h.Library.GetArtist(ctx, f.ID); err == nil {
-				out.Artist = append(out.Artist, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, Starred: f.CreatedAt.UTC().Format(time.RFC3339)})
+				out.Artist = append(out.Artist, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, CoverArt: "ar-" + a.ID, Starred: f.CreatedAt.UTC().Format(time.RFC3339)})
 			}
 		}
 	}
@@ -428,4 +434,49 @@ func truncate(s string, n int) string {
 		return s[:n]
 	}
 	return s
+}
+
+// absURL turns a public image-cache path into an absolute URL for clients.
+func absURL(r *http.Request, path string, size int) string {
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host + path + "?size=" + strconv.Itoa(size)
+}
+
+func (h *Handler) getArtistInfo2(w http.ResponseWriter, r *http.Request, _ auth.Device) {
+	id := strings.TrimPrefix(r.URL.Query().Get("id"), "ar-")
+	a, err := h.Library.GetArtist(r.Context(), id)
+	if err != nil {
+		writeErr(w, r, 70, "artist not found")
+		return
+	}
+	info := &artistInfo{MusicBrainzID: a.MBID}
+	if h.ArtistInfo != nil {
+		bio, img := h.ArtistInfo(r.Context(), a.ID)
+		info.Biography = bio
+		if img != "" {
+			info.SmallImageURL, info.MediumImageURL, info.LargeImageURL = absURL(r, img, 120), absURL(r, img, 300), absURL(r, img, 1200)
+		}
+	}
+	writeOK(w, r, h.Version, func(e *envelope) { e.ArtistInfo2 = info })
+}
+
+func (h *Handler) getAlbumInfo2(w http.ResponseWriter, r *http.Request, _ auth.Device) {
+	id := strings.TrimPrefix(r.URL.Query().Get("id"), "al-")
+	a, err := h.Library.GetAlbum(r.Context(), id)
+	if err != nil {
+		writeErr(w, r, 70, "album not found")
+		return
+	}
+	info := &albumInfo{MusicBrainzID: a.MBReleaseID}
+	if h.AlbumImage != nil {
+		notes, img := h.AlbumImage(r.Context(), a.ID)
+		info.Notes = notes
+		if img != "" {
+			info.SmallImageURL, info.MediumImageURL, info.LargeImageURL = absURL(r, img, 120), absURL(r, img, 300), absURL(r, img, 1200)
+		}
+	}
+	writeOK(w, r, h.Version, func(e *envelope) { e.AlbumInfo = info })
 }

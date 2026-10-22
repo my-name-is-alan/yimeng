@@ -48,7 +48,10 @@ type Handler struct {
 	Decorate   func(context.Context, []library.Track) // fills Entitlement on online tracks
 	ClientIP   func(*http.Request) string
 	OnAuthFail func(ctx context.Context, user, ip string, locked bool)
-	Cover      func(w http.ResponseWriter, r *http.Request, kind, id string) // kind album|track; gateway cover serving (remote CDN, sizes)
+	Cover      func(w http.ResponseWriter, r *http.Request, kind, id string) // kind album|track|artist; gateway cover serving (image cache, sizes)
+	// D60: public image-cache path ("/api/v1/images/…") and biography for an artist / album, "" if none.
+	ArtistInfo func(ctx context.Context, id string) (bio, imagePath string)
+	AlbumImage func(ctx context.Context, id string) (notes, imagePath string)
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
@@ -67,6 +70,10 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	add("getIndexes", R, h.getIndexes)
 	add("getArtists", R, h.getArtists)
 	add("getArtist", R, h.getArtist)
+	add("getArtistInfo2", R, h.getArtistInfo2)
+	add("getArtistInfo", R, h.getArtistInfo2)
+	add("getAlbumInfo2", R, h.getAlbumInfo2)
+	add("getAlbumInfo", R, h.getAlbumInfo2)
 	add("getAlbumList2", R, h.getAlbumList2)
 	add("getAlbumList", R, h.getAlbumList2)
 	add("getAlbum", R, h.getAlbum)
@@ -251,7 +258,7 @@ func (h *Handler) search3(w http.ResponseWriter, r *http.Request, _ auth.Device)
 	tr, _ := h.Library.ListTracks(ctx, library.ListParams{Q: q, Limit: nSong})
 	res := &searchResult3{}
 	for _, a := range ar.Items {
-		res.Artist = append(res.Artist, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount})
+		res.Artist = append(res.Artist, artist{ID: a.ID, Name: a.Name, AlbumCount: a.AlbumCount, CoverArt: "ar-" + a.ID})
 	}
 	for _, a := range al.Items {
 		res.Album = append(res.Album, mapAlbum(a))
@@ -345,9 +352,11 @@ func (h *Handler) getLyrics(w http.ResponseWriter, r *http.Request, _ auth.Devic
 
 func (h *Handler) getCoverArt(w http.ResponseWriter, r *http.Request, _ auth.Device) {
 	id := r.URL.Query().Get("id")
-	if h.Cover != nil && !strings.HasPrefix(id, "ar-") && id != "" {
+	if h.Cover != nil && id != "" {
 		kind, raw := "album", id
 		switch {
+		case strings.HasPrefix(id, "ar-"):
+			kind, raw = "artist", strings.TrimPrefix(id, "ar-")
 		case strings.HasPrefix(id, "al-"):
 			raw = strings.TrimPrefix(id, "al-")
 		case strings.HasPrefix(id, "tr-"):

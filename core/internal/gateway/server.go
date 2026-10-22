@@ -103,8 +103,9 @@ type Deps struct {
 	LyricsSearch LyricsSearcher
 	// ArtistAliases resolves other names of an artist (MusicBrainz), used by
 	// the lyrics scorer; optional.
-	ArtistAliases func(ctx context.Context, name string) []string
-	Matcher       metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
+	ArtistAliases   func(ctx context.Context, name string) []string
+	ArtistImageAuto bool                      // D60: auto-match pictures for local artists (exact name only)
+	Matcher         metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
 	// ServerSettings are runtime-editable server settings (watcher, rescan, MusicBrainz, background fill).
 	ServerSettings *runtimecfg.Store
 	Logs           *logging.Ring
@@ -195,8 +196,9 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/artists/{id}/albums", d.artistAlbums)
 	mux.HandleFunc("GET /api/artists/{id}/tracks", d.artistTracks)
 	mux.HandleFunc("GET /api/artists/{id}", d.getArtist)
+	mux.HandleFunc("GET /api/artists/{id}/image", d.artistImage)
+	mux.HandleFunc("GET /api/images/{key}", d.imageByKey)
 	if d.UserEdits != nil {
-		mux.HandleFunc("GET /api/artists/{id}/image", d.artistImage)
 		mux.HandleFunc("PUT /api/artists/{id}/image", d.adminOnly(d.putArtistImage))
 		mux.HandleFunc("DELETE /api/artists/{id}/image", d.adminOnly(d.deleteArtistImage))
 		mux.HandleFunc("GET /api/artists/{id}/image/candidates", d.adminOnly(d.artistImageCandidates))
@@ -260,8 +262,8 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/settings/library-roots", d.adminOnly(d.getRoots))
 		mux.HandleFunc("GET /api/settings/server", d.adminOnly(d.getServerSettings))
 		mux.HandleFunc("PUT /api/settings/server", d.adminOnly(d.putServerSettings))
-		mux.HandleFunc("GET /api/settings/cache", d.adminOnly(d.getCacheStats))
-		mux.HandleFunc("DELETE /api/settings/cache", d.adminOnly(d.clearCache))
+		mux.HandleFunc("GET /api/settings/cache", d.adminOnly(d.cacheStatsAll))
+		mux.HandleFunc("DELETE /api/settings/cache", d.adminOnly(d.clearCacheAll))
 		mux.HandleFunc("PUT /api/settings/library-roots", d.adminOnly(d.putRoots))
 		mux.HandleFunc("GET /api/overrides/{type}/{id}", d.getOverride)
 		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.localOnly("", d.putOverride)))
@@ -306,6 +308,8 @@ func NewRouter(d Deps) http.Handler {
 		d.Subsonic.WithDevice = withDevice
 		d.Subsonic.ClientIP = clientIP
 		d.Subsonic.Decorate = d.markEntitlement
+		d.Subsonic.ArtistInfo = d.subsonicArtistInfo
+		d.Subsonic.AlbumImage = d.subsonicAlbumImage
 		d.Subsonic.Cover = func(w http.ResponseWriter, r *http.Request, kind, id string) {
 			r2 := r.Clone(r.Context())
 			r2.SetPathValue("id", id)
@@ -315,8 +319,12 @@ func NewRouter(d Deps) http.Handler {
 				v.Set("size", sz)
 			}
 			r2.URL.RawQuery = v.Encode()
-			if kind == "track" {
+			switch kind {
+			case "track":
 				d.trackCover(w, r2)
+				return
+			case "artist":
+				d.artistImage(w, r2)
 				return
 			}
 			d.albumCover(w, r2)
@@ -372,6 +380,9 @@ func isPublic(r *http.Request) bool {
 	}
 	if strings.HasPrefix(r.URL.Path, "/admin") {
 		return true
+	}
+	if strings.HasPrefix(r.URL.Path, "/api/images/") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		return true // D60: registered public CDN images only
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws" {
 		return true // /healthz and 404s

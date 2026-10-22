@@ -8,7 +8,7 @@ import (
 )
 
 // APIVersion is the app API contract version (bumped on breaking changes).
-const APIVersion = "1.2" // v1 minor; bumped for additive changes (D59 versioning policy)
+const APIVersion = "1.3" // v1 minor; bumped for additive changes (D59 versioning policy)
 
 type platformStatus struct {
 	Origin       string   `json:"origin"`

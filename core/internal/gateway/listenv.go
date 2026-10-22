@@ -151,6 +151,13 @@ func (d Deps) decorateArtists(ctx context.Context, as []library.Artist) {
 		}
 		if a.ImageUpdatedAt > 0 {
 			a.Cover = &library.CoverRef{URL: a.ImageURL}
+		} else if u, ok := d.artistAlias(a.ID); ok {
+			a.Cover = &library.CoverRef{URL: a.ImageURL}
+			if lp, ok := d.Covers.RemoteCached(u); ok {
+				if m, ok := d.Covers.MetaCached(lp); ok {
+					a.Cover.Blurhash, a.Cover.Colors = m.Blurhash, m.Colors
+				}
+			}
 		} else if pg, err := d.Library.ListAlbums(ctx, library.ListParams{ArtistID: a.ID, Limit: 1, Sort: "year", Desc: true}); err == nil && len(pg.Items) > 0 && pg.Items[0].HasCover {
 			if src, err := d.Library.AlbumCover(ctx, pg.Items[0].ID); err == nil {
 				a.Cover = d.coverRef(dev.ID, pg.Items[0].ID, src)

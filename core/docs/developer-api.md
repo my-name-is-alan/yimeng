@@ -68,7 +68,7 @@ curl -H "Authorization: Bearer $KEY" -o song.flac "$YM/api/v1/stream/<track_id>"
 
 ### 版本策略
 
-- 路径前缀 `/api/v1` 是大版本；每个响应带 `X-Yimeng-API-Version`（小版本，目前 `1.2`）。
+- 路径前缀 `/api/v1` 是大版本；每个响应带 `X-Yimeng-API-Version`（小版本，目前 `1.3`）。
 - v1 内只做**向后兼容的新增**（新字段、新接口）。客户端请忽略未知字段。
 - 要删除的字段会先在 openapi 中标记 `deprecated: true`，至少保留一个小版本。
 - 不兼容的变更只会出现在 `/api/v2`，并与 v1 并存一段时间。
@@ -110,6 +110,12 @@ scope 对应：浏览类 = `read`；stream / download / scrobble / 播放队列 
 
 在线音源（网易云、QQ 音乐等）的曲目只有在你的平台账号有完整播放权时才会出现在 Subsonic 结果中。**仅试听**或**不可播放**的曲目不会返回；直接请求其 stream 会被拒绝（HTTP 403 `preview_only`），不会给出 30 秒片段冒充整首。译梦不做任何解灰、跨平台抓取或 DRM 绕过。
 
+### 封面与艺人图片
+
+- `getCoverArt?id=<专辑/歌曲 id>` 或 `id=ar-<艺人 id>`，支持 `size`（120/300/600/1200 已预生成，其它尺寸按需生成）。
+- 艺人对象带 `coverArt: "ar-<id>"`；有缓存的在线图片时还带 `artistImageUrl`。
+- `getArtistInfo2` / `getAlbumInfo2` 返回 `smallImageUrl` / `mediumImageUrl` / `largeImageUrl`（指向 Core 图片缓存的绝对地址），在线艺人还有简介。
+
 ### 错误码
 
 | code | 含义 |
@@ -123,7 +129,24 @@ scope 对应：浏览类 = `read`；stream / download / scrobble / 播放队列 
 | 50 | 权限不足（scope） |
 | 70 | 不存在 / 不可用 |
 
-## 4. 安全建议
+## 4. 图片缓存
+
+所有封面与艺人图片都由 Core 缓存：平台 CDN 图片只下载一次，保存原图并预生成 120/300/600/1200 尺寸和模糊占位（blurhash、主色）。
+
+```bash
+# 艺人图片（本地或在线艺人）。顺序：管理员上传 → 平台艺人图 → 元数据自动匹配（仅名字完全一致）→ 最新专辑封面
+curl -H "Authorization: Bearer $KEY" -o a.jpg "$YM/api/v1/artists/<artist_id>/image?size=600"
+
+# 在线歌曲 / 歌单返回的 cover.url 形如 /api/v1/images/<key>，无需令牌，可直接用于 <img>
+curl -o c.jpg "$YM/api/v1/images/<key>?size=300&format=jpeg"
+```
+
+- 响应带强 `ETag`，请用 `If-None-Match` 做客户端缓存。
+- 平台风控期间仍返回已缓存的图片。
+- `/api/v1/images/{key}` 只能访问 Core 自己登记过的、白名单图床上的图片，不是开放代理。
+- 管理员可在 **设置 → 图片缓存** 查看命中率、占用并清除；上限 `YIMENG_IMAGE_CACHE_MB`（默认 1024），刷新周期 `YIMENG_IMAGE_CACHE_TTL_HOURS`（默认 720 小时）。
+
+## 5. 安全建议
 
 - 每个 App 用单独的凭据，只授予需要的 scope，不用时立即撤销。
 - 优先使用 apiKey 或 token+salt；明文 `p=` 只给无法升级的老客户端。
