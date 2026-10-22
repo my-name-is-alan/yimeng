@@ -148,3 +148,9 @@ alternative considered. Newest items at the bottom.
   only into the AES-GCM vault; list/get never return secrets. Login/logout/sync
   are admin-only. ResolveStream/SyncLibrary stay ErrNotSupported until a
   licensed integration exists — no scraping private APIs.
+
+## D17 AIFF / APE / DSF / DFF
+- Extensions added to the local adapter index map. Pure-Go probes for duration
+  and stream info (AIFF COMM, DSF fmt, DSDIFF PROP/DSD, APE v3.98+ header).
+- Tags: whatever dhowden/tag can read (DSF ID3 yes; APE/DFF/AIFF best-effort).
+  Transcode of DSD/APE remains ffmpeg-dependent when available.

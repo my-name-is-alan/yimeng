@@ -38,6 +38,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 离线下载：`GET /api/tracks/{id}/download`（`Content-Disposition: attachment`；可选 `format`/`bitrate` 转码后整文件下载）。
 - Subsonic：`/rest/*.view`（默认开，`YIMENG_SUBSONIC=false` 关）；密码=配对设备 token（`ymd_…`）；不支持 t/s token+salt。
 - 流媒体账号：`GET /api/sources`；登录/登出/同步为 admin（凭据仅进 Vault，永不下发）。网易云/QQ/Apple 现为 stub（可存 cookie，播放 API 未接）。
+- 格式：本地库索引 AIFF/AIF、APE、DSF、DFF（纯 Go 探测时长/采样率；标签靠 dhowden/tag 能读的部分）。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

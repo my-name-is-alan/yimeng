@@ -23,7 +23,10 @@ func Supported(path string) bool {
 
 var formats = map[string]string{
 	".mp3": "mp3", ".flac": "flac", ".m4a": "m4a", ".m4b": "m4a", ".mp4": "m4a", ".alac": "m4a",
-	".ogg": "ogg", ".oga": "ogg", ".opus": "opus", ".wav": "wav", ".dsf": "dsf",
+	".ogg": "ogg", ".oga": "ogg", ".opus": "opus", ".wav": "wav",
+	".aiff": "aiff", ".aif": "aiff", ".aifc": "aiff",
+	".ape": "ape",
+	".dsf": "dsf", ".dff": "dff",
 }
 
 type Picture struct {

@@ -207,7 +207,8 @@ func (d Deps) serveCover(w http.ResponseWriter, r *http.Request, path string, er
 
 var audioTypes = map[string]string{
 	"mp3": "audio/mpeg", "flac": "audio/flac", "m4a": "audio/mp4", "ogg": "audio/ogg",
-	"opus": "audio/ogg", "wav": "audio/wav", "dsf": "audio/x-dsf",
+	"opus": "audio/ogg", "wav": "audio/wav", "aiff": "audio/aiff", "ape": "audio/x-ape",
+	"dsf": "audio/x-dsf", "dff": "audio/x-dff",
 }
 
 func (d Deps) serveFile(w http.ResponseWriter, r *http.Request, path string, err error, contentType, cache string) {

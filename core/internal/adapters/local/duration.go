@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"strings"
 	"time"
 )
@@ -38,6 +39,14 @@ func Probe(r io.ReadSeeker, format string) (Info, error) {
 		in, err = oggProbe(r)
 	case "wav":
 		in, err = wavProbe(r)
+	case "aiff":
+		in, err = aiffProbe(r)
+	case "dsf":
+		in, err = dsfProbe(r)
+	case "dff":
+		in, err = dffProbe(r)
+	case "ape":
+		in, err = apeProbe(r)
 	default:
 		return in, errUnknownDuration
 	}
@@ -426,4 +435,243 @@ func wavProbe(r io.ReadSeeker) (Info, error) {
 			r.Seek(sz+sz%2, io.SeekCurrent)
 		}
 	}
+}
+
+// aiffProbe parses AIFF / AIFC (FORM AIFF|AIFC).
+func aiffProbe(r io.ReadSeeker) (Info, error) {
+	r.Seek(0, io.SeekStart)
+	var h [12]byte
+	if _, err := io.ReadFull(r, h[:]); err != nil || string(h[:4]) != "FORM" {
+		return Info{}, errUnknownDuration
+	}
+	kind := string(h[8:12])
+	if kind != "AIFF" && kind != "AIFC" {
+		return Info{}, errUnknownDuration
+	}
+	in := Info{Codec: "pcm", Lossless: true}
+	var numSampleFrames uint32
+	var sampleSize uint16
+	for {
+		var ch [8]byte
+		if _, err := io.ReadFull(r, ch[:]); err != nil {
+			return Info{}, errUnknownDuration
+		}
+		sz := int64(binary.BigEndian.Uint32(ch[4:]))
+		switch string(ch[:4]) {
+		case "COMM":
+			var c [18]byte
+			if _, err := io.ReadFull(r, c[:]); err != nil {
+				return Info{}, err
+			}
+			in.Channels = int(binary.BigEndian.Uint16(c[0:2]))
+			numSampleFrames = binary.BigEndian.Uint32(c[2:6])
+			sampleSize = binary.BigEndian.Uint16(c[6:8])
+			in.BitDepth = int(sampleSize)
+			// 80-bit SANE float sample rate at c[8:18]
+			in.SampleRate = int(sane80(c[8:18]))
+			if in.SampleRate > 0 && numSampleFrames > 0 {
+				in.Duration = secs(float64(numSampleFrames), float64(in.SampleRate))
+				in.BitrateKbps = in.SampleRate * in.BitDepth * in.Channels / 1000
+				return in, nil
+			}
+			pad := sz - 18
+			if pad > 0 {
+				r.Seek(pad+sz%2, io.SeekCurrent)
+			} else if sz%2 != 0 {
+				r.Seek(1, io.SeekCurrent)
+			}
+		default:
+			r.Seek(sz+sz%2, io.SeekCurrent)
+		}
+	}
+}
+
+func sane80(b []byte) float64 {
+	if len(b) < 10 {
+		return 0
+	}
+	exp := int(binary.BigEndian.Uint16(b[0:2]))
+	mant := binary.BigEndian.Uint64(b[2:10])
+	if exp == 0 && mant == 0 {
+		return 0
+	}
+	sign := 1.0
+	if exp&0x8000 != 0 {
+		sign = -1
+		exp &^= 0x8000
+	}
+	// IEEE 754 extended: value = mant / 2^63 * 2^(exp-16383)
+	return sign * float64(mant) / (1 << 63) * pow2(int(exp)-16383)
+}
+
+func pow2(e int) float64 { return math.Pow(2, float64(e)) }
+
+// dsfProbe parses Sony DSF (DSD Stream File).
+func dsfProbe(r io.ReadSeeker) (Info, error) {
+	r.Seek(0, io.SeekStart)
+	var h [28]byte
+	if _, err := io.ReadFull(r, h[:]); err != nil || string(h[:4]) != "DSD " {
+		return Info{}, errUnknownDuration
+	}
+	// fmt chunk follows after DSD chunk; seek to fmt_
+	chunkSize := binary.LittleEndian.Uint64(h[4:12])
+	if chunkSize < 28 {
+		chunkSize = 28
+	}
+	r.Seek(int64(chunkSize), io.SeekStart)
+	var fmt [52]byte
+	if _, err := io.ReadFull(r, fmt[:]); err != nil || string(fmt[:4]) != "fmt " {
+		return Info{}, errUnknownDuration
+	}
+	channels := int(binary.LittleEndian.Uint32(fmt[24:28]))
+	sampleRate := int(binary.LittleEndian.Uint32(fmt[28:32])) // DSD sample rate (e.g. 2822400)
+	bitsPerSample := int(binary.LittleEndian.Uint32(fmt[32:36]))
+	sampleCount := binary.LittleEndian.Uint64(fmt[36:44]) // per channel
+	if sampleRate == 0 || sampleCount == 0 {
+		return Info{}, errUnknownDuration
+	}
+	return Info{
+		Duration: secs(float64(sampleCount), float64(sampleRate)),
+		Codec:    "dsd", SampleRate: sampleRate, BitDepth: bitsPerSample, Channels: channels,
+		BitrateKbps: sampleRate * bitsPerSample * channels / 1000, Lossless: true,
+	}, nil
+}
+
+// dffProbe parses DSDIFF (DFF).
+func dffProbe(r io.ReadSeeker) (Info, error) {
+	r.Seek(0, io.SeekStart)
+	var h [16]byte
+	if _, err := io.ReadFull(r, h[:]); err != nil || string(h[:4]) != "FRM8" || string(h[12:16]) != "DSD " {
+		return Info{}, errUnknownDuration
+	}
+	in := Info{Codec: "dsd", Lossless: true, BitDepth: 1}
+	var sampleRate uint32
+	var channels int
+	var dataSize uint64
+	for {
+		var ch [12]byte
+		if _, err := io.ReadFull(r, ch[:]); err != nil {
+			break
+		}
+		id := string(ch[:4])
+		sz := binary.BigEndian.Uint64(ch[4:12])
+		switch id {
+		case "PROP":
+			end := sz
+			var read uint64
+			var propType [4]byte
+			if _, err := io.ReadFull(r, propType[:]); err != nil {
+				return Info{}, err
+			}
+			read = 4
+			for read+12 <= end {
+				var sub [12]byte
+				if _, err := io.ReadFull(r, sub[:]); err != nil {
+					return Info{}, err
+				}
+				ssz := binary.BigEndian.Uint64(sub[4:12])
+				read += 12
+				switch string(sub[:4]) {
+				case "FS  ":
+					var fs [4]byte
+					io.ReadFull(r, fs[:])
+					sampleRate = binary.BigEndian.Uint32(fs[:])
+					if ssz > 4 {
+						r.Seek(int64(ssz-4), io.SeekCurrent)
+					}
+				case "CHNL":
+					var n [2]byte
+					io.ReadFull(r, n[:])
+					channels = int(binary.BigEndian.Uint16(n[:]))
+					if ssz > 2 {
+						r.Seek(int64(ssz-2), io.SeekCurrent)
+					}
+				default:
+					r.Seek(int64(ssz), io.SeekCurrent)
+				}
+				read += ssz
+				if ssz%2 != 0 {
+					r.Seek(1, io.SeekCurrent)
+					read++
+				}
+			}
+			if rem := end - read; rem > 0 {
+				r.Seek(int64(rem), io.SeekCurrent)
+			}
+		case "DSD ":
+			dataSize = sz
+			r.Seek(int64(sz), io.SeekCurrent)
+		default:
+			r.Seek(int64(sz), io.SeekCurrent)
+		}
+		if sz%2 != 0 {
+			r.Seek(1, io.SeekCurrent)
+		}
+	}
+	if sampleRate == 0 || channels == 0 || dataSize == 0 {
+		return Info{}, errUnknownDuration
+	}
+	// DSD data is 1 bit/sample packed into bytes; samples = dataSize*8/channels
+	samples := dataSize * 8 / uint64(channels)
+	in.SampleRate = int(sampleRate)
+	in.Channels = channels
+	in.Duration = secs(float64(samples), float64(sampleRate))
+	in.BitrateKbps = int(sampleRate) * channels / 1000
+	return in, nil
+}
+
+// apeProbe reads Monkey's Audio descriptor for duration (compression level ignored).
+func apeProbe(r io.ReadSeeker) (Info, error) {
+	r.Seek(0, io.SeekStart)
+	var h [8]byte
+	if _, err := io.ReadFull(r, h[:]); err != nil || string(h[:4]) != "MAC " {
+		return Info{}, errUnknownDuration
+	}
+	version := binary.LittleEndian.Uint16(h[4:6])
+	// Modern APE (v3.98+): descriptor + header. Skip to common fields.
+	// Descriptor size at offset 8 for v >= 3980.
+	if version >= 3980 {
+		var desc [52]byte
+		r.Seek(0, io.SeekStart)
+		if _, err := io.ReadFull(r, desc[:]); err != nil {
+			return Info{}, err
+		}
+		descSize := binary.LittleEndian.Uint16(desc[8:10])
+		if descSize < 52 {
+			descSize = 52
+		}
+		r.Seek(int64(descSize), io.SeekStart)
+		var hdr [24]byte
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return Info{}, err
+		}
+		compression := binary.LittleEndian.Uint16(hdr[0:2])
+		_ = compression
+		sampleRate := int(binary.LittleEndian.Uint32(hdr[20:24]))
+		// total frames / final frame blocks further in header — read more
+		var more [16]byte
+		if _, err := io.ReadFull(r, more[:]); err != nil {
+			return Info{}, err
+		}
+		blocksPerFrame := binary.LittleEndian.Uint32(more[0:4])
+		finalFrameBlocks := binary.LittleEndian.Uint32(more[4:8])
+		totalFrames := binary.LittleEndian.Uint32(more[8:12])
+		bitsPerSample := int(binary.LittleEndian.Uint16(more[12:14]))
+		channels := int(binary.LittleEndian.Uint16(more[14:16]))
+		if sampleRate == 0 || totalFrames == 0 {
+			return Info{}, errUnknownDuration
+		}
+		var totalSamples uint64
+		if totalFrames == 1 {
+			totalSamples = uint64(finalFrameBlocks)
+		} else {
+			totalSamples = uint64(blocksPerFrame)*uint64(totalFrames-1) + uint64(finalFrameBlocks)
+		}
+		return Info{
+			Duration: secs(float64(totalSamples), float64(sampleRate)),
+			Codec:    "ape", SampleRate: sampleRate, BitDepth: bitsPerSample, Channels: channels,
+			Lossless: true,
+		}, nil
+	}
+	return Info{}, errUnknownDuration
 }
