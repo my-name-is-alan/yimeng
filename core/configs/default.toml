@@ -47,3 +47,6 @@ contact = ""               # REQUIRED when enabled: your email or URL (sent in t
 # rate_limit = 50          # req/s per client (token or IP); 0 = off
 # rate_burst = 200
 # global_rate_limit = 0    # req/s whole server; 0 = off
+
+[subsonic]
+enabled = true  # /rest Subsonic API; password = paired device token (ymd_…)

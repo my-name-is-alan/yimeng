@@ -17,7 +17,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 11 | Metadata provider registry + lyrics provider stub | done | `65027f1` |
 | 12 | HTTPS + trusted proxy + rate limits | done | `e5b4571` |
 | 13 | Offline download endpoint | done | `dedfcb9` |
-| 14 | Subsonic API layer | pending | |
+| 14 | Subsonic API layer | done | (pending commit) |
 | 15 | StreamSource account management API | pending | |
 | 16 | AIFF / APE / DSF / DFF | pending | |
 | E1 | Pinyin + fuzzy search | pending | |

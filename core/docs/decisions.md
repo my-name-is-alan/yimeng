@@ -134,3 +134,11 @@ alternative considered. Newest items at the bottom.
   filename (RFC 5987). Original by default; optional format/bitrate materializes
   a full transcode into the cache first so Range/Content-Length work. Query
   token allowed. Rejected: zip-of-album endpoint (clients iterate track IDs).
+
+## D15 Subsonic /rest
+- Optional (`subsonic.enabled`, default on). Password = paired device token
+  (`ymd_…` or `enc:<hex>`); Bearer also accepted. Token+salt (t/s) rejected
+  because Core stores only SHA-256 of tokens — clients must use password mode.
+- Minimal OpenSubsonic-flavoured surface: ping, license, folders, indexes,
+  artists, albumList2, album, song, search3, playlists, lyrics, coverArt,
+  stream/download (delegates to Core stream). JSON via `f=json`.

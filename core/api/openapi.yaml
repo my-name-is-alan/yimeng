@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.11.0
+  version: 0.12.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -12,11 +12,15 @@ info:
     (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
     (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
     with `Retry-After` when exceeded. `/healthz` is not rate-limited.
+    Optional Subsonic-compatible `/rest/*.view` (disable with `YIMENG_SUBSONIC=false`):
+    password = paired device token (`ymd_…`); token+salt (t/s) is not supported.
 servers:
   - url: http://nas.local:8741
 security:
   - bearer: []
 tags:
+  - name: subsonic
+    description: Subsonic-compatible /rest API
   - name: system
   - name: pairing
   - name: library
@@ -1222,6 +1226,23 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "503": { description: Transcode failed }
+
+  /rest/ping.view:
+    get:
+      tags: [subsonic]
+      summary: Subsonic ping (full /rest surface is Subsonic-compatible; see README)
+      description: |
+        Auth with `u` (ignored) + `p=<device token>` or `p=enc:<hex>`, or Bearer.
+        Also getLicense, getMusicFolders, getIndexes, getArtists, getAlbumList2,
+        getAlbum, getSong, search3, getPlaylists, getPlaylist, getLyrics,
+        getCoverArt, stream, download. Responses are Subsonic XML or `f=json`.
+      parameters:
+        - { name: u, in: query, schema: { type: string } }
+        - { name: p, in: query, schema: { type: string }, description: "ymd_ device token" }
+        - { name: f, in: query, schema: { type: string, enum: [xml, json, jsonp] } }
+      security: []
+      responses:
+        "200": { description: "subsonic-response envelope" }
 
 components:
   securitySchemes:

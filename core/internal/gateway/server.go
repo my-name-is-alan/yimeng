@@ -18,6 +18,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
@@ -74,6 +75,7 @@ type Deps struct {
 	Providers      *metadata.Registry // optional; listed by GET /api/metadata/providers
 	TrustedProxies *TrustedProxies
 	RateLimits     *RateLimits
+	Subsonic       *subsonic.Handler // optional; mounts /rest/*
 }
 
 type contextT = context.Context
@@ -165,6 +167,10 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("DELETE /api/favorites/{type}/{id}", d.setFavorite(false))
 		mux.HandleFunc("PUT /api/ratings/{type}/{id}", d.setRating)
 	}
+	if d.Subsonic != nil {
+		d.Subsonic.Stream = d.stream
+		d.Subsonic.Mount(mux)
+	}
 	if d.Backup != nil {
 		mux.HandleFunc("GET /api/system/backups", d.adminOnly(d.listBackups))
 		mux.HandleFunc("POST /api/system/backups", d.adminOnly(d.createBackup))
@@ -188,6 +194,9 @@ func DeviceFrom(ctx context.Context) (auth.Device, bool) {
 }
 
 func isPublic(r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, "/rest/") {
+		return true // Subsonic handler does its own auth
+	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws" {
 		return true // /healthz and 404s
 	}

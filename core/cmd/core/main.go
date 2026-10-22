@@ -30,6 +30,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
@@ -233,6 +234,13 @@ func run(cfg config.Config, log *slog.Logger) error {
 		scanner.Watch(ctx, library.WatchOptions{Mode: cfg.WatchMode, Debounce: cfg.WatchDebounce, RescanInterval: cfg.RescanInterval})
 	}()
 
+	var sub *subsonic.Handler
+	if cfg.Subsonic {
+		sub = &subsonic.Handler{
+			Auth: authSvc, Library: &app.Library{Scanner: scanner, BG: ctx},
+			Playlists: scanner, LyricsFetcher: lyricsFetcher, Version: version,
+		}
+	}
 	tp, err := gateway.ParseTrustedProxies(cfg.Server.TrustedProxies)
 	if err != nil {
 		return fmt.Errorf("trusted_proxies: %w", err)
@@ -258,6 +266,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Providers:       reg,
 			TrustedProxies:  tp,
 			RateLimits:      rl,
+			Subsonic:        sub,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
