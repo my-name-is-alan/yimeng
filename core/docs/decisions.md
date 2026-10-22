@@ -333,3 +333,26 @@ Every NetEase/QQ/Kugou catalog call goes through `online.cached()`, backed by `e
 - **Hot refresh:** an hourly tick prunes, then refreshes charts and the account's daily recommendations, with paced requests.
 - **Stream URLs:** not stored here. They stay in short leases that honour the platform expiry.
 - **Settings:** stats and clear at `GET/DELETE /api/settings/cache` and in the 设置 → 平台缓存 section.
+
+## D45 — App API contract (iOS client)
+Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All routes also live under `/api/v1`.
+- **Auth:** login and pair return `{access_token (yma_, 15 min), refresh_token (the ymd_ device token), expires_in, token_type}`. `POST /auth/refresh` rotates the refresh token. The old ymd_ bearer still works.
+- **Signed media URLs:** `stream_url` and `cover.url` are signed with HMAC (vault-derived key) over path + device + exp only (exp rounded to the hour, TTL 6 h). `size`/`format` are not part of the signature.
+- **Covers:** `/covers/{id}?size=120|300|600|1200&format=webp|jpeg` with a strong ETag and immutable caching. `/covers/{id}/meta` returns `{blurhash, colors}`.
+- **Lists:** `{items, total, cursor, next_cursor, updated_at}`, with an opaque cursor, ETag and 304.
+- **Errors:** `{error, code, message}`.
+- **Tracks:** `playable` is a bool, plus `entitlement` (full|preview|unavailable). Bitrate is in kbps.
+- **Progress:** `/progress` is resume points only and does not write history. Last-writer by `updated_at` wins.
+- **Platform pass-through:** daily, fm, recommend/playlists and user/playlists. Not logged in → 404 `not_logged_in`. 译梦 has no own recommendation (D42).
+- **Events:** `/ws` and SSE `/events`, scoped to the owner.
+
+## D46 — Merged lyrics
+`/lyrics/best` (also `?track_id=`) merges matching candidates by timestamp into `lines[{t_ms, text, trans?, roma?, words?[{t_ms, d_ms, text}]}]`, with `sources` naming the provider of each part.
+- **Word-timing priority:** Kugou KRC > QQ QRC > NetEase YRC.
+- **QQ QRC:** deferred. It uses a non-standard DES variant, and AGPL code must not be copied.
+
+## D47 — Reduced dream metadata
+`/tracks/{id}/dream` does no audio analysis.
+- **colors/blurhash:** from the cover.
+- **tags:** from genre tags.
+- **bpm:** only when a source provides it, else null.

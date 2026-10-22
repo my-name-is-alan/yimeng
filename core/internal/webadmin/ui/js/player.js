@@ -158,7 +158,7 @@ export function entBadge(ent) {
   return null;
 }
 export const slim = (t) => ({ id: t.id, title: t.title, artist_name: t.artist_name, album_id: t.album_id, album_title: t.album_title, duration_ms: t.duration_ms, format: t.format,
-  origin: t.origin, cover_url: t.cover_url, playable: t.playable, local_id: t.local_id,
+  origin: t.origin, cover_url: t.cover_url, playable: t.playable, entitlement: t.entitlement, preview: t.preview, local_id: t.local_id,
   stream: t.stream ? { lossless: t.stream.lossless, sample_rate: t.stream.sample_rate, bit_depth: t.stream.bit_depth, bitrate_kbps: t.stream.bitrate_kbps } : undefined });
 
 audio.addEventListener("timeupdate", () => {

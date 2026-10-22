@@ -29,7 +29,10 @@ type Artist struct {
 	TrackCount int    `json:"track_count"`
 	Origin     string `json:"origin"`
 	// ImageUpdatedAt is set when a user artist image exists (GET /api/artists/{id}/image?v=…).
-	ImageUpdatedAt int64 `json:"image_updated_at,omitempty"`
+	ImageUpdatedAt int64     `json:"image_updated_at,omitempty"`
+	SortLetter     string    `json:"sort_letter,omitempty"` // set by the gateway
+	ImageURL       string    `json:"image_url,omitempty"`   // signed, set by the gateway
+	Cover          *CoverRef `json:"cover,omitempty"`       // artist image, else an album cover
 }
 
 type Album struct {
@@ -48,6 +51,11 @@ type Album struct {
 	Rating      int         `json:"rating,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	Origin      string      `json:"origin"`
+	SortLetter  string      `json:"sort_letter,omitempty"` // set by the gateway
+	Cover       *CoverRef   `json:"cover,omitempty"`       // set by the gateway
+	// App aliases (set by the gateway): name = title, artist = first artist.
+	Name   string     `json:"name,omitempty"`
+	Artist *ArtistRef `json:"artist,omitempty"`
 }
 
 type Track struct {
@@ -74,6 +82,29 @@ type Track struct {
 	Rating     int       `json:"rating,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
 	Origin     string    `json:"origin"`
+	// App fields (D45). Library tracks are playable (online entries resolve
+	// their entitlement when streamed).
+	Playable  bool        `json:"playable"`
+	Album     *AlbumRef   `json:"album,omitempty"`
+	Preview   bool        `json:"preview"`
+	HasLyrics bool        `json:"has_lyrics"`
+	Audio     *StreamInfo `json:"audio,omitempty"`      // same as stream; app name
+	Cover     *CoverRef   `json:"cover,omitempty"`      // set by the gateway
+	CoverPath string      `json:"-"`                    // album cover file or URL
+	StreamURL string      `json:"stream_url,omitempty"` // signed, set by the gateway
+}
+
+// AlbumRef is {id,name} on tracks.
+type AlbumRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CoverRef is a ready-to-use cover: a signed URL plus placeholder data.
+type CoverRef struct {
+	URL      string   `json:"url"`
+	Blurhash string   `json:"blurhash,omitempty"`
+	Colors   []string `json:"colors,omitempty"`
 }
 
 // StreamInfo describes the best source file (Roon-like signal path).
@@ -84,6 +115,7 @@ type StreamInfo struct {
 	BitDepth    int    `json:"bit_depth,omitempty"`
 	Channels    int    `json:"channels,omitempty"`
 	BitrateKbps int    `json:"bitrate_kbps,omitempty"`
+	Bitrate     int    `json:"bitrate,omitempty"` // = bitrate_kbps (app name)
 	Lossless    bool   `json:"lossless"`
 	SizeBytes   int64  `json:"size_bytes,omitempty"`
 	ReplayGain  *Gain  `json:"replaygain,omitempty"`
@@ -351,7 +383,8 @@ const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_i
 	COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
 	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0),
 	COALESCE(ts.play_count,0), COALESCE(ts.last_played_at,0), fv.entity_id IS NOT NULL, COALESCE(rt.rating,0),
-	st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,''), t.origin`
+	st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,''), t.origin,
+	(EXISTS(SELECT 1 FROM user_lyrics ul WHERE ul.track_id=t.id) OR COALESCE(st.lyrics,'')<>''), COALESCE(al.cover_path,'')`
 
 // bestSource picks the same file TrackFile streams: highest confidence, FLAC first, then path.
 const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
@@ -373,7 +406,7 @@ func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created,
 		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes,
 		&t.PlayCount, &lastPlayed, &t.Favorite, &t.Rating,
-		&g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source, &t.Origin)
+		&g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source, &t.Origin, &t.HasLyrics, &t.CoverPath)
 	if g.Source != "" {
 		si.ReplayGain = &g
 	}
@@ -386,6 +419,14 @@ func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 	if t.Format != "" {
 		si.Format = t.Format
 		t.Stream = &si
+		t.Audio = &si
+	}
+	t.Playable = true
+	if t.AlbumID != "" {
+		t.Album = &AlbumRef{ID: t.AlbumID, Name: t.AlbumTitle}
+	}
+	if si.BitrateKbps > 0 {
+		si.Bitrate = si.BitrateKbps
 	}
 	return t, err
 }
@@ -592,3 +633,13 @@ func (s *Scanner) DB() *sql.DB { return s.db }
 
 // SafePath validates that p is a regular file inside a library root (symlinks resolved).
 func (s *Scanner) SafePath(p string) (string, error) { return s.safeFile(p, false) }
+
+// UpdatedAt is the newest catalog change (artists, albums, tracks).
+func (s *Scanner) UpdatedAt(ctx context.Context) time.Time {
+	var ms sql.NullInt64
+	s.db.QueryRowContext(ctx, `SELECT MAX(m) FROM (SELECT MAX(updated_at) m FROM tracks UNION ALL SELECT MAX(updated_at) FROM albums UNION ALL SELECT MAX(updated_at) FROM artists)`).Scan(&ms)
+	if !ms.Valid {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms.Int64).UTC()
+}

@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,6 +58,10 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/plugins/{id}/accounts/{acct}", d.adminOnly(d.pluginAccountRemove))
 
 	mux.HandleFunc("GET /api/home", d.home)
+	mux.HandleFunc("GET /api/online/{origin}/{sub}", d.platformSub) // daily | fm
+	mux.HandleFunc("POST /api/online/{origin}/fm/feedback", d.platformFMFeedback)
+	mux.HandleFunc("GET /api/online/{origin}/recommend/playlists", d.platformRecPlaylists)
+	mux.HandleFunc("GET /api/online/{origin}/user/playlists", d.platformUserPlaylists)
 	mux.HandleFunc("GET /api/charts", d.charts)
 	mux.HandleFunc("GET /api/online/resolve/{id}", d.onlineResolve)
 	mux.HandleFunc("GET /api/online/favorites", d.cloudFavorites)
@@ -432,6 +437,10 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 	sortSections(secs, order)
+	for i := range secs {
+		d.decorateOnlineTracks(secs[i].Tracks)
+		d.decorateOnlinePlaylists(secs[i].Playlists)
+	}
 	out := map[string]any{"sections": secs}
 	if d.OnlineLib != nil {
 		n, _ := d.OnlineLib.LocalTrackCount(r.Context())
@@ -441,7 +450,15 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	if secs == nil {
 		out["sections"] = []homeSection{}
 	}
-	writeJSON(w, http.StatusOK, out)
+	for k, v := range d.homeLibrary(r.Context()) {
+		out[k] = v
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		d.internal(w, "home", err)
+		return
+	}
+	writeETagged(w, r, b)
 }
 
 func sortSections(s []homeSection, order map[string]int) {
@@ -479,7 +496,17 @@ func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
-	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+	resp := map[string]any{"items": out, "origins": d.Online.Reg.EnabledIDs()}
+	// App shape: ?origin=x → "charts" is that platform's list.
+	charts := []online.Playlist{}
+	for i := range out {
+		d.decorateOnlinePlaylists(out[i].Items)
+		if len(origins) == 1 {
+			charts = out[i].Items
+		}
+	}
+	resp["charts"] = charts
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // listPlaylistScope serves /api/playlists?scope=mine|recommend|discover:
@@ -767,6 +794,7 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			return true
 		}
 		h.Set("X-Stream-Profile", transcode.Original)
+		setAudioHeaders(h, formatCodec[res.Format], 0, 0, 0, res.BitrateKbps)
 		for _, k := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"} {
 			if v := resp.Header.Get(k); v != "" {
 				h.Set(k, v)
@@ -899,6 +927,7 @@ func (d Deps) pipeExternal(w http.ResponseWriter, r *http.Request, body io.Reade
 	h.Set("Content-Type", p.ContentType())
 	h.Set("Accept-Ranges", "none")
 	h.Set("X-Stream-Profile", p.Key())
+	setAudioHeaders(h, formatCodec[p.Format], 0, 0, 0, p.BitrateKbps)
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
 		return

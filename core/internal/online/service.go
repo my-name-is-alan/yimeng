@@ -258,6 +258,7 @@ func (s *Service) annotate(ctx context.Context, ts []Track) {
 	for i := range ts {
 		t := &ts[i]
 		t.SortLetter = search.SortLetter(t.Title)
+		t.Preview = t.Playable == EntPreview
 		id, conf, method, err := s.Lib.FindMatch(ctx, library.MatchQuery{ISRC: t.ISRC, Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs})
 		if err != nil || id == "" {
 			continue
@@ -648,4 +649,52 @@ func (s *Service) RefreshHot(ctx context.Context) {
 		s.RecommendTracks(ctx, id)
 		time.Sleep(2 * time.Second)
 	}
+}
+
+// FM returns the next batch of the account's personal FM. Not cached (each
+// call is the platform's next batch); still rate-limited and cooled down.
+func (s *Service) FM(ctx context.Context, origin string) ([]Track, error) {
+	p, _, err := s.plugin(origin)
+	if err != nil {
+		return nil, err
+	}
+	rd, ok := p.(Radio)
+	if !ok {
+		return nil, ErrNotSupported
+	}
+	if !s.Reg.LoggedIn(origin) {
+		return nil, ErrNeedsLogin
+	}
+	v, err := rd.FM(ctx)
+	s.after(ctx, origin, err)
+	if err == nil {
+		s.annotate(ctx, v)
+		s.rememberTracks(ctx, v)
+	}
+	return v, err
+}
+
+// FMFeedback forwards like|trash for an FM track ("origin:native" id).
+func (s *Service) FMFeedback(ctx context.Context, origin, trackID, action string) error {
+	if action != "like" && action != "trash" {
+		return ErrBadInput
+	}
+	o, n, err := split(trackID)
+	if err != nil || o != origin {
+		return ErrBadInput
+	}
+	p, _, err := s.plugin(origin)
+	if err != nil {
+		return err
+	}
+	rd, ok := p.(Radio)
+	if !ok {
+		return ErrNotSupported
+	}
+	if !s.Reg.LoggedIn(origin) {
+		return ErrNeedsLogin
+	}
+	err = rd.FMFeedback(ctx, n, action)
+	s.after(ctx, origin, err)
+	return err
 }

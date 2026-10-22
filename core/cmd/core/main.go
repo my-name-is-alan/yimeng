@@ -124,6 +124,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	signSeed := append([]byte(nil), key...) // HMAC seed for access tokens / signed URLs
 	clear(key)
 	streamReg := playback.NewStreamRegistry()
 	// NetEase (and later QQ/Kugou) are online plugins (internal/online); only
@@ -284,9 +285,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 				restartWatch()
 			}
 		},
-		CoverDir:   filepath.Join(cfg.CacheDir, "covers"),
-		Logger:     log,
-		OnProgress: func(j library.Job) { hub.Publish("scan.progress", j) },
+		CoverDir: filepath.Join(cfg.CacheDir, "covers"),
+		Logger:   log,
+		OnProgress: func(j library.Job) {
+			hub.Publish("scan.progress", j)
+			if j.Status != "running" && (j.Added+j.Updated+j.Removed) > 0 {
+				hub.Publish("library.updated", map[string]any{"job_id": j.ID, "added": j.Added, "updated": j.Updated, "removed": j.Removed})
+			}
+		},
 	})
 	orch, err := playback.NewOrchestrator(ctx, database, hub, app.LocalLease(scanner))
 	if err != nil {
@@ -304,6 +310,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			return
 		}
 		hub.Publish("history.played", map[string]any{"track_id": l.TrackID, "player_id": l.PlayerID})
+		hub.Publish("history.added", map[string]any{"track_id": l.TrackID, "player_id": l.PlayerID, "source": "player"})
 	}
 	if err := scanner.LoadSettings(ctx); err != nil {
 		return err
@@ -369,6 +376,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	authSvc := auth.New(database, cfg.PairCodeTTL, log)
+	authSvc.SetSigningKey(signSeed)
+	clear(signSeed)
 	if v := strings.TrimSpace(os.Getenv("YIMENG_ADMIN_RESET")); v == "1" || strings.EqualFold(v, "true") {
 		// Escape hatch: remove every web account (and its sessions) so the
 		// first-run setup page appears again. Unset the variable afterwards.
@@ -396,7 +405,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	_ = reload
 	go bk.Run(ctx, cfg.Backup.Interval)
 	go func() {
-		if err := discovery.Run(ctx, discovery.Options{Enabled: cfg.MDNS, Bind: cfg.Bind, Version: version, Log: log}); err != nil {
+		if err := discovery.Run(ctx, discovery.Options{Enabled: cfg.MDNS, Bind: cfg.Bind, Version: version, Name: os.Getenv("YIMENG_SERVER_NAME"), Log: log}); err != nil {
 			log.Warn("mDNS", "err", err)
 		}
 	}()
@@ -483,6 +492,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
+			ServerName:      os.Getenv("YIMENG_SERVER_NAME"),
 			Transcoder:      tc,
 			StreamPrefs:     app.StreamPrefs{DB: database},
 			System: &system.Collector{

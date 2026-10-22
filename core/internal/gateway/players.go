@@ -216,7 +216,11 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 				c.Close(websocket.StatusTryAgainLater, "slow consumer; reconnect")
 				return
 			}
-			if err := writeWS(ctx, c, e.Type, e.Data); err != nil {
+			data, ok := eventFor(dev, e.Data)
+			if !ok {
+				continue
+			}
+			if err := writeWS(ctx, c, e.Type, data); err != nil {
 				return
 			}
 		case <-ping.C:

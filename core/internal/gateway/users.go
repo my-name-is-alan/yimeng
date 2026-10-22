@@ -53,7 +53,36 @@ type credBody struct {
 
 func (d Deps) sessionReply(w http.ResponseWriter, status int, dev auth.Device, u auth.User, tok string) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, status, map[string]any{"token": tok, "device": dev, "user": u})
+	out := map[string]any{"token": tok, "device": dev, "user": u}
+	// App session fields (D45): refresh_token is the device token itself.
+	if sess, err := d.Auth.NewSession(dev.ID, tok); err == nil {
+		out["access_token"], out["refresh_token"], out["expires_in"], out["token_type"] = sess.AccessToken, sess.RefreshToken, sess.ExpiresIn, sess.TokenType
+	}
+	writeJSON(w, status, out)
+}
+
+// authRefresh rotates a refresh token and returns a new access token.
+// POST /api/v1/auth/refresh {refresh_token}
+func (d Deps) authRefresh(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := decodeBody(r, &b); err != nil || b.RefreshToken == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_body", "refresh_token is required")
+		return
+	}
+	dev, sess, err := d.Auth.Refresh(r.Context(), b.RefreshToken)
+	if err != nil {
+		if errors.Is(err, auth.ErrUnauthorized) {
+			writeErr(w, http.StatusUnauthorized, "invalid_refresh_token", "refresh token is invalid, revoked or already used")
+			return
+		}
+		d.internal(w, "refresh", err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"access_token": sess.AccessToken, "refresh_token": sess.RefreshToken,
+		"expires_in": sess.ExpiresIn, "token_type": sess.TokenType, "device": dev})
 }
 
 // authSetup creates the first (admin) account. Only works while no account exists.

@@ -13,6 +13,7 @@ package online
 import (
 	"context"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"time"
 )
 
@@ -38,6 +39,7 @@ const (
 	CapDiscover      Capability = "discover"
 	CapUserPlaylists Capability = "user_playlists"
 	CapStream        Capability = "stream"
+	CapFM            Capability = "fm"
 )
 
 // LoginMethod values: "qr", "cookie", "password".
@@ -146,6 +148,16 @@ type Track struct {
 	// Filled by the Service:
 	LocalID    string `json:"local_id,omitempty"`    // equivalent local track
 	SortLetter string `json:"sort_letter,omitempty"` // A–Z index key
+	Preview    bool   `json:"preview"`               // playable == "preview"
+	// Set by the gateway: placeholder data and the platform cover URL.
+	Cover *CoverRef `json:"cover,omitempty"`
+}
+
+// CoverRef mirrors library.CoverRef (url + blurhash + colours).
+type CoverRef struct {
+	URL      string   `json:"url"`
+	Blurhash string   `json:"blurhash,omitempty"`
+	Colors   []string `json:"colors,omitempty"`
 }
 
 type Album struct {
@@ -173,18 +185,19 @@ type Artist struct {
 }
 
 type Playlist struct {
-	ID          string  `json:"id"`
-	Origin      string  `json:"origin"`
-	Name        string  `json:"name"`
-	CoverURL    string  `json:"cover_url,omitempty"`
-	Description string  `json:"description,omitempty"`
-	TrackCount  int     `json:"track_count"`
-	Owner       string  `json:"owner,omitempty"`
-	PlayCount   int64   `json:"play_count,omitempty"`
-	Kind        string  `json:"kind,omitempty"` // playlist | chart | liked
-	Subtitle    string  `json:"subtitle,omitempty"`
-	Mine        bool    `json:"mine,omitempty"` // created by the logged-in user
-	Tracks      []Track `json:"tracks,omitempty"`
+	ID          string    `json:"id"`
+	Origin      string    `json:"origin"`
+	Name        string    `json:"name"`
+	CoverURL    string    `json:"cover_url,omitempty"`
+	Description string    `json:"description,omitempty"`
+	TrackCount  int       `json:"track_count"`
+	Owner       string    `json:"owner,omitempty"`
+	PlayCount   int64     `json:"play_count,omitempty"`
+	Kind        string    `json:"kind,omitempty"` // playlist | chart | liked
+	Subtitle    string    `json:"subtitle,omitempty"`
+	Mine        bool      `json:"mine,omitempty"` // created by the logged-in user
+	Tracks      []Track   `json:"tracks,omitempty"`
+	Cover       *CoverRef `json:"cover,omitempty"` // set by the gateway
 }
 
 type SearchResult struct {
@@ -198,6 +211,9 @@ type Lyrics struct {
 	Synced      bool   `json:"synced"`
 	LRC         string `json:"lrc"`
 	Translation string `json:"translation,omitempty"`
+	Roma        string `json:"roma,omitempty"` // romanisation LRC
+	// Words is word-timed lyrics when the platform has them (KRC/QRC/YRC).
+	Words []lyrics.WordLine `json:"words,omitempty"`
 }
 
 // Account describes the logged-in user. Never contains secrets.
@@ -300,6 +316,13 @@ type Discovery interface {
 
 type UserLibrary interface {
 	UserPlaylists(ctx context.Context) ([]Playlist, error)
+}
+
+// Radio is the logged-in account's personal FM as the platform serves it.
+type Radio interface {
+	FM(ctx context.Context) ([]Track, error)
+	// FMFeedback reports like|trash for a native track id.
+	FMFeedback(ctx context.Context, nativeID, action string) error
 }
 
 type Streamer interface {

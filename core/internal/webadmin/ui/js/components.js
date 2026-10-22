@@ -14,7 +14,7 @@ export const trackArt = (t, size = 80) => t.cover_url ? netImg(t.cover_url, size
 // 试听 = small lime outlined pill (designer spec); unplayable rows are dimmed
 // instead of badged, and explain themselves on tap.
 export function playBadge(t) {
-  if (t.playable === "preview") return h("span", { class: "pill-pv", title: "当前账号仅能播放平台提供的试听片段" }, "试听");
+  if ((t.preview || t.entitlement === "preview")) return h("span", { class: "pill-pv", title: "当前账号仅能播放平台提供的试听片段" }, "试听");
   return null;
 }
 export const UNAVAIL_REASON = { vip: "需要平台会员", paid: "需要单独购买", region: "版权地区限制", offline: "已下架", login: "请先在设置中登录该平台" };
@@ -58,7 +58,7 @@ export function trackList(tracks, opts = {}) {
   const wrap = h("div", { class: "tracks", role: "list" });
   wrap.append(h("div", { class: `trow head ${cls}` },
     idx ? h("span", { class: "no" }, "#") : null, showCover ? h("span", { class: "opt" }) : null, h("span", null, "标题"), h("span", { class: "al" }, "专辑"), h("span", { class: "du" }, "时长"), h("span")));
-  const blocked = (t) => t.playable === "unavailable";
+  const blocked = (t) => (t.playable === false || t.entitlement === "unavailable");
   const play = (i) => { const t = tracks[i]; if (blocked(t)) return toast(unavailableReason(t), "err"); player.playList(tracks.filter((x) => !blocked(x)), tracks.filter((x) => !blocked(x)).indexOf(t)); };
   const rows = tracks.map((t, i) => {
     const no = idx ? h("span", { class: "no" }, t.track_no || i + 1) : null;

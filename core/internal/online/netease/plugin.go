@@ -7,6 +7,7 @@ package netease
 import (
 	"context"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,7 +39,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		ID: origin, Name: "网易云音乐", Version: "1.0.0", Homepage: "https://music.163.com",
 		Description: "搜索、歌词、排行榜、每日推荐、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
-			online.CapDiscover, online.CapUserPlaylists, online.CapStream},
+			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword},
 		QRChannels:   []online.QRChannel{{ID: "app", Label: "网易云 App 扫码", App: "网易云音乐 App", Hint: "请使用 网易云音乐 App 扫码（不是微信/QQ）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
@@ -406,9 +407,15 @@ func (p *Plugin) Lyrics(ctx context.Context, id string) (online.Lyrics, error) {
 		Tlyric *struct {
 			Lyric string `json:"lyric"`
 		} `json:"tlyric"`
+		Romalrc *struct {
+			Lyric string `json:"lyric"`
+		} `json:"romalrc"`
+		Yrc *struct {
+			Lyric string `json:"lyric"`
+		} `json:"yrc"`
 		Nolyric bool `json:"nolyric"`
 	}
-	if err := p.eapi(ctx, "/api/song/lyric", map[string]any{"id": id, "tv": -1, "lv": -1, "rv": -1, "kv": -1}, &r); err != nil {
+	if err := p.eapi(ctx, "/api/song/lyric/v1", map[string]any{"id": id, "cp": false, "tv": 0, "lv": 0, "rv": 0, "kv": 0, "yv": 0, "ytv": 0, "yrv": 0}, &r); err != nil {
 		return online.Lyrics{}, err
 	}
 	if r.Nolyric || r.Lrc == nil || strings.TrimSpace(r.Lrc.Lyric) == "" {
@@ -417,6 +424,12 @@ func (p *Plugin) Lyrics(ctx context.Context, id string) (online.Lyrics, error) {
 	l := online.Lyrics{LRC: r.Lrc.Lyric, Synced: strings.Contains(r.Lrc.Lyric, "[0") || strings.Contains(r.Lrc.Lyric, "[1")}
 	if r.Tlyric != nil {
 		l.Translation = r.Tlyric.Lyric
+	}
+	if r.Romalrc != nil {
+		l.Roma = r.Romalrc.Lyric
+	}
+	if r.Yrc != nil && r.Yrc.Lyric != "" {
+		l.Words = lyrics.ParseYRC(r.Yrc.Lyric)
 	}
 	return l, nil
 }
@@ -583,4 +596,39 @@ func streamFrom(d neURL) online.Stream {
 		s.Format = "mp3"
 	}
 	return s
+}
+
+// FM is the account's 私人FM (a few tracks per call, as the platform serves them).
+func (p *Plugin) FM(ctx context.Context) ([]online.Track, error) {
+	if p.c.Cookie("MUSIC_U") == "" {
+		return nil, online.ErrNeedsLogin
+	}
+	var r struct {
+		Data []neSong `json:"data"`
+	}
+	if err := p.weapi(ctx, "/api/v1/radio/get", map[string]any{}, &r); err != nil {
+		return nil, err
+	}
+	return mapSongs(r.Data, nil), nil
+}
+
+// FMFeedback sends 喜欢 (like) or 不喜欢 (trash) for an FM track.
+func (p *Plugin) FMFeedback(ctx context.Context, nativeID, action string) error {
+	if p.c.Cookie("MUSIC_U") == "" {
+		return online.ErrNeedsLogin
+	}
+	id, err := strconv.ParseInt(nativeID, 10, 64)
+	if err != nil {
+		return online.ErrBadInput
+	}
+	var r struct {
+		Code int `json:"code"`
+	}
+	switch action {
+	case "like":
+		return p.weapi(ctx, "/api/radio/like", map[string]any{"alg": "itembased", "trackId": id, "like": true, "time": "3"}, &r)
+	case "trash":
+		return p.weapi(ctx, "/api/radio/trash/add", map[string]any{"alg": "RT", "songId": id, "time": "3"}, &r)
+	}
+	return online.ErrBadInput
 }

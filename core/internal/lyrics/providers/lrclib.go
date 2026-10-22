@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"io"
 	"net/http"
 	"net/url"
@@ -98,6 +99,11 @@ type Candidate struct {
 	PlainLyrics  string `json:"plain_lyrics,omitempty"`
 	// Translation is a translated LRC (same timestamps) when the source has one.
 	Translation string `json:"translation_lyrics,omitempty"`
+	// Roma is a romanisation LRC; Words is word timing (both when the source has them).
+	Roma  string            `json:"roma_lyrics,omitempty"`
+	Words []lyrics.WordLine `json:"-"`
+	// HasWords tells search clients that word timing exists.
+	HasWords bool `json:"has_words,omitempty"`
 	// Score (0-100) and its breakdown, set by lyrics/rank when ranked.
 	Score     int             `json:"score,omitempty"`
 	Breakdown *ScoreBreakdown `json:"score_breakdown,omitempty"`

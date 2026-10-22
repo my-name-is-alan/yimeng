@@ -275,7 +275,51 @@ type LyricsBestLine struct {
 	Trans string `json:"trans,omitempty"`
 }
 
+// fillLyricsQuery turns ?track_id= into title/artist/album/duration.
+func (d Deps) fillLyricsQuery(r *http.Request) {
+	v := r.URL.Query()
+	id := v.Get("track_id")
+	if id == "" || v.Get("title") != "" {
+		return
+	}
+	set := func(title, artist, album string, dur int64) {
+		v.Set("title", title)
+		v.Set("artist", artist)
+		if album != "" {
+			v.Set("album", album)
+		}
+		if dur > 0 {
+			v.Set("duration_ms", strconv.FormatInt(dur, 10))
+		}
+		r.URL.RawQuery = v.Encode()
+	}
+	if t, err := d.Library.GetTrack(r.Context(), id); err == nil {
+		set(t.Title, t.ArtistName, t.AlbumTitle, t.DurationMs)
+		return
+	}
+	if d.Online != nil && library.IsExternalID(id) {
+		if t, err := d.Online.Track(r.Context(), id); err == nil {
+			al := ""
+			if t.Album != nil {
+				al = t.Album.Name
+			}
+			set(t.Title, t.ArtistName, al, t.DurationMs)
+		}
+	}
+}
+
+// GET /api/v1/lyrics/best?track_id= | ?title=&artist=…
+//
+// Merged lyrics (D46): text from the best-scoring candidate; words, trans and
+// roma each from the best source that has them among candidates that match
+// the song (score ≥ min_score), aligned by timestamp. Word priority: Kugou
+// KRC > QQ QRC > NetEase YRC.
 func (d Deps) lyricsBestAPI(w http.ResponseWriter, r *http.Request) {
+	d.fillLyricsQuery(r)
+	if r.URL.Query().Get("title") == "" && r.URL.Query().Get("track_id") != "" {
+		writeJSON(w, http.StatusOK, map[string]any{"found": false, "message": lyricsNoneMessage})
+		return
+	}
 	q, items, ok := d.rankedLyrics(w, r)
 	if !ok {
 		return
@@ -292,24 +336,21 @@ func (d Deps) lyricsBestAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	c := items[0]
 	parsed := lyrics.Parse(firstNonEmpty(c.SyncedLyrics, c.PlainLyrics))
-	trans := map[int64]string{}
-	if c.Translation != "" {
-		for _, l := range lyrics.Parse(c.Translation).Lines {
-			if t := strings.TrimSpace(l.Text); t != "" {
-				trans[l.TimeMs] = t
-			}
+	var srcs []lyrics.Source
+	for _, it := range items {
+		if it.Score < minScore {
+			continue
 		}
+		srcs = append(srcs, lyrics.Source{Provider: it.Provider, Lines: lyrics.Parse(firstNonEmpty(it.SyncedLyrics, it.PlainLyrics)).Lines,
+			Trans: lyrics.Parse(it.Translation).Lines, Roma: lyrics.Parse(it.Roma).Lines, Words: it.Words})
 	}
-	lines := make([]LyricsBestLine, 0, len(parsed.Lines))
-	for _, l := range parsed.Lines {
-		lines = append(lines, LyricsBestLine{TMs: l.TimeMs, Text: l.Text, Trans: trans[l.TimeMs]})
-	}
+	m := lyrics.Merge(srcs)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"query": q, "found": true,
+		"query": q, "found": true, "source": c.Provider, "sources": m.Sources,
 		"id": candidateID(c), "provider": c.Provider, "title": c.Title, "artist": c.Artist, "album": c.Album,
 		"duration_ms": c.DurationMs, "synced": parsed.Synced, "score": c.Score, "score_breakdown": c.Breakdown,
 		"offset_ms": 0, "lrc": c.SyncedLyrics, "plain": firstNonEmpty(c.PlainLyrics, parsed.Text),
-		"translation": c.Translation, "romanization": "", "lines": lines,
+		"translation": c.Translation, "romanization": c.Roma, "has_words": m.Sources["words"] != "", "lines": m.Lines,
 	})
 }
 

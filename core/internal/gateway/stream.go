@@ -84,6 +84,7 @@ func (d Deps) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Stream-Profile", p.Key())
 	w.Header().Add("Vary", "Authorization")
 	if p.IsOriginal() {
+		localAudioHeaders(w.Header(), f.Stream, "", 0)
 		ct := audioTypes[f.Format]
 		if ct == "" {
 			ct = "application/octet-stream"
@@ -97,6 +98,7 @@ func (d Deps) stream(w http.ResponseWriter, r *http.Request) {
 	modTime := time.Unix(0, f.Mtime)
 	h := w.Header()
 	h.Set("Content-Type", p.ContentType())
+	localAudioHeaders(h, f.Stream, p.Format, p.BitrateKbps)
 	h.Set("ETag", `"`+transcode.Key(src, p)+`"`)
 	h.Set("Cache-Control", "private, no-transform")
 	if path, ok := d.Transcoder.Cached(src, p); ok {

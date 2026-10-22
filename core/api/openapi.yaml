@@ -1841,6 +1841,164 @@ paths:
         "201": { description: Created, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  # ---- App API (D45). All paths also available under /api/v1. ----
+  /api/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token (the ymd_ device token) for a new session; rotates the refresh token. Public.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
+      responses:
+        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "401": { description: invalid_refresh_token }
+  /api/server/info:
+    get:
+      tags: [system]
+      summary: Public server description - name, version, api_version, features, platforms[{origin,name,enabled,logged_in,capabilities}]. nickname/vip only when authenticated.
+      security: []
+      responses:
+        "200": { description: Info, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInfo" } } } }
+  /api/events:
+    get:
+      tags: [system]
+      summary: Server-Sent Events (same events as /ws, scoped to the caller). Auth via Bearer or ?access_token=/?token=. ?types=a,b filters. Keepalive every 15 s.
+      parameters:
+        - { name: types, in: query, schema: { type: string } }
+      responses:
+        "200": { description: text/event-stream; events favorites.changed, playlists.changed, history.added, progress.changed, library.updated, player.* }
+  /api/search/suggest:
+    get:
+      tags: [catalog]
+      summary: Fast suggestions (prefix and pinyin) from the library
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{q, items:[string]}" }
+  /api/covers/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [catalog]
+      summary: Cover image of a track/album/artist id. Signed URL (exp, dev, sig) or token. Strong ETag, immutable caching, 304.
+      parameters:
+        - { name: size, in: query, schema: { type: integer, enum: [120, 300, 600, 1200], default: 600 } }
+        - { name: format, in: query, schema: { type: string, enum: [webp, jpeg] } }
+      responses:
+        "200": { description: image/webp or image/jpeg }
+        "304": { description: Not modified }
+        "401": { description: invalid_signature }
+  /api/covers/{id}/meta:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [catalog]
+      summary: Cover placeholder data
+      responses:
+        "200": { description: "{blurhash, colors:[3 x #rrggbb]}" }
+  /api/progress:
+    get:
+      tags: [userdata]
+      summary: Playback progress (resume points) for the caller; ?ids=a,b or the 500 most recent. Does NOT write play history.
+      parameters:
+        - { name: ids, in: query, schema: { type: string } }
+      responses:
+        "200": { description: "{items:[{track_id, position_ms, duration_ms, finished, device_id, updated_at}]}" }
+  /api/progress/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    put:
+      tags: [userdata]
+      summary: Save progress; an older updated_at loses. Publishes progress.changed.
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { position_ms: { type: integer }, duration_ms: { type: integer }, finished: { type: boolean }, updated_at: { type: string, format: date-time } } }
+      responses: { "200": { description: Saved progress } }
+    delete:
+      tags: [userdata]
+      summary: Clear progress
+      responses: { "204": { description: Deleted } }
+  /api/artists/{id}/albums:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [catalog]
+      summary: Albums of an artist (list envelope; default sort year desc)
+      responses: { "200": { description: "{items, total, cursor, next_cursor, updated_at}" } }
+  /api/artists/{id}/tracks:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [catalog]
+      summary: Tracks of an artist (list envelope)
+      responses: { "200": { description: "{items, total, cursor, next_cursor, updated_at}" } }
+  /api/tracks/{id}/dream:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [catalog]
+      summary: Reduced visual metadata - no audio analysis. colors/blurhash from the cover, tags from genre/platform tags, bpm only when a platform/tag provides it (else null). Online ids like netease:123 may be raw or %3A-encoded.
+      responses: { "200": { description: "{track_id, colors:[3]|null, blurhash|null, tags:[string], bpm:null|number}" } }
+  /api/playlists/{id}/tracks:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [playlists]
+      summary: Tracks of a playlist (paged list envelope plus playlist). Online playlist and chart ids (netease:123) are accepted.
+      responses: { "200": { description: "{playlist, items, total, next_cursor}" } }
+    post:
+      tags: [playlists]
+      summary: Add tracks - append, or insert at position / before / after a track id
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [track_ids], properties: { track_ids: { type: array, items: { type: string } }, position: { type: integer }, before: { type: string }, after: { type: string } } }
+      responses: { "200": { description: Playlist } }
+    put:
+      tags: [playlists]
+      summary: Reorder/replace - full ordered track_ids
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [track_ids], properties: { track_ids: { type: array, items: { type: string } } } }
+      responses: { "200": { description: Playlist } }
+    delete:
+      tags: [playlists]
+      summary: Remove by ?indexes=0,3 (0-based) or ?track_ids=a,b
+      parameters:
+        - { name: indexes, in: query, schema: { type: string } }
+        - { name: track_ids, in: query, schema: { type: string } }
+      responses: { "200": { description: Playlist } }
+  /api/online/{origin}/{sub}:
+    parameters:
+      - { name: origin, in: path, required: true, schema: { type: string, enum: [netease, qq, kugou] } }
+      - { name: sub, in: path, required: true, schema: { type: string, enum: [daily, fm] } }
+    get:
+      tags: [online]
+      summary: Platform pass-through only (no own recommendation). daily -> {origin, date, tracks, items}; fm -> {origin, items} (no-store). 404 not_logged_in / not_supported.
+      responses:
+        "200": { description: Tracks }
+        "404": { description: not_logged_in or not_supported }
+  /api/online/{origin}/fm/feedback:
+    parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [online]
+      summary: Private FM feedback (like / trash) forwarded to the platform
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [track_id, action], properties: { track_id: { type: string }, action: { type: string, enum: [like, trash] } } }
+      responses: { "204": { description: Forwarded }, "404": { description: not_logged_in or not_supported } }
+  /api/online/{origin}/recommend/playlists:
+    parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [online]
+      summary: Platform's recommended playlists (login required)
+      responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
+  /api/online/{origin}/user/playlists:
+    parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [online]
+      summary: Logged-in account's playlists; ?type=created|collected
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [created, collected] } }
+      responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -1861,6 +2019,48 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    Session:
+      type: object
+      properties:
+        access_token: { type: string, description: "yma_… short-lived (15 min)" }
+        refresh_token: { type: string, description: "ymd_… device token; rotated by /auth/refresh" }
+        expires_in: { type: integer }
+        token_type: { type: string, enum: [Bearer] }
+    ServerInfo:
+      type: object
+      properties:
+        name: { type: string }
+        version: { type: string }
+        api_version: { type: string }
+        schema_version: { type: integer }
+        authenticated: { type: boolean }
+        features: { type: object, additionalProperties: { type: boolean } }
+        platforms:
+          type: array
+          items:
+            type: object
+            properties:
+              origin: { type: string }
+              name: { type: string }
+              enabled: { type: boolean }
+              logged_in: { type: boolean }
+              nickname: { type: string }
+              vip: { type: boolean }
+              capabilities: { type: array, items: { type: string, enum: [search, stream, lyrics, charts, daily, fm, recommend_playlists, user_playlists] } }
+    CoverRef:
+      type: object
+      properties:
+        url: { type: string, description: "Signed /api/v1/covers/{id} URL; append &size=120|300|600|1200" }
+        blurhash: { type: string, nullable: true }
+        colors: { type: array, items: { type: string } }
+    ListEnvelope:
+      type: object
+      properties:
+        items: { type: array, items: {} }
+        total: { type: integer }
+        cursor: { type: string, nullable: true, description: opaque }
+        next_cursor: { type: string, nullable: true }
+        updated_at: { type: string, format: date-time }
     LyricsScoreBreakdown:
       type: object
       description: Points per factor (max title 40, artist 30, album 5, duration 15, synced 5, translation 2, reliability 3). score = round(sum × penalty).
@@ -2138,6 +2338,15 @@ components:
     Track:
       type: object
       properties:
+        playable: { type: boolean, description: "false = cannot be played (see unplayable_reason)" }
+        entitlement: { type: string, enum: [full, preview, unavailable], description: "online tracks; non-VIP plays official preview only" }
+        unplayable_reason: { type: string, nullable: true }
+        preview: { type: object, nullable: true, description: "{start_ms, end_ms} of the official preview" }
+        has_lyrics: { type: boolean }
+        album: { type: object, nullable: true, properties: { id: { type: string }, name: { type: string } } }
+        audio: { type: object, description: "{codec, sample_rate, bit_depth, channels, bitrate (kbps)}" }
+        cover: { $ref: "#/components/schemas/CoverRef" }
+        stream_url: { type: string, description: "Signed /api/v1/stream/{id} URL (signature excludes format/size)" }
         id: { type: string, example: tr_1a2b3c }
         title: { type: string }
         sort_letter: { type: string, description: "A–Z index key: uppercase first letter, pinyin initial for Chinese titles, '#' otherwise", example: Q }

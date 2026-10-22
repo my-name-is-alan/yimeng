@@ -73,6 +73,7 @@ type Service struct {
 	requests map[string]*window
 	global   window
 	locked   map[string]time.Time // ip ("*" = global) -> locked until
+	signKey  []byte               // access tokens + signed URLs (tokens.go)
 	log      *slog.Logger
 }
 
@@ -269,10 +270,26 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 
 // Authenticate resolves a bearer token to its device.
 func (s *Service) Authenticate(ctx context.Context, token string) (Device, error) {
+	if strings.HasPrefix(token, accessPrefix) {
+		id, ok := s.verifyAccess(token)
+		if !ok {
+			return Device{}, ErrUnauthorized
+		}
+		return s.loadDevice(ctx, "p.id=?", id, "")
+	}
 	if !strings.HasPrefix(token, tokenPrefix) || len(token) > 128 {
 		return Device{}, ErrUnauthorized
 	}
 	h := HashToken(token)
+	return s.loadDevice(ctx, "p.token_hash=?", h, h)
+}
+
+// DeviceByID loads a device (for signed URLs).
+func (s *Service) DeviceByID(ctx context.Context, id string) (Device, error) {
+	return s.loadDevice(ctx, "p.id=?", id, "")
+}
+
+func (s *Service) loadDevice(ctx context.Context, where, arg, wantHash string) (Device, error) {
 	var d Device
 	var stored string
 	var dt sql.NullString
@@ -280,10 +297,10 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Device, error
 	var seen sql.NullInt64
 	var uid, uname sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT p.id, p.name, p.device_type, p.token_hash, p.created_at, p.last_seen_at, p.is_admin, p.user_id, u.username
-		FROM players p LEFT JOIN users u ON u.id=p.user_id WHERE p.token_hash=?`, h).
+		FROM players p LEFT JOIN users u ON u.id=p.user_id WHERE `+where, arg).
 		Scan(&d.ID, &d.Name, &dt, &stored, &created, &seen, &d.Admin, &uid, &uname)
 	d.UserID, d.Username = uid.String, uname.String
-	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(h)) != 1 {
+	if err != nil || stored == "" || (wantHash != "" && subtle.ConstantTimeCompare([]byte(stored), []byte(wantHash)) != 1) {
 		return Device{}, ErrUnauthorized
 	}
 	d.DeviceType = dt.String

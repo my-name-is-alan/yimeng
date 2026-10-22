@@ -26,6 +26,8 @@ type Playlist struct {
 	DurationMs int64     `json:"duration_ms"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	Origin     string    `json:"origin"`          // "local" (Core playlist)
+	Cover      *CoverRef `json:"cover,omitempty"` // set by the gateway
 }
 
 type PlaylistPage struct {
@@ -55,6 +57,7 @@ func (s *Scanner) loadPlaylist(ctx context.Context, q querier, id string) (Playl
 	if err != nil {
 		return p, err
 	}
+	p.Origin = OriginLocal
 	p.Comment, p.CreatedAt, p.UpdatedAt = comment.String, time.UnixMilli(c).UTC(), time.UnixMilli(u).UTC()
 	if rules.Valid {
 		p.Smart = true
@@ -362,6 +365,12 @@ type PlaylistOp struct {
 	Index    int      `json:"index,omitempty"`
 	From     int      `json:"from,omitempty"`
 	To       int      `json:"to,omitempty"`
+	// Id-based addressing (apps): move track_id to position / before / after
+	// another item; insert before/after; remove by track_ids.
+	TrackID  string `json:"track_id,omitempty"`
+	Position *int   `json:"position,omitempty"`
+	Before   string `json:"before,omitempty"`
+	After    string `json:"after,omitempty"`
 }
 
 // EditPlaylist applies an item operation to a static playlist. Indices refer
@@ -395,7 +404,69 @@ func (s *Scanner) EditPlaylist(ctx context.Context, id string, op PlaylistOp) (P
 	rows.Close()
 	n := len(items)
 	bad := func(m string) (Playlist, error) { return p, fmt.Errorf("%w: %s", ErrBadInput, m) }
+	indexOf := func(list []string, id string) int {
+		for i, t := range list {
+			if t == id {
+				return i
+			}
+		}
+		return -1
+	}
+	// target resolves before/after/position against list (-1 = invalid)
+	target := func(list []string) int {
+		switch {
+		case op.Before != "":
+			return indexOf(list, op.Before)
+		case op.After != "":
+			if i := indexOf(list, op.After); i >= 0 {
+				return i + 1
+			}
+			return -1
+		case op.Position != nil:
+			if *op.Position < 0 || *op.Position > len(list) {
+				return -1
+			}
+			return *op.Position
+		}
+		return -2 // not given
+	}
+	switch {
+	case op.Op == "move" && op.TrackID != "":
+		from := indexOf(items, op.TrackID)
+		if from < 0 {
+			return bad("track_id not in playlist")
+		}
+		rest := append(append([]string{}, items[:from]...), items[from+1:]...)
+		to := target(rest)
+		if to < 0 {
+			return bad("give position, before or after (an item of this playlist)")
+		}
+		items = append(rest[:to], append([]string{op.TrackID}, rest[to:]...)...)
+		op.Op = "done"
+	case op.Op == "insert" && (op.Before != "" || op.After != "" || op.Position != nil):
+		at := target(items)
+		if at < 0 {
+			return bad("before/after/position not in playlist")
+		}
+		items = append(items[:at], append(append([]string{}, op.TrackIDs...), items[at:]...)...)
+		op.Op = "done"
+	case op.Op == "remove" && len(op.TrackIDs) > 0:
+		drop := map[string]bool{}
+		for _, t := range op.TrackIDs {
+			drop[t] = true
+		}
+		kept := items[:0:0]
+		for _, t := range items {
+			if !drop[t] {
+				kept = append(kept, t)
+			}
+		}
+		items = kept
+		op.TrackIDs = nil
+		op.Op = "done"
+	}
 	switch op.Op {
+	case "done":
 	case "replace":
 		items = append([]string(nil), op.TrackIDs...)
 	case "append":

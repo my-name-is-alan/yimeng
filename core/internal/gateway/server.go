@@ -72,6 +72,7 @@ type Deps struct {
 	RestoreMaxBytes int64
 	SchemaVersion   int // newest schema this binary understands
 	Version         string
+	ServerName      string // shown by /api/v1/server/info and mDNS
 	// LyricsFetcher is an optional remote lyrics provider chain.
 	LyricsFetcher  library.LyricsFetcher
 	UserData       *userdata.Store
@@ -130,6 +131,17 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/auth/setup", d.authStatus)
 	mux.HandleFunc("POST /api/auth/setup", d.authSetup)
 	mux.HandleFunc("POST /api/auth/login", d.authLogin)
+	mux.HandleFunc("POST /api/auth/refresh", d.authRefresh)
+	mux.HandleFunc("GET /api/server/info", d.serverInfo)
+	mux.HandleFunc("GET /api/events", d.events)
+	mux.HandleFunc("GET /api/search/suggest", d.searchSuggest)
+	mux.HandleFunc("GET /api/covers/{id}", d.coverV1)
+	mux.HandleFunc("GET /api/covers/{id}/meta", d.coverMeta)
+	if d.UserData != nil {
+		mux.HandleFunc("GET /api/progress", d.getProgress)
+		mux.HandleFunc("PUT /api/progress/{id}", d.putProgress)
+		mux.HandleFunc("DELETE /api/progress/{id}", d.deleteProgress)
+	}
 	mux.HandleFunc("POST /api/auth/logout", d.authLogout)
 	mux.HandleFunc("POST /api/auth/password", d.authPassword)
 	mux.HandleFunc("GET /api/users", d.adminOnly(d.listUsers))
@@ -149,6 +161,8 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/library/scan/{id}", d.scanStatus)
 
 	mux.HandleFunc("GET /api/artists", d.listArtists)
+	mux.HandleFunc("GET /api/artists/{id}/albums", d.artistAlbums)
+	mux.HandleFunc("GET /api/artists/{id}/tracks", d.artistTracks)
 	mux.HandleFunc("GET /api/artists/{id}", d.getArtist)
 	if d.UserEdits != nil {
 		mux.HandleFunc("GET /api/artists/{id}/image", d.artistImage)
@@ -179,6 +193,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/players/{id}/radio", d.playerRadio)
 	mux.HandleFunc("GET /ws", d.ws)
 
+	mux.HandleFunc("GET /api/tracks/{id}/dream", d.trackDream)
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
 	mux.HandleFunc("GET /api/lyrics/search", d.lyricsSearchAPI)
@@ -214,6 +229,10 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("PATCH /api/playlists/{id}", d.updatePlaylist)
 		mux.HandleFunc("DELETE /api/playlists/{id}", d.deletePlaylist)
 		mux.HandleFunc("POST /api/playlists/{id}/items", d.editPlaylist)
+		mux.HandleFunc("GET /api/playlists/{id}/tracks", d.playlistTracks)
+		mux.HandleFunc("POST /api/playlists/{id}/tracks", d.playlistTracksEdit)
+		mux.HandleFunc("PUT /api/playlists/{id}/tracks", d.playlistTracksEdit)
+		mux.HandleFunc("DELETE /api/playlists/{id}/tracks", d.playlistTracksEdit)
 		mux.HandleFunc("GET /api/playlists/{id}/m3u", d.exportM3U)
 	}
 	if d.UserData != nil {
@@ -274,8 +293,10 @@ func isPublic(r *http.Request) bool {
 	switch r.URL.Path {
 	case "/api/auth/setup":
 		return r.Method == http.MethodGet || r.Method == http.MethodPost
-	case "/api/auth/login":
+	case "/api/auth/login", "/api/auth/refresh":
 		return r.Method == http.MethodPost
+	case "/api/server/info":
+		return r.Method == http.MethodGet || r.Method == http.MethodHead
 	}
 	return r.Method == http.MethodPost && (r.URL.Path == "/api/pair" || r.URL.Path == "/api/pair/request")
 }
@@ -287,7 +308,7 @@ func allowsQueryToken(r *http.Request) bool {
 		return false
 	}
 	p := r.URL.Path
-	return p == "/ws" || strings.HasPrefix(p, "/api/stream/") || strings.HasSuffix(p, "/download") ||
+	return p == "/ws" || p == "/api/events" || strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/covers/") || strings.HasSuffix(p, "/download") ||
 		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/"))) ||
 		(strings.HasSuffix(p, "/image") && strings.HasPrefix(p, "/api/artists/"))
 }
@@ -303,6 +324,20 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 			tok = strings.TrimSpace(h[7:])
 		} else if allowsQueryToken(r) {
 			tok = r.URL.Query().Get("access_token")
+			if tok == "" {
+				tok = r.URL.Query().Get("token") // app alias
+			}
+		}
+		if tok == "" && d.Auth != nil && allowsQueryToken(r) && r.URL.Query().Get("sig") != "" {
+			// signed media URL (path-scoped HMAC, expiring)
+			if id, ok := d.Auth.VerifyURL(r.URL.Path, r.URL.Query()); ok {
+				if dev, err := d.Auth.DeviceByID(r.Context(), id); err == nil {
+					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, dev)))
+					return
+				}
+			}
+			writeErr(w, http.StatusUnauthorized, "invalid_signature", "signed URL is invalid or expired")
+			return
 		}
 		if tok == "" || d.Auth == nil {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="yimeng"`)
@@ -379,7 +414,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, code int, kind, msg string) {
-	writeJSON(w, code, map[string]string{"error": kind, "message": msg})
+	writeJSON(w, code, map[string]string{"error": kind, "code": kind, "message": msg})
 }
 
 func (d Deps) internal(w http.ResponseWriter, what string, err error) {

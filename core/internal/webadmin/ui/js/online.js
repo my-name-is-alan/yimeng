@@ -18,7 +18,7 @@ export const normTracks = (ts) => (ts || []).map(normTrack);
 
 export function playableCounts(ts) {
   const c = { full: 0, preview: 0, unavailable: 0, local: 0 };
-  for (const t of ts) { c[t.playable || "full"]++; if (t.local_id) c.local++; }
+  for (const t of ts) { c[t.entitlement || "full"]++; if (t.local_id) c.local++; }
   return c;
 }
 
@@ -207,7 +207,7 @@ const fmtCount = (n) => n >= 1e8 ? `${(n / 1e8).toFixed(1)}亿` : n >= 1e4 ? `${
 export const sized = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
 
 export function playOnline(tracks, start = 0) {
-  const ok = tracks.filter((t) => t.playable !== "unavailable");
+  const ok = tracks.filter((t) => !(t.playable === false || t.entitlement === "unavailable"));
   if (!ok.length) return toast("当前账号无权播放这些曲目", "err");
   const s = Math.max(0, ok.indexOf(tracks[start]));
   player.playList(ok, s);

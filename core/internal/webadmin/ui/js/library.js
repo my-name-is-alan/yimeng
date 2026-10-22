@@ -310,7 +310,7 @@ export async function libraryPage(main, params) {
     } }, L)));
     box.replaceChildren(list.length ? trackList(list) : empty(src === "all" ? "曲库还是空的：添加本地音乐目录，或登录在线平台后收藏歌曲。" : "这个来源下没有歌曲", "track"));
   }
-  main.replaceChildren(head("曲库", count, h("button", { class: "btn primary", onclick: () => { const l = all.filter((t) => (src === "all" || t.origin === src) && t.playable !== "unavailable"); l.length && player.playList(l, 0, { shuffle: true }); } }, icon("shuffle"), "随机播放")),
+  main.replaceChildren(head("曲库", count, h("button", { class: "btn primary", onclick: () => { const l = all.filter((t) => (src === "all" || t.origin === src) && !(t.playable === false || t.entitlement === "unavailable")); l.length && player.playList(l, 0, { shuffle: true }); } }, icon("shuffle"), "随机播放")),
     h("div", { class: "toolbar" }, chips, filter), ...noteEls, h("div", { class: "lib-wrap" }, box, rail));
   render();
 }

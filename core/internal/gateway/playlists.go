@@ -41,6 +41,11 @@ func (d Deps) plDone(w http.ResponseWriter, code int, p library.Playlist, err er
 		return
 	}
 	d.Hub.Publish("playlist.updated", map[string]string{"id": p.ID})
+	action := "updated"
+	if code == http.StatusCreated {
+		action = "created"
+	}
+	d.Hub.Publish("playlists.changed", map[string]any{"id": p.ID, "action": action, "updated_at": p.UpdatedAt})
 	writeJSON(w, code, p)
 }
 
@@ -53,7 +58,8 @@ func (d Deps) listPlaylists(w http.ResponseWriter, r *http.Request) {
 		d.plErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": l})
+	d.decoratePlaylists(r, l)
+	writeJSON(w, http.StatusOK, map[string]any{"items": l, "total": len(l), "next_cursor": nil})
 }
 
 func (d Deps) getPlaylist(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +97,7 @@ func (d Deps) deletePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Hub.Publish("playlist.deleted", map[string]string{"id": r.PathValue("id")})
+	d.Hub.Publish("playlists.changed", map[string]any{"id": r.PathValue("id"), "action": "deleted"})
 	w.WriteHeader(http.StatusNoContent)
 }
 

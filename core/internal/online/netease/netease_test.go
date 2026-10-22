@@ -71,7 +71,7 @@ func newFake() *fake {
 		"/api/song/enhance/player/url/v1":      "url_full.json",
 		"/api/v6/playlist/detail":              "playlist_detail.json",
 		"/api/toplist":                         "toplist.json",
-		"/api/song/lyric":                      "lyric.json",
+		"/api/song/lyric/v1":                   "lyric.json",
 		"/api/v3/discovery/recommend/songs":    "recommend_songs.json",
 		"/api/v1/discovery/recommend/resource": "recommend_resource.json",
 		"/api/personalized/playlist":           "personalized.json",

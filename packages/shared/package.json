@@ -5,5 +5,8 @@
   "types": "src/api.ts",
   "exports": {
     ".": "./src/api.ts"
+  },
+  "scripts": {
+    "check": "npx -y -p typescript@5 tsc -p ."
   }
 }

@@ -239,3 +239,19 @@ export interface ServerSettingsResponse {
   settings: ServerSettings;
   fill_source_ids: FillSourceId[];
 }
+
+// ---- App API (D45/D46/D47) ----
+export interface Session { access_token: string; refresh_token: string; expires_in: number; token_type: "Bearer" }
+export type PlatformCapability = "search" | "stream" | "lyrics" | "charts" | "daily" | "fm" | "recommend_playlists" | "user_playlists";
+export interface ServerPlatform { origin: string; name: string; enabled: boolean; logged_in: boolean; nickname?: string; vip?: boolean; capabilities: PlatformCapability[] }
+export interface ServerInfo { name: string; version: string; api_version: string; schema_version: number; authenticated: boolean; features: Record<string, boolean>; platforms: ServerPlatform[] }
+export interface CoverRef { url: string; blurhash?: string | null; colors?: string[] }
+export interface ListEnvelope<T> { items: T[]; total: number; cursor: string | null; next_cursor: string | null; updated_at?: string }
+export type Entitlement = "full" | "preview" | "unavailable";
+export interface AppTrackFields { playable: boolean; entitlement?: Entitlement; unplayable_reason?: string | null; has_lyrics?: boolean; album?: { id: string; name: string } | null; cover?: CoverRef; stream_url?: string }
+export interface PlaybackProgress { track_id: string; position_ms: number; duration_ms: number; finished: boolean; device_id?: string; updated_at: string }
+export interface LyricWord { t_ms: number; d_ms: number; text: string }
+export interface MergedLyricLine { t_ms: number; text: string; trans?: string; roma?: string; words?: LyricWord[] }
+export interface LyricsSources { text?: string; words?: string; trans?: string; roma?: string }
+export interface TrackDream { track_id: string; colors: string[] | null; blurhash: string | null; tags: string[]; bpm: number | null }
+export interface ApiError { error: string; code: string; message: string }

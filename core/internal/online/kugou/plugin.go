@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"net/http"
 	"strconv"
 	"strings"
@@ -585,11 +586,27 @@ func (p *Plugin) Lyrics(ctx context.Context, id string) (online.Lyrics, error) {
 	if len(cands) == 0 {
 		return online.Lyrics{}, fmt.Errorf("%w: no lyrics", online.ErrUnavailable)
 	}
+	cand := cands[0]
+	// KRC first (word timing + translation/roma), plain LRC as fallback.
+	var k struct {
+		Content string `json:"content"`
+	}
+	if err := p.call(ctx, req{base: hLyrics, path: "/download", params: map[string]string{"ver": "1", "client": "android",
+		"id": str(cand, "id"), "accesskey": str(cand, "accesskey"), "fmt": "krc", "charset": "utf8"}}, &k); err == nil && k.Content != "" {
+		if txt, err := lyrics.DecodeKRC(k.Content); err == nil {
+			if ws := lyrics.ParseKRCText(txt); len(ws) > 0 {
+				l := online.Lyrics{Synced: true, LRC: lyrics.WordsToLRC(ws), Words: ws}
+				tr, ro := lyrics.KRCExtras(txt)
+				l.Translation, l.Roma = alignedLRC(ws, tr), alignedLRC(ws, ro)
+				return l, nil
+			}
+		}
+	}
 	var d struct {
 		Content string `json:"content"`
 	}
 	if err := p.call(ctx, req{base: hLyrics, path: "/download", params: map[string]string{"ver": "1", "client": "android",
-		"id": str(cands[0], "id"), "accesskey": str(cands[0], "accesskey"), "fmt": "lrc", "charset": "utf8"}}, &d); err != nil {
+		"id": str(cand, "id"), "accesskey": str(cand, "accesskey"), "fmt": "lrc", "charset": "utf8"}}, &d); err != nil {
 		return online.Lyrics{}, err
 	}
 	b, err := base64.StdEncoding.DecodeString(d.Content)
@@ -598,6 +615,20 @@ func (p *Plugin) Lyrics(ctx context.Context, id string) (online.Lyrics, error) {
 	}
 	lrc := strings.ReplaceAll(strings.TrimPrefix(string(b), "\ufeff"), "\r\n", "\n")
 	return online.Lyrics{Synced: strings.Contains(lrc, "[0"), LRC: lrc}, nil
+}
+
+// alignedLRC renders KRC per-line extras (index-aligned) as LRC.
+func alignedLRC(ws []lyrics.WordLine, vals []string) string {
+	if len(vals) == 0 {
+		return ""
+	}
+	var out []lyrics.WordLine
+	for i, w := range ws {
+		if i < len(vals) && strings.TrimSpace(vals[i]) != "" {
+			out = append(out, lyrics.WordLine{TMs: w.TMs, Text: vals[i]})
+		}
+	}
+	return lyrics.WordsToLRC(out)
 }
 
 // ── discovery ──────────────────────────────────────────────────────────────

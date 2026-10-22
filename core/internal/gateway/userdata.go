@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"net/http"
 	"strconv"
 	"time"
@@ -47,6 +48,7 @@ func (d Deps) scrobble(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Hub.Publish("history.played", map[string]any{"track_id": p.TrackID, "player_id": p.PlayerID})
+	d.Hub.Publish("history.added", map[string]any{"track_id": p.TrackID, "player_id": p.PlayerID, "source": p.Source})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -79,6 +81,21 @@ func (d Deps) historyTop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) favorites(w http.ResponseWriter, r *http.Request) {
+	// App contract: ?type=track|album → the list envelope of full objects.
+	switch r.URL.Query().Get("type") {
+	case "", "track":
+		d.list(w, r, "favorites", func(p library.ListParams) (any, error) {
+			p.Favorite, p.Origin = true, "all"
+			return d.Library.ListTracks(r.Context(), p)
+		})
+		return
+	case "album":
+		d.list(w, r, "favorites", func(p library.ListParams) (any, error) {
+			p.Favorite, p.Origin = true, "all"
+			return d.Library.ListAlbums(r.Context(), p)
+		})
+		return
+	}
 	items, err := d.UserData.Favorites(r.Context(), r.URL.Query().Get("type"), intQ(r, "limit"), intQ(r, "offset"))
 	if err != nil {
 		d.userErr(w, "favorites", err)
@@ -98,6 +115,7 @@ func (d Deps) setFavorite(fav bool) http.HandlerFunc {
 			return
 		}
 		d.Hub.Publish("favorite.changed", map[string]any{"type": r.PathValue("type"), "id": r.PathValue("id"), "favorite": fav})
+		d.Hub.Publish("favorites.changed", map[string]any{"type": r.PathValue("type"), "id": r.PathValue("id"), "favorite": fav})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"io"
 	"net/http"
 	"net/url"
@@ -361,6 +362,8 @@ type LyricsCandidate struct {
 	LRC         string
 	Plain       string
 	Translation string
+	Roma        string
+	Words       []lyrics.WordLine
 	Score       float64
 }
 
@@ -388,7 +391,8 @@ func (s *Source) SearchLyrics(ctx context.Context, q, title, artist string, n in
 			if err != nil || strings.TrimSpace(l.LRC) == "" {
 				return
 			}
-			c := &LyricsCandidate{Ref: t.ID, Provider: string(s.id), Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs, Translation: strings.TrimSpace(l.Translation)}
+			c := &LyricsCandidate{Ref: t.ID, Provider: string(s.id), Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs, Translation: strings.TrimSpace(l.Translation),
+				Roma: strings.TrimSpace(l.Roma), Words: l.Words}
 			if t.Album != nil {
 				c.Album = t.Album.Name
 			}

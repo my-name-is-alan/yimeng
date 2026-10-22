@@ -118,3 +118,4 @@ Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
 - Web brand: the app's 「梦境环」 icon (iOS AppIcon, commit 5f50078) for favicon, apple-touch, PWA manifest, sidebar and login.
 - Web: every native <select> is a keyboard-accessible custom listbox; checkbox, radio, number and file inputs are restyled.
 - Public lyrics API `/api/v1/lyrics/search|best` with the shared scorer (D41); the workbench shows the score with a breakdown tooltip.
+- App API milestone (D45–D47): access/refresh tokens, signed URLs, covers with sizes and blurhash, list envelope with ETag, progress sync, artist subroutes, playlist track ops, platform daily/FM/playlists, server/info, SSE events, search suggest, merged word lyrics (KRC/YRC), and reduced dream.

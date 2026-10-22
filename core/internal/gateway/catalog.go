@@ -64,7 +64,29 @@ func (d Deps) list(w http.ResponseWriter, r *http.Request, what string, f func(l
 		writeErr(w, http.StatusBadRequest, "invalid_query", err.Error())
 		return
 	}
-	d.writeOne(w, what, func() (any, error) { return f(p) })
+	if !applyCursor(r, &p) {
+		writeErr(w, http.StatusBadRequest, "invalid_cursor", "cursor does not belong to this list")
+		return
+	}
+	v, err := f(p)
+	if err != nil {
+		d.writeOne(w, what, func() (any, error) { return nil, err })
+		return
+	}
+	ctx := r.Context()
+	switch pg := v.(type) {
+	case library.Page[library.Track]:
+		d.decorateTracks(ctx, pg.Items)
+		d.writeList(w, r, pg, pg.Limit, pg.Offset, pg.Total)
+	case library.Page[library.Album]:
+		d.decorateAlbums(ctx, pg.Items)
+		d.writeList(w, r, pg, pg.Limit, pg.Offset, pg.Total)
+	case library.Page[library.Artist]:
+		d.decorateArtists(ctx, pg.Items)
+		d.writeList(w, r, pg, pg.Limit, pg.Offset, pg.Total)
+	default:
+		writeJSON(w, http.StatusOK, v)
+	}
 }
 
 func (d Deps) listArtists(w http.ResponseWriter, r *http.Request) {
@@ -80,10 +102,23 @@ func (d Deps) listTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getTrack(w http.ResponseWriter, r *http.Request) {
-	d.writeOne(w, "track", func() (any, error) { return d.Library.GetTrack(r.Context(), r.PathValue("id")) })
+	d.writeOne(w, "track", func() (any, error) {
+		t, err := d.Library.GetTrack(r.Context(), r.PathValue("id"))
+		if err == nil {
+			ts := []library.Track{t}
+			d.decorateTracks(r.Context(), ts)
+			t = ts[0]
+		}
+		return t, err
+	})
 }
 
+type albumFlat = library.Album
+
+// AlbumPage: the album's fields are also flattened at the top level (app
+// contract: GET /albums/{id} → {id, name, artist, cover, …, tracks}).
 type AlbumPage struct {
+	albumFlat
 	Album         library.Album    `json:"album"`
 	Tracks        []library.Track  `json:"tracks"`
 	Credits       []library.Credit `json:"credits"` // from metadata providers (opt-in)
@@ -105,7 +140,11 @@ func (d Deps) getAlbum(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		page := AlbumPage{Album: al, Tracks: tr.Items, Credits: cr, RelatedAlbums: []library.Album{}}
+		d.decorateTracks(ctx, tr.Items)
+		als := []library.Album{al}
+		d.decorateAlbums(ctx, als)
+		al = als[0]
+		page := AlbumPage{albumFlat: al, Album: al, Tracks: tr.Items, Credits: cr, RelatedAlbums: []library.Album{}}
 		if len(al.Artists) > 0 {
 			rel, err := d.Library.ListAlbums(ctx, library.ListParams{ArtistID: al.Artists[0].ID, Sort: "year", Limit: 20})
 			if err != nil {
@@ -339,4 +378,22 @@ func (d Deps) onThisDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// GET /api/v1/artists/{id}/albums and /tracks (list envelope).
+func (d Deps) artistAlbums(w http.ResponseWriter, r *http.Request) {
+	d.list(w, r, "albums", func(p library.ListParams) (any, error) {
+		p.ArtistID, p.Origin = r.PathValue("id"), ""
+		if p.Sort == "" {
+			p.Sort, p.Desc = "year", true
+		}
+		return d.Library.ListAlbums(r.Context(), p)
+	})
+}
+
+func (d Deps) artistTracks(w http.ResponseWriter, r *http.Request) {
+	d.list(w, r, "tracks", func(p library.ListParams) (any, error) {
+		p.ArtistID, p.Origin = r.PathValue("id"), ""
+		return d.Library.ListTracks(r.Context(), p)
+	})
 }
