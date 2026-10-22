@@ -3,7 +3,7 @@ import SwiftUI
 enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
-enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), artist }
+enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), artist }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -97,6 +97,9 @@ final class AppState: ObservableObject {
         case "me": tab = .me
         default: break
         }
+        #if DEBUG
+        if let s = arg("-seg"), let seg = LibraryView.Seg(rawValue: s) { librarySeg = seg }
+        #endif
         if demo == "island" { nowPlaying = true; track = DreamMock.zig; isPlaying = true }
         AppStateBridge.current = self
     }
@@ -192,6 +195,9 @@ struct Shell: View {
             Task { @MainActor in
                 await LibraryStore.shared.bootstrap()
                 await PlayerStore.shared.restore()
+                async let h: Void = HomeStore.shared.refresh()
+                async let s: Void = StarStore.shared.load()
+                _ = await (h, s)
             }
         }
         .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
@@ -202,6 +208,7 @@ struct Shell: View {
             switch r {
             case .album(let a): AlbumView(album: a).zoomDestination(a.id, ns)
             case .ndAlbum(let a): NDAlbumView(album: a).zoomDestination("nd-\(a.id)", ns)
+            case .ndArtist(let a): ArtistDetailView(artist: a).zoomDestination("ar-\(a.id)", ns)
             case .artist: ArtistView().zoomDestination("artist", ns)
             }
         }.toolbar(.hidden, for: .navigationBar)
@@ -257,27 +264,11 @@ struct Shell: View {
         .padding(.horizontal, Theme.margin).padding(.bottom, 2)
     }
 
-    /// 典藏: raised centre button above the glass capsule, doodle accent ring.
+    /// 典藏: raised liquid-glass orb tinted by the current cover, crayon moon + star (moonwave glyph). Lime only as a dot.
     var centreButton: some View {
-        let active = state.tab == .collection
-        return Button { withAnimation(.snappy) { if active { state.path = [] }; state.tab = .collection } } label: {
-            ZStack {
-                Circle().fill(active ? Theme.lime : Color(white: 0.1))
-                    .overlay(Circle().strokeBorder(Theme.lime.opacity(active ? 0 : 0.9), style: StrokeStyle(lineWidth: 2, dash: [5, 3])))
-                    .shadow(color: Theme.lime.opacity(active ? 0.55 : 0.25), radius: active ? 16 : 8, y: 4)
-                VStack(spacing: 1) {
-                    Image(systemName: Tab.collection.icon).font(.system(size: 22, weight: .semibold))
-                    Text(Tab.collection.rawValue).font(.system(size: 10, weight: .bold))
-                }
-                .foregroundStyle(active ? Color(white: 0.07) : Theme.lime)
-            }
-            .frame(width: 66, height: 66)
-            .overlay(alignment: .topTrailing) {
-                Image(systemName: "sparkle").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.lime)
-                    .rotationEffect(.degrees(active ? 20 : 0)).offset(x: 4, y: -2)
-            }
+        CentreOrb(active: state.tab == .collection) {
+            withAnimation(.snappy) { if state.tab == .collection { state.path = [] }; state.tab = .collection }
         }
-        .buttonStyle(.plain)
     }
 
     func tabItem(_ t: Tab) -> some View {
@@ -354,3 +345,61 @@ extension Color {
     }
 }
 
+
+
+struct CentreOrb: View {
+    let active: Bool
+    let action: () -> Void
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var diff = RemoteDiffusion.shared
+    @ObservedObject private var home = HomeStore.shared
+    @Environment(\.colorScheme) var scheme
+
+    private var tint: Color {
+        let lib = LibraryStore.shared
+        let u = player.coverURL ?? home.data.banner.first.flatMap { lib.coverURL($0, size: 600) }
+        return diff.entry(u)?.color ?? Color(hex: 0x6b4bd8)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // soft cover-coloured glow under the glass
+                Circle().fill(tint.opacity(active ? 0.55 : 0.32)).blur(radius: active ? 14 : 10).scaleEffect(1.05)
+                glass
+                VStack(spacing: 2) {
+                    ZStack {
+                        Crayon(shape: MoonShape(), color: .white, width: 2.2).frame(width: 22, height: 22)
+                            .rotationEffect(.degrees(active ? -12 : 0))
+                        Crayon(shape: StarShape(), color: .white, width: 1.6).frame(width: 9, height: 9)
+                            .offset(x: 13, y: -11).scaleEffect(active ? 1.15 : 0.9)
+                    }
+                    .frame(width: 30, height: 26)
+                    Text("典藏").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.92))
+                }
+                if active {
+                    Circle().fill(Theme.lime).frame(width: 5, height: 5).offset(y: 27).transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(width: 64, height: 64)
+            .animation(.spring(response: 0.45, dampingFraction: 0.6), value: active)
+            .animation(.smooth(duration: 0.6), value: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder var glass: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular.tint(tint.opacity(0.45)).interactive(), in: Circle())
+                .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.8))
+        } else {
+            ZStack {
+                Circle().fill(.ultraThinMaterial)
+                Circle().fill(tint.opacity(0.42))
+                Circle().fill(RadialGradient(colors: [.white.opacity(0.35), .clear], center: UnitPoint(x: 0.3, y: 0.15), startRadius: 0, endRadius: 40))
+                Circle().strokeBorder(.white.opacity(0.4), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+        }
+    }
+}

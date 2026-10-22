@@ -1,30 +1,31 @@
 import Foundation
 import SwiftUI
 
-struct NDAlbum: Identifiable, Hashable {
+struct NDAlbum: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let artist: String
+    var artistId: String? = nil
     let coverId: String?
     let year: Int?
     let songCount: Int?
 }
 
-struct NDArtist: Identifiable, Hashable {
+struct NDArtist: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let albumCount: Int?
     var coverId: String? = nil
 }
 
-struct NDGenre: Identifiable, Hashable {
+struct NDGenre: Identifiable, Hashable, Codable {
     var id: String { name }
     let name: String
     let songCount: Int
     let albumCount: Int
 }
 
-struct NDPlaylist: Identifiable, Hashable {
+struct NDPlaylist: Identifiable, Hashable, Codable {
     let id: String
     let name: String
     let songCount: Int?
@@ -184,7 +185,13 @@ final class LibraryStore: ObservableObject {
     }
 
     func coverArtURL(id: String?, size: Int = 300) -> URL? {
-        guard let id, let base = coverBase, !coverToken.isEmpty else { return nil }
+        guard let id else { return nil }
+        guard let base = coverBase, !coverToken.isEmpty else {
+            // Before login: token-less cache-only URL (same id_size key) so disk-cached covers render instantly.
+            var c = URLComponents(); c.scheme = CoverCache.offlineScheme; c.host = "cover"; c.path = "/getCoverArt.view"
+            c.queryItems = [URLQueryItem(name: "id", value: id), URLQueryItem(name: "size", value: "\(size)")]
+            return c.url
+        }
         return NavidromeClient.authedURL(base: base, method: "getCoverArt.view",
                                          user: coverUser, token: coverToken, salt: coverSalt,
                                          query: ["id": id, "size": "\(size)"])

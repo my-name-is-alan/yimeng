@@ -38,6 +38,7 @@ struct AlbumRow: View {
 
 struct TrackRow: View {
     let index: Int; let title: String; var subtitle: String? = nil; var trailing = ""; var art: String? = nil; var playing = false
+    var accessory: AnyView? = nil
     var onTap: (() -> Void)? = nil
     @Environment(\.colorScheme) var scheme
     var body: some View {
@@ -55,6 +56,7 @@ struct TrackRow: View {
                 }
                 Spacer()
                 Text(trailing).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                if let accessory { accessory }
             }
             .frame(maxHeight: .infinity)
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }

@@ -5,75 +5,85 @@ import UIKit
 struct CoverImage: View {
     let url: URL?
     var body: some View {
-        Group {
-            if let url {
-                CoverImageInner(url: url)
-            } else {
-                Color.gray.opacity(0.2)
-            }
-        }
+        if let url { CoverImageInner(url: url).id(CoverCache.key(url)) } else { Color.gray.opacity(0.2) }
     }
 }
 
+/// Starts from the synchronous memory/disk cache so re-created views never flash a placeholder.
 private struct CoverImageInner: View {
     let url: URL
     @State private var image: UIImage?
     @State private var failed = false
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else if failed {
-                Color.gray.opacity(0.25)
-            } else {
-                Color.gray.opacity(0.15).overlay(ProgressView().scaleEffect(0.8))
-            }
-        }
-        .task(id: url) { await load() }
+    init(url: URL) {
+        self.url = url
+        _image = State(initialValue: CoverCache.shared.cached(url))
     }
-
-    private func load() async {
-        image = nil
-        failed = false
-        if let cached = CoverCache.shared.image(for: url) {
-            image = cached
-            return
+    var body: some View {
+        ZStack {
+            Color.gray.opacity(failed ? 0.25 : 0.12)
+            if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
         }
-        do {
-            let img = try await CoverCache.shared.fetch(url)
-            image = img
-        } catch {
-            failed = true
+        .task(id: url.absoluteString) {
+            guard image == nil, url.scheme != CoverCache.offlineScheme else { return }
+            if let img = try? await CoverCache.shared.fetch(url) {
+                withAnimation(.easeOut(duration: 0.25)) { image = img }
+            } else { failed = true }
         }
     }
 }
 
-actor CoverCache {
+/// Cover cache keyed by Subsonic id+size (URLs carry a per-login token, so never key by full URL).
+/// Memory (NSCache) + disk (Caches/covers). Thread-safe; sync lookup for first frame.
+final class CoverCache: @unchecked Sendable {
     static let shared = CoverCache()
-    private var mem: [URL: UIImage] = [:]
+    static let offlineScheme = "yimeng-cover"
+    private let mem = NSCache<NSString, UIImage>()
+    private let dir: URL = {
+        let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("covers", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }()
     private let session: URLSession = {
-        let c = URLSessionConfiguration.ephemeral
-        c.httpAdditionalHeaders = [
-            "User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)",
-            "Accept": "image/*",
-        ]
-        c.timeoutIntervalForRequest = 20
+        let c = URLSessionConfiguration.default
+        c.httpAdditionalHeaders = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "image/*"]
+        c.timeoutIntervalForRequest = 30
         return URLSession(configuration: c)
     }()
 
-    func image(for url: URL) -> UIImage? { mem[url] }
-    func clear() { mem.removeAll() }
+    static func key(_ url: URL) -> String {
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if let id = q.first(where: { $0.name == "id" })?.value {
+            return id + "_" + (q.first(where: { $0.name == "size" })?.value ?? "0")
+        }
+        return url.absoluteString
+    }
+    private func file(_ k: String) -> URL {
+        dir.appendingPathComponent(k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? k)
+    }
+
+    func cached(_ url: URL) -> UIImage? {
+        let k = Self.key(url)
+        if let m = mem.object(forKey: k as NSString) { return m }
+        if let d = try? Data(contentsOf: file(k)), let img = UIImage(data: d) {
+            mem.setObject(img, forKey: k as NSString); return img
+        }
+        return nil
+    }
 
     func fetch(_ url: URL) async throws -> UIImage {
-        if let m = mem[url] { return m }
+        if let c = cached(url) { return c }
         let (data, resp) = try await session.data(from: url)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard code == 200, let img = UIImage(data: data) else {
-            throw URLError(.badServerResponse)
-        }
-        mem[url] = img
+        guard (resp as? HTTPURLResponse)?.statusCode == 200, let img = UIImage(data: data) else { throw URLError(.badServerResponse) }
+        let k = Self.key(url)
+        mem.setObject(img, forKey: k as NSString)
+        try? data.write(to: file(k))
         return img
+    }
+
+    func clear() {
+        mem.removeAllObjects()
+        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 }
 
@@ -84,24 +94,35 @@ import CoreImage
 final class RemoteDiffusion: ObservableObject {
     static let shared = RemoteDiffusion()
     struct Entry { let image: UIImage; let color: Color }
-    @Published private(set) var entries: [URL: Entry] = [:]
-    private var inflight: Set<URL> = []
+    /// Not @Published: lookups may fill it synchronously during body evaluation. `rev` signals async arrivals.
+    private var store: [String: Entry] = [:]
+    @Published private(set) var rev = 0
+    private var inflight: Set<String> = []
     private static let ctx = CIContext()
 
-    func entry(_ url: URL?) -> Entry? { url.flatMap { entries[$0] } }
+    /// Sync: memory → disk-cached cover (diffused once, then memoised).
+    func entry(_ url: URL?) -> Entry? {
+        guard let url else { return nil }
+        let k = CoverCache.key(url)
+        if let e = store[k] { return e }
+        if let img = CoverCache.shared.cached(url), let e = Self.diffuse(img) { store[k] = e; return e }
+        return nil
+    }
 
     func load(_ url: URL?) {
-        guard let url, entries[url] == nil, !inflight.contains(url) else { return }
-        inflight.insert(url)
+        guard let url, entry(url) == nil else { return }
+        let k = CoverCache.key(url)
+        guard !inflight.contains(k) else { return }
+        inflight.insert(k)
         Task {
-            defer { inflight.remove(url) }
+            defer { inflight.remove(k) }
             guard let src = try? await CoverCache.shared.fetch(url) else { return }
             let e = await Task.detached { Self.diffuse(src) }.value
-            if let e { entries[url] = e }
+            if let e { store[k] = e; rev += 1 }
         }
     }
 
-    nonisolated private static func diffuse(_ src: UIImage) -> Entry? {
+    nonisolated static func diffuse(_ src: UIImage) -> Entry? {
         guard let cg = src.cgImage else { return nil }
         let ci = CIImage(cgImage: cg)
         let scale = 96 / max(ci.extent.width, ci.extent.height)
@@ -148,7 +169,6 @@ struct RemoteBackdrop: View {
             .drawingGroup()
         }
         .frame(height: height).allowsHitTesting(false)
-        .onAppear { urls.forEach { diff.load($0) } }
-        .onChange(of: urls) { _, n in n.forEach { diff.load($0) } }
+
     }
 }

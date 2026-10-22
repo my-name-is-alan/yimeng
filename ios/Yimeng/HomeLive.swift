@@ -7,15 +7,15 @@ struct HomeLive: View {
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
     @AppStorage("ym.nickname") private var nickname = ""
-    @State private var banner: [NDAlbum] = []
-    @State private var newest: [NDAlbum] = []
-    @State private var recent: [NDAlbum] = []
-    @State private var frequent: [NDAlbum] = []
-    @State private var random: [NDAlbum] = []
-    @State private var artists: [NDArtist] = []
-    @State private var playlists: [NDPlaylist] = []
-    @State private var genres: [NDGenre] = []
-    @State private var loaded = false
+    @ObservedObject private var home = HomeStore.shared
+    private var banner: [NDAlbum] { home.data.banner }
+    private var newest: [NDAlbum] { home.data.newest }
+    private var recent: [NDAlbum] { home.data.recent }
+    private var frequent: [NDAlbum] { home.data.frequent }
+    private var random: [NDAlbum] { home.data.random }
+    private var artists: [NDArtist] { home.data.artists }
+    private var playlists: [NDPlaylist] { home.data.playlists }
+    private var genres: [NDGenre] { home.data.genres }
     @State private var page: Double = 0
     @State private var drag: CGFloat = 0
     @State private var dragging = false
@@ -49,9 +49,9 @@ struct HomeLive: View {
                                 Capsule().fill(Color.white).frame(width: 6 + 12 * wt, height: 6).opacity(0.4 + 0.6 * wt)
                             }
                         }.frame(maxWidth: .infinity).padding(.top, 12).motionIn(0.14, from: .fade)
-                    } else if !loaded {
-                        RoundedRectangle(cornerRadius: 20).fill(Theme.fill(scheme)).frame(height: 200)
-                            .overlay(ProgressView()).padding(.horizontal, Theme.margin).padding(.top, 16)
+                    } else if home.data.isEmpty {
+                        // True first run (no cache): a soft doodle, never grey skeleton blocks.
+                        FirstRunDoodle().padding(.top, 40)
                     }
 
                     albumSection("最近添加", newest, sort: "newest", i: 2)
@@ -64,17 +64,12 @@ struct HomeLive: View {
                             HStack(spacing: 16) {
                                 ForEach(artists) { ar in
                                     VStack(spacing: 8) {
-                                        ZStack {
-                                            Circle().fill(Theme.fill(scheme))
-                                            Text(String(ar.name.prefix(1))).font(.system(size: 26, weight: .bold))
-                                            CoverImage(url: library.coverArtURL(id: ar.coverId ?? ar.id, size: 200))
-                                        }
-                                        .frame(width: 84, height: 84).clipShape(Circle())
+                                        ArtistAvatar(artist: ar, size: 84)
                                         Text(ar.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                         Text("\(ar.albumCount ?? 0) 张专辑").font(.system(size: 11)).foregroundStyle(Theme.secondary(scheme))
                                     }
                                     .frame(width: 90)
-                                    .onTapGesture { state.librarySeg = .artists; state.tab = .library }
+                                    .onTapGesture { state.path.append(.ndArtist(ar)) }
                                 }
                             }.padding(.horizontal, Theme.margin)
                         }.motionIn(stagger(6))
@@ -124,7 +119,8 @@ struct HomeLive: View {
             .background(alignment: .top) { RemoteBackdrop(urls: bannerURLs, progress: p).ignoresSafeArea() }
         }
         .background(Theme.base(scheme))
-        .task { if !loaded { await load() } }
+        .refreshable { await home.refresh(force: true) }
+        .task { await home.refresh() }
         .onReceive(timer) { _ in
             guard banner.count > 1, !dragging, Date().timeIntervalSince(lastInteraction) > 3 else { return }
             withAnimation(.smooth(duration: 0.6)) { page = page.rounded() + 1 }
@@ -137,27 +133,6 @@ struct HomeLive: View {
         let h = Calendar.current.component(.hour, from: Date())
         let g = h < 6 ? "夜深了" : h < 12 ? "早上好" : h < 18 ? "下午好" : "晚上好"
         return nickname.isEmpty ? g : "\(g)，\(nickname)"
-    }
-
-    private func load() async {
-        let c = NavidromeClient.shared
-        async let n = c.albumList(type: "newest", offset: 0, size: 20)
-        async let r = c.albumList(type: "recent", offset: 0, size: 20)
-        async let f = c.albumList(type: "frequent", offset: 0, size: 20)
-        async let rd = c.albumList(type: "random", offset: 0, size: 26)
-        async let ar = c.artists()
-        async let pl = c.playlists()
-        async let g = c.genres()
-        newest = (try? await n) ?? []
-        recent = (try? await r) ?? []
-        frequent = (try? await f) ?? []
-        let rand = (try? await rd) ?? []
-        banner = Array(rand.prefix(6))
-        random = Array(rand.dropFirst(6))
-        artists = Array(((try? await ar) ?? []).sorted { ($0.albumCount ?? 0) > ($1.albumCount ?? 0) }.prefix(16))
-        playlists = Array(((try? await pl) ?? []).prefix(16))
-        genres = Array(((try? await g) ?? []).prefix(16))
-        loaded = true
     }
 
     @ViewBuilder func albumSection(_ title: String, _ albums: [NDAlbum], sort: String, i: Int) -> some View {
@@ -252,5 +227,25 @@ enum AvatarStore {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let img = UIImage(data: data), let jpg = img.jpegData(compressionQuality: 0.85) { try? jpg.write(to: url) }
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: "ym.avatarRev") + 1, forKey: "ym.avatarRev")
+    }
+}
+
+
+/// First-launch placeholder: moon + stars drifting in, no skeletons.
+struct FirstRunDoodle: View {
+    @State private var on = false
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Crayon(shape: MoonShape()).frame(width: 56, height: 56)
+                Crayon(shape: StarShape(), color: Theme.lime, width: 1.8).frame(width: 14, height: 14).offset(x: 40, y: -26).opacity(on ? 1 : 0.3)
+                Crayon(shape: StarShape(), width: 1.6).frame(width: 9, height: 9).offset(x: -38, y: 22).opacity(on ? 0.4 : 1)
+            }
+            Text("正在把曲库搬进梦里…").font(.system(size: 14)).opacity(0.7)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .opacity(on ? 1 : 0.5).offset(y: on ? 0 : 6)
+        .onAppear { withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { on = true } }
     }
 }

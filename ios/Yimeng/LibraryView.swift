@@ -62,10 +62,12 @@ struct SongRowPlay: View {
     let songs: [NDSong]; let i: Int
     @EnvironmentObject var state: AppState
     @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
     var body: some View {
         let s = songs[i]
         TrackRow(index: i + 1, title: s.title, subtitle: [s.artist, s.album ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
-                 trailing: s.durationLabel, playing: player.song?.id == s.id) {
+                 trailing: s.durationLabel, playing: player.song?.id == s.id,
+                 accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) })) {
             PlayerStore.shared.play(songs: songs, startAt: i)
         }
     }
@@ -82,7 +84,7 @@ private struct SongsList: View {
                     .onAppear { if i >= songs.count - 10 { Task { await more() } } }
             }
             if loading { ProgressView().padding() }
-            if done && songs.isEmpty { Text("暂无歌曲").padding() }
+            if done && songs.isEmpty { EmptyState(kind: .songs, action: ("重新载入", { done = false; Task { await more() } })) }
         }
         .task { if songs.isEmpty { await more() } }
     }
@@ -130,6 +132,7 @@ private struct AlbumsGrid: View {
                 }
             }.padding(.horizontal, Theme.margin)
             if loading { ProgressView().frame(maxWidth: .infinity) }
+            if done && albums.isEmpty { EmptyState(kind: .albums) }
             Text("已加载 \(albums.count) 张专辑").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                 .padding(.horizontal, Theme.margin)
         }
@@ -153,34 +156,25 @@ private struct ArtistsList: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @State private var artists: [NDArtist] = []
-    @State private var open: String?
-    @State private var albums: [String: [NDAlbum]] = [:]
+    @State private var loaded = false
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
+            if loaded && artists.isEmpty { EmptyState(kind: .artists) }
             ForEach(artists) { ar in
-                Button {
-                    withAnimation(.snappy) { open = open == ar.id ? nil : ar.id }
-                    if albums[ar.id] == nil { Task { albums[ar.id] = (try? await NavidromeClient.shared.artistAlbums(id: ar.id)) ?? [] } }
-                } label: {
+                Button { state.path.append(.ndArtist(ar)) } label: {
                     HStack(spacing: 12) {
-                        Circle().fill(Theme.fill(scheme)).frame(width: 40, height: 40)
-                            .overlay(Text(String(ar.name.prefix(1))).font(.system(size: 16, weight: .bold)))
+                        ArtistAvatar(artist: ar, size: 44)
                         Text(ar.name).font(.system(size: 16)).lineLimit(1)
                         Spacer()
                         if let c = ar.albumCount { Text("\(c) 张").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)) }
-                        Image(systemName: "chevron.down").font(.system(size: 12)).rotationEffect(.degrees(open == ar.id ? 180 : 0))
-                            .foregroundStyle(Theme.secondary(scheme))
+                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                     }
                     .foregroundStyle(Theme.fg(scheme))
-                    .padding(.horizontal, Theme.margin).frame(height: 56).contentShape(Rectangle())
+                    .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
                 }.buttonStyle(.plain)
-                if open == ar.id {
-                    if let a = albums[ar.id] { RemoteAlbumRow(albums: a, size: 120).padding(.bottom, 12) }
-                    else { ProgressView().frame(maxWidth: .infinity).padding() }
-                }
             }
         }
-        .task { if artists.isEmpty { artists = (try? await NavidromeClient.shared.artists()) ?? [] } }
+        .task { if !loaded { artists = (try? await NavidromeClient.shared.artists()) ?? []; loaded = true } }
     }
 }
 
@@ -193,9 +187,7 @@ private struct PlaylistsList: View {
     @State private var songs: [String: [NDSong]] = [:]
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            if loaded && lists.isEmpty {
-                Text("还没有歌单").foregroundStyle(Theme.secondary(scheme)).padding(.horizontal, Theme.margin)
-            }
+            if loaded && lists.isEmpty { EmptyState(kind: .playlists) }
             ForEach(lists) { pl in
                 Button {
                     withAnimation(.snappy) { open = open == pl.id ? nil : pl.id }
@@ -222,14 +214,11 @@ private struct PlaylistsList: View {
 }
 
 private struct StarredList: View {
-    @Environment(\.colorScheme) var scheme
-    @State private var songs: [NDSong] = []
-    @State private var loaded = false
+    @ObservedObject private var stars = StarStore.shared
     var body: some View {
         LazyVStack(spacing: 0) {
-            if loaded && songs.isEmpty { Text("还没有收藏的歌曲").foregroundStyle(Theme.secondary(scheme)).padding() }
-            ForEach(songs.indices, id: \.self) { i in SongRowPlay(songs: songs, i: i) }
+            if stars.loaded && stars.songs.isEmpty { EmptyState(kind: .starred) }
+            ForEach(stars.songs.indices, id: \.self) { i in SongRowPlay(songs: stars.songs, i: i) }
         }
-        .task { if !loaded { songs = (try? await NavidromeClient.shared.starredSongs()) ?? []; loaded = true } }
     }
 }

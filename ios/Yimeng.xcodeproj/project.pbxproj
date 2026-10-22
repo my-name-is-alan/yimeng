@@ -13,6 +13,7 @@
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
 		44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		562E8815E35C3538997E3EA0 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10344A37F4E7381B0AA3FBD7 /* Glass.swift */; };
 		58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624D971C2C9BF41CC02A1560 /* LibraryView.swift */; };
@@ -22,10 +23,12 @@
 		6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */; };
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
+		76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BD4E0C93F027C9E0B46E7 /* Stores.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
+		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
 		C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EAA934AB97BEE0902D11F2 /* MeView.swift */; };
 		D5339D65B2F278E0D24B78FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
@@ -78,6 +81,7 @@
 		1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStore.swift; sourceTree = "<group>"; };
 		221E80FC912CC7CB64F2505A /* MusicSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSources.swift; sourceTree = "<group>"; };
 		2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImage.swift; sourceTree = "<group>"; };
+		256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistDetailView.swift; sourceTree = "<group>"; };
 		3855754257202630A564173A /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		3DA1C686614CB8D6930D4D49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		3DCA6146350902AD251CEEB2 /* Common.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Common.swift; sourceTree = "<group>"; };
@@ -90,11 +94,13 @@
 		71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
+		8D351EB4C609FA891763BACE /* EmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStates.swift; sourceTree = "<group>"; };
 		98436E751CC570C4F8472C05 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
+		E96BD4E0C93F027C9E0B46E7 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
 		F1B679B920A57BE24DC98F91 /* Yimeng.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yimeng.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengActivityAttributes.swift; sourceTree = "<group>"; };
@@ -133,6 +139,7 @@
 			children = (
 				98436E751CC570C4F8472C05 /* AlbumView.swift */,
 				3855754257202630A564173A /* App.swift */,
+				256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */,
 				6672A08DBE481114D1F34B50 /* Assets.xcassets */,
 				4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */,
 				3DCA6146350902AD251CEEB2 /* Common.swift */,
@@ -140,6 +147,7 @@
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
 				673E45F12B4A88C9F60BEDEF /* DreamData.swift */,
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
+				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
 				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
@@ -157,6 +165,7 @@
 				5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */,
 				0962E95E6B55BCB808D64B49 /* Palette.swift */,
 				1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */,
+				E96BD4E0C93F027C9E0B46E7 /* Stores.swift */,
 				3DA1C686614CB8D6930D4D49 /* Theme.swift */,
 			);
 			path = Yimeng;
@@ -269,12 +278,14 @@
 			files = (
 				DCE0689AC11FAB46F17DBF51 /* AlbumView.swift in Sources */,
 				F56243364D38BE09D937684A /* App.swift in Sources */,
+				BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */,
 				B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */,
 				5F7DC5897731B0F4227472A9 /* Common.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
 				FD6FCBD54D57219F06DE8229 /* DreamData.swift in Sources */,
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,
+				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
 				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,
@@ -292,6 +303,7 @@
 				72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */,
 				6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */,
 				6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */,
+				76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */,
 				C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */,
 				DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */,
 			);

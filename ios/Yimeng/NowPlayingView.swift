@@ -6,6 +6,7 @@ struct NowPlayingView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.heroNS) var ns
     @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
     @State private var showAmbience = false
     @State private var start = Date().addingTimeInterval(-72)
     var track: DreamTrack { state.track }
@@ -88,9 +89,18 @@ struct NowPlayingView: View {
             Spacer()
             Text("译梦 · 梦境 \(track.motif.rawValue.uppercased())").font(.system(size: 12)).tracking(2).opacity(0.7)
             Spacer()
-            Menu {
-                ForEach(DreamMock.all) { t in Button(t.title) { withAnimation(.ui) { state.track = t } } }
-            } label: { roundIcon("ellipsis") }
+            if let s = player.song {
+                Button { StarStore.shared.toggle(s) } label: {
+                    Image(systemName: StarStore.shared.isStarred(song: s.id) ? "heart.fill" : "heart")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(StarStore.shared.isStarred(song: s.id) ? Color(hex: 0xff5fa8) : .white)
+                        .frame(width: 40, height: 40).background(Circle().fill(Color.white.opacity(0.14)))
+                }
+            } else {
+                Menu {
+                    ForEach(DreamMock.all) { t in Button(t.title) { withAnimation(.ui) { state.track = t } } }
+                } label: { roundIcon("ellipsis") }
+            }
         }
         .buttonStyle(.plain)
         .padding(.horizontal, Theme.margin).padding(.top, 8)

@@ -184,6 +184,43 @@ actor NavidromeClient {
         return out
     }
 
+    struct Starred { var albums: [NDAlbum]; var songs: [NDSong]; var artists: [NDArtist] }
+    func starred() async throws -> Starred {
+        let obj = try await rest("getStarred2.view", query: [:])
+        let r = obj["starred2"] as? [String: Any] ?? [:]
+        return Starred(albums: ((r["album"] as? [[String: Any]]) ?? []).compactMap(Self.parseAlbum),
+                       songs: ((r["song"] as? [[String: Any]]) ?? []).compactMap(Self.parseSong),
+                       artists: ((r["artist"] as? [[String: Any]]) ?? []).compactMap(Self.parseArtist))
+    }
+
+    enum StarKind: String { case song = "id", album = "albumId", artist = "artistId" }
+    func setStar(_ on: Bool, id: String, kind: StarKind) async throws {
+        _ = try await rest(on ? "star.view" : "unstar.view", query: [kind.rawValue: id])
+    }
+
+    struct ArtistDetail { var artist: NDArtist; var albums: [NDAlbum]; var bio: String; var image: String?; var similar: [NDArtist]; var top: [NDSong] }
+    func artistDetail(_ a: NDArtist) async throws -> ArtistDetail {
+        async let det = rest("getArtist.view", query: ["id": a.id])
+        async let inf = rest("getArtistInfo2.view", query: ["id": a.id, "count": "12"])
+        async let top = rest("getTopSongs.view", query: ["artist": a.name, "count": "10"])
+        let d = (try await det)["artist"] as? [String: Any] ?? [:]
+        let al = d["album"]
+        let albums = ((al as? [[String: Any]]) ?? ((al as? [String: Any]).map { [$0] } ?? [])).compactMap(Self.parseAlbum)
+        let info = ((try? await inf)?["artistInfo2"] as? [String: Any]) ?? [:]
+        var bio = (info["biography"] as? String) ?? ""
+        if let r = bio.range(of: "<a ") { bio = String(bio[..<r.lowerBound]) }
+        let sim = ((info["similarArtist"] as? [[String: Any]]) ?? []).compactMap(Self.parseArtist)
+        let ts = ((((try? await top)?["topSongs"] as? [String: Any])?["song"]) as? [[String: Any]] ?? []).compactMap(Self.parseSong)
+        let artist = Self.parseArtist(d) ?? a
+        return ArtistDetail(artist: artist, albums: albums, bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
+                            image: (info["largeImageUrl"] as? String) ?? (d["artistImageUrl"] as? String), similar: sim, top: ts)
+    }
+
+    static func parseArtist(_ a: [String: Any]) -> NDArtist? {
+        guard let id = a["id"] as? String, let name = a["name"] as? String else { return nil }
+        return NDArtist(id: id, name: name, albumCount: a["albumCount"] as? Int, coverId: a["coverArt"] as? String)
+    }
+
     func playlists() async throws -> [NDPlaylist] {
         let obj = try await rest("getPlaylists.view", query: [:])
         let list = ((obj["playlists"] as? [String: Any])?["playlist"]) as? [[String: Any]] ?? []
@@ -225,6 +262,7 @@ actor NavidromeClient {
         guard let id = a["id"] as? String, let name = a["name"] as? String else { return nil }
         return NDAlbum(id: id, name: name,
                        artist: (a["artist"] as? String) ?? "",
+                       artistId: a["artistId"] as? String,
                        coverId: a["coverArt"] as? String,
                        year: a["year"] as? Int,
                        songCount: a["songCount"] as? Int)

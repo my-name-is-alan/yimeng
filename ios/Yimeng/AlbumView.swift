@@ -61,6 +61,7 @@ struct NDAlbumView: View {
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
     @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
     @State private var songs: [NDSong] = []
     @State private var detail: NDAlbum?
     @State private var loading = true
@@ -76,7 +77,9 @@ struct NDAlbumView: View {
                     HStack {
                         Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
                         Spacer()
-                        CircleIconButton(icon: "ellipsis")
+                        StarButton(on: stars.isStarred(album: shown.id), size: 18) { stars.toggle(shown) }
+                            .background(Circle().fill(Theme.fill(scheme)).frame(width: 44, height: 44))
+                            .frame(width: 44, height: 44)
                     }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 8).motionIn(0, from: .top)
 
                     RemoteCover(url: library.coverURL(shown, size: 600), size: 240, corner: 16)
@@ -85,7 +88,9 @@ struct NDAlbumView: View {
 
                     VStack(spacing: 4) {
                         Text(shown.name).font(.system(size: 22, weight: .bold))
-                        Text(shown.artist).font(.system(size: 18)).opacity(0.65)
+                        Button {
+                            if let aid = shown.artistId { state.path.append(.ndArtist(NDArtist(id: aid, name: shown.artist, albumCount: nil))) }
+                        } label: { Text(shown.artist).font(.system(size: 18)).opacity(0.65) }.buttonStyle(.plain)
                         let meta: String = {
                             var parts = ["专辑"]
                             if let y = shown.year { parts.append(String(y)) }
@@ -116,7 +121,8 @@ struct NDAlbumView: View {
                         VStack(spacing: 0) {
                             ForEach(Array(songs.enumerated()), id: \.element.id) { i, t in
                                 let playing = player.song?.id == t.id
-                                TrackRow(index: i + 1, title: t.title, trailing: t.durationLabel, playing: playing) {
+                                TrackRow(index: i + 1, title: t.title, trailing: t.durationLabel, playing: playing,
+                                         accessory: AnyView(StarButton(on: stars.isStarred(song: t.id), size: 15) { stars.toggle(t) })) {
                                     PlayerStore.shared.playAlbum(shown, songs: songs, startAt: i)
                                     withAnimation(.ui) { state.nowPlaying = true }
                                 }
@@ -249,18 +255,21 @@ struct LibrarySearchView: View {
                     if !artists.isEmpty {
                         SectionHeader(title: "艺人", more: false)
                         ForEach(artists.prefix(20)) { ar in
-                            HStack {
+                            HStack(spacing: 12) {
+                                ArtistAvatar(artist: ar, size: 40)
                                 Text(ar.name).font(.system(size: 16))
                                 Spacer()
                                 if let c = ar.albumCount {
                                     Text("\(c) 张专辑").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
                                 }
                             }
-                            .padding(.horizontal, Theme.margin).padding(.vertical, 12)
+                            .padding(.horizontal, Theme.margin).padding(.vertical, 8)
+                            .contentShape(Rectangle())
+                            .onTapGesture { state.path.append(.ndArtist(ar)) }
                         }
                     }
                     if albums.isEmpty && songs.isEmpty && artists.isEmpty && !q.isEmpty && !searching {
-                        Text("无结果").foregroundStyle(Theme.secondary(scheme)).padding(.horizontal, Theme.margin).padding(.top, 24)
+                        EmptyState(kind: .search)
                     }
                     if q.isEmpty && !library.albums.isEmpty {
                         SectionHeader(title: "曲库 · 新入库", more: false)
