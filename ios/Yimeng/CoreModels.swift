@@ -15,7 +15,9 @@ struct CoreAudio: Codable, Hashable, Sendable {
     var bitDepth: Int?
     var bitrate: Int?              // kbps (draft doesn't say; treated as kbps when < 100 000, else bps)
     var channels: Int?
+    var replaygain: CoreRG?
 }
+struct CoreRG: Codable, Hashable, Sendable { var trackGain: Double?; var trackPeak: Double?; var albumGain: Double?; var albumPeak: Double? }
 
 struct CoreRef: Codable, Hashable, Sendable { var id: String?; var name: String? }
 

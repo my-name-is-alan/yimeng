@@ -48,6 +48,7 @@ struct TrackListSpec: Hashable {
 
 struct TrackListPage: View {
     let spec: TrackListSpec
+    @State private var cloning = false
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @State private var songs: [NDSong] = []
@@ -59,6 +60,10 @@ struct TrackListPage: View {
                 HStack {
                     Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
                     Spacer()
+                    if case .playlist(let pid) = spec.kind, NavidromeClient.core, pid.contains(":") {
+                        Button { cloning = true } label: { CircleIconButton(icon: "square.and.arrow.down") }.buttonStyle(.plain)
+                            .sheet(isPresented: $cloning) { CloneSheet(origin: spec.origin ?? String(pid.split(separator: ":")[0]), playlistId: pid, name: spec.title).presentationDetents([.medium, .large]) }
+                    }
                 }.padding(.horizontal, Theme.margin).padding(.top, 8)
                 HStack(alignment: .bottom, spacing: 16) {
                     ZStack {

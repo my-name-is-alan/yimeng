@@ -277,6 +277,9 @@ final class SheetCenter: ObservableObject {
     @Published var queue = false
     @Published var sound = false
     @Published var addToPlaylist: NDSong?
+    @Published var alternatives: NDSong?
+    /// Greyed track tapped: on Core offer other platforms' copies (D50), elsewhere just explain.
+    func unplayable(_ s: NDSong) { if NavidromeClient.core { alternatives = s } else { say(s.unplayableToast) } }
     @Published var toast: String?
     func say(_ s: String) {
         withAnimation(.snappy) { toast = s }
@@ -294,6 +297,7 @@ struct GlobalSheets: ViewModifier {
             }
             .sheet(isPresented: $c.sound) { NavigationStack { SoundSettingsView() } .presentationCornerRadius(28) }
             .sheet(item: $c.addToPlaylist) { s in AddToPlaylistSheet(song: s).presentationDetents([.medium, .large]).presentationCornerRadius(28) }
+            .sheet(item: $c.alternatives) { s in AlternativesSheet(song: s).presentationDetents([.medium, .large]).presentationCornerRadius(28) }
             .overlay(alignment: .top) {
                 if let t = c.toast {
                     Text(t).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
@@ -460,6 +464,13 @@ struct SoundSettingsView: View {
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
+        form
+            .onChange(of: rgMode) { CoreAccountStore.pushPlaybackPrefs(); PlayerStore.shared.applyGain() }
+            .onChange(of: preamp) { CoreAccountStore.pushPlaybackPrefs(); PlayerStore.shared.applyGain() }
+            .onChange(of: clipGuard) { CoreAccountStore.pushPlaybackPrefs(); PlayerStore.shared.applyGain() }
+            .onChange(of: gapless) { CoreAccountStore.pushPlaybackPrefs() }
+    }
+    private var form: some View {
         Form {
             Section {
                 EffectsPanel()

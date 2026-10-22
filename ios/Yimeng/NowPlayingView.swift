@@ -116,6 +116,9 @@ struct NowPlayingView: View {
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
             if let s = player.song {
                 QualityBadge(song: s).padding(.top, 8)
+                if let f = player.fallbackFrom {
+                    Text("来自" + (f == "local" ? "本地曲库" : CoreOrigin.label(f))).font(.system(size: 11)).opacity(0.45).padding(.top, 4)
+                }
                 BeatTagLine(track: track).padding(.top, 6)
             } else {
                 Text("\(track.genre) · \(track.bpm) BPM").font(.system(size: 12)).opacity(0.55).padding(.top, 4)

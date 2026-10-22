@@ -71,7 +71,7 @@ final class PlayerStore: ObservableObject {
     func play(songs: [NDSong], startAt: Int = 0, coverURL: URL? = nil) {
         guard !songs.isEmpty else { return }
         let start = max(0, min(startAt, songs.count - 1))
-        if songs[start].isUnplayable { SheetCenter.shared.say(songs[start].unplayableToast); return }
+        if songs[start].isUnplayable { SheetCenter.shared.unplayable(songs[start]); return }
         if !FMStore.shared.owns(songs) { FMStore.shared.stop() }
         queue = songs
         index = max(0, min(startAt, songs.count - 1))
@@ -169,19 +169,33 @@ final class PlayerStore: ObservableObject {
     private var sleepTask: Task<Void, Never>?
     func setSleep(minutes: Int?) {
         sleepTask?.cancel(); sleepAt = nil; sleepAfterTrack = false
+        // D52: arm the same timer on Core (other sessions see it; Core sends player.sleep.fade / player.sleep).
+        CoreAccountStore.shared.armSleep(minutes: minutes == 0 ? nil : minutes, endOfTrack: minutes == 0)
         guard let minutes else { return }
         if minutes == 0 { sleepAfterTrack = true; return }
         let at = Date().addingTimeInterval(TimeInterval(minutes * 60))
         sleepAt = at
         sleepTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow - 4)))
+            let fs: Double = CoreAccountStore.shared.sleepFade ? (NavidromeClient.core ? 30 : 8) : 0
+            // Core drives the timer when connected (player.sleep.fade / player.sleep); this is the offline backstop.
+            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow - fs + (NavidromeClient.core ? 3 : 0))))
             guard let self, !Task.isCancelled else { return }
-            self.fade(to: 0, over: 4)
-            try? await Task.sleep(for: .seconds(4))
+            if fs > 0, !self.fadingOut { self.fade(to: 0, over: max(1, at.timeIntervalSinceNow)) }
+            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow + (NavidromeClient.core ? 3 : 0))))
             guard !Task.isCancelled else { return }
             self.sleepFire()
         }
     }
+    /// Core `player.sleep.fade`: the app fades its own volume (Core never touches audio).
+    func fadeOut(over secs: Double) { guard isPlaying else { return }; fadingOut = true; fade(to: 0, over: max(1, secs)) }
+    /// Core `player.sleep`: pause now (timer or end of track).
+    func sleepFromServer() {
+        sleepTask?.cancel()
+        guard isPlaying || sleepAt != nil || sleepAfterTrack else { return }
+        fadingOut = false; sleepFire()
+    }
+    /// X-Yimeng-Fallback of the current stream: the platform Core switched to ("local" = 本地曲库).
+    @Published private(set) var fallbackFrom: String?
     private func sleepFire() {
         if isPlaying { toggle() }
         sleepAt = nil; sleepAfterTrack = false
@@ -393,6 +407,11 @@ final class PlayerStore: ObservableObject {
         }
         p.defaultRate = rate
         record(s)
+        fallbackFrom = nil
+        if NavidromeClient.core, s.id.contains(":") {
+            let id = s.id
+            Task { let f = await CoreClient.shared.fallbackOrigin(for: url); if self.song?.id == id { self.fallbackFrom = f } }
+        }
         LyricsStore.shared.load(s)
         DreamStore.shared.load(s)
         FMStore.shared.trackStarted()

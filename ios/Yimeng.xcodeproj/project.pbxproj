@@ -42,6 +42,7 @@
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
 		76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BD4E0C93F027C9E0B46E7 /* Stores.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
+		79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0DA447B96C02C374E060E1 /* CoreV29.swift */; };
 		81A2CEB572C553218B29556B /* Yueqian.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E1D191594AA3C9B06D6B1C /* Yueqian.swift */; };
 		876F76F65B3D8F8A2B7CE26E /* CoreBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A272403B835110F9DA3A860E /* CoreBackend.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
@@ -130,6 +131,7 @@
 		184013605DC0F6EEC27F5170 /* YimengWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YimengWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		197A06AAC57F015AE8C264DD /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		19B281F963BA1B878DC8E377 /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
+		1E0DA447B96C02C374E060E1 /* CoreV29.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV29.swift; sourceTree = "<group>"; };
 		1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStore.swift; sourceTree = "<group>"; };
 		221E80FC912CC7CB64F2505A /* MusicSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSources.swift; sourceTree = "<group>"; };
 		2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImage.swift; sourceTree = "<group>"; };
@@ -278,6 +280,7 @@
 				3AE81EDA4F41B8F0C14A4393 /* CoreUI.swift */,
 				544698022D347A02756EACDB /* CoreV25.swift */,
 				72941A55FA85EAEF903A950A /* CoreV28.swift */,
+				1E0DA447B96C02C374E060E1 /* CoreV29.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
@@ -507,6 +510,7 @@
 				AC913D8D096240B2BA9F5FD5 /* CoreUI.swift in Sources */,
 				DC1B124F0048EB2638F0DC50 /* CoreV25.swift in Sources */,
 				C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */,
+				79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,

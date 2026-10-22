@@ -20,6 +20,7 @@ struct NowPlayingMoreSheet: View {
                 header.padding(.top, 22)
                 shortcuts.padding(.top, 20).padding(.bottom, 8)
                     .offset(y: appeared ? 0 : 14).opacity(appeared ? 1 : 0)
+                sleepStrip
                 divider
                 Group {
                     row("square.stack", "专辑", song.album ?? "—", chevron: true) { goAlbum() }
@@ -51,7 +52,7 @@ struct NowPlayingMoreSheet: View {
         .sheet(isPresented: $handoff) { HandoffSheet().presentationDetents([.medium]) }
         .confirmationDialog("定时关闭", isPresented: $askSleep, titleVisibility: .visible) {
             ForEach([15, 30, 45, 60, 90], id: \.self) { m in Button("\(m) 分钟后") { player.setSleep(minutes: m); SheetCenter.shared.say("将在 \(m) 分钟后暂停") } }
-            Button("播完本首") { player.setSleep(minutes: 0); SheetCenter.shared.say("本首播完后暂停") }
+            Button("播完当前歌曲") { player.setSleep(minutes: 0); SheetCenter.shared.say("当前歌曲播完后暂停") }
             if player.sleepAt != nil || player.sleepAfterTrack { Button("关闭定时", role: .destructive) { player.setSleep(minutes: nil) } }
             Button("取消", role: .cancel) {}
         }
@@ -82,6 +83,29 @@ struct NowPlayingMoreSheet: View {
         }
     }
 
+    /// Countdown + 渐弱 toggle, only while a timer is armed.
+    @ObservedObject private var acct = CoreAccountStore.shared
+    @ViewBuilder private var sleepStrip: some View {
+        if player.sleepAt != nil || player.sleepAfterTrack {
+            HStack(spacing: 10) {
+                Image(systemName: "moon.zzz.fill").font(.system(size: 13)).opacity(0.7)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text(sleepCountdown).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.8)
+                }
+                Spacer()
+                Toggle("渐弱", isOn: $acct.sleepFade).toggleStyle(.switch).font(.system(size: 13)).fixedSize()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.07)))
+            .padding(.bottom, 8)
+        }
+    }
+    private var sleepCountdown: String {
+        if player.sleepAfterTrack { return "当前歌曲播完后暂停" }
+        guard let at = player.sleepAt else { return "" }
+        let s = max(0, Int(at.timeIntervalSinceNow))
+        return String(format: "%d:%02d 后暂停", s / 60, s % 60)
+    }
     private var sleepLabel: String {
         if player.sleepAfterTrack { return "本首后" }
         if let at = player.sleepAt { return "\(max(1, Int(at.timeIntervalSinceNow / 60) + 1)) 分钟" }

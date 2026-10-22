@@ -69,6 +69,9 @@ final class CoreEvents {
         case "history.added": Task { await HomeStore.shared.refreshPlayed() }
         case "library.updated": Task { await HomeStore.shared.refresh(force: true); await LibraryCache.shared.ensure("songs", force: true) }
         case "progress.changed": break   // read on next play of that track
+        case "security.alert", "player.sleep", "player.sleep.fade":
+            let p = (o?["data"] as? [String: Any]) ?? (o?["payload"] as? [String: Any]) ?? o ?? [:]
+            Task { @MainActor in CoreAccountStore.shared.handle(type: type, payload: p) }
         default: break
         }
     }

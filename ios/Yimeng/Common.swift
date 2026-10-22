@@ -82,7 +82,7 @@ struct TrackRow: View {
         .frame(height: art == nil && !showCover ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
         .opacity(song?.isUnplayable == true ? 0.4 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { if let s = song, s.isUnplayable { SheetCenter.shared.say(s.unplayableToast) } else { onTap?() } }
+        .onTapGesture { if let s = song, s.isUnplayable { SheetCenter.shared.unplayable(s) } else { onTap?() } }
     }
 }
 

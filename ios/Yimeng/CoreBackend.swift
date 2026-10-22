@@ -12,6 +12,7 @@ extension CoreClient {
         if let a = t.audio {
             s.suffix = a.codec?.lowercased(); s.samplingRate = a.sampleRate; s.bitDepth = a.bitDepth; s.channelCount = a.channels
             s.bitRate = a.bitrate.map { $0 > 100_000 ? $0 / 1000 : $0 }
+            if let g = a.replaygain { s.replayGain = ReplayGainInfo(trackGain: g.trackGain, albumGain: g.albumGain, trackPeak: g.trackPeak, albumPeak: g.albumPeak) }
         }
         if s.suffix == nil { s.suffix = t.format?.lowercased() }
         s.origin = t.origin ?? (t.id.contains(":") ? String(t.id.split(separator: ":")[0]) : "local")

@@ -328,6 +328,7 @@ struct Shell: View {
         return Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
             VStack(spacing: 2) {
                 Image(systemName: t.icon).font(.system(size: 19))
+                    .overlay(alignment: .topTrailing) { if t == .me && acct.unread > 0 { UnreadBadge(n: acct.unread).offset(x: 10, y: -6) } }
                 Text(t.rawValue).font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(active ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.75))
@@ -336,6 +337,7 @@ struct Shell: View {
         }.buttonStyle(.plain)
     }
     @Namespace private var tabNS
+    @ObservedObject private var acct = CoreAccountStore.shared
 }
 
 struct MiniPlayer: View {

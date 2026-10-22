@@ -296,6 +296,7 @@ final class LibraryStore: ObservableObject {
     private func accountSwitched() {
         PlayerStore.shared.resetInMemory()
         HomeStore.shared.reloadForScope()
+        CoreAccountStore.shared.deviceId = nil
         LibraryCache.shared.resetMemory(); StarStore.shared.resetForAccount(); PlaylistEvents.shared.lists = nil
         albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
     }
@@ -303,6 +304,7 @@ final class LibraryStore: ObservableObject {
     func logoutCore() async {
         PlayerStore.shared.clear()
         HomeStore.shared.clearForServerChange()
+        CoreAccountStore.shared.alerts = []; CoreAccountStore.shared.unread = 0; CoreAccountStore.shared.sourceSwitch = nil; CoreAccountStore.shared.deviceId = nil
         LibraryCache.shared.clear(); StarStore.shared.resetForAccount(); PlaylistEvents.shared.lists = nil
         await CoreClient.shared.logout()
         CoreEvents.shared.stop()
@@ -327,6 +329,7 @@ final class LibraryStore: ObservableObject {
             SourceStore.shared.upsert(cfg)
             CoreEvents.shared.start()
             await PlatformStore.shared.refresh()
+            Task { await CoreAccountStore.shared.refreshAll() }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-debugLogout") { try? await Task.sleep(for: .seconds(3)); await logoutCore() }
             #endif

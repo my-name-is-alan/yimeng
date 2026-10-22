@@ -17,6 +17,7 @@ struct HomeLive: View {
     private var playlists: [NDPlaylist] { home.data.playlists }
     private var genres: [NDGenre] { home.data.genres }
     @State private var bannerState = BannerState()
+    @State private var debugClone: String?
 
     private var bannerURLs: [URL?] { banner.map { library.coverURL($0, size: 600) } }
 
@@ -128,6 +129,9 @@ struct HomeLive: View {
                 }
             }
             .background(alignment: .top) { RemoteBackdrop(urls: bannerURLs, progress: p).ignoresSafeArea() }
+            .sheet(item: Binding(get: { debugClone.map { DebugID(id: $0) } }, set: { debugClone = $0?.id })) { d in
+                CloneSheet(origin: String(d.id.split(separator: ":")[0]), playlistId: d.id, name: "导入测试").presentationDetents([.medium, .large])
+            }
             #if DEBUG
             .task {
                 guard let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-homeScroll"), i + 1 < ProcessInfo.processInfo.arguments.count else { return }
@@ -151,6 +155,15 @@ struct HomeLive: View {
                 if args[i + 1] == "genres" { state.path.append(.genres) }
                 if args[i + 1] == "genre", let g = home.data.genres.first { state.path.append(.genre(g)) }
                 if args[i + 1] == "charts" { state.path.append(.charts) }
+                if args[i + 1] == "alt" {
+                    let all = PlatformStore.shared.dailies.flatMap(\.tracks)
+                    if let s = all.first(where: { $0.preview == true || $0.playable == false }) ?? all.first { SheetCenter.shared.alternatives = s }
+                }
+                if args[i + 1].hasPrefix("clone:") { debugClone = String(args[i + 1].dropFirst(6)) }
+                if args[i + 1] == "sleep", let d = PlatformStore.shared.dailies.first, !d.tracks.isEmpty {
+                    PlayerStore.shared.play(songs: d.tracks, startAt: 0); state.nowPlaying = true
+                    try? await Task.sleep(for: .seconds(2)); PlayerStore.shared.setSleep(minutes: args.contains("-sleep1") ? 1 : 30)
+                }
                 if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); state.path.append(.yueqian) }
                 if args[i + 1] == "daily", let d = PlatformStore.shared.dailies.first { state.path.append(.trackList(DailyMixCard.spec(d.origin, d.tracks))) }
                 if args[i + 1].hasPrefix("daily-play"), let d = PlatformStore.shared.dailies.first, !d.tracks.isEmpty {
