@@ -563,3 +563,17 @@ artists only had admin-uploaded pictures.
 
 **Rejected.** fanart.tv / Last.fm artist images (API keys, ToS); scraping platform
 web pages; caching per account (images are not user data; isolation is unaffected).
+
+## D61 · Performance pass (2026-10-22)
+
+- **Compression:** gzip (BestSpeed, pooled writers) for JSON / JS / CSS / HTML / XML responses ≥ 1 KiB. Never for audio, images, Range requests, SSE or WebSocket. The decision is made from the handler's Content-Type.
+- **Web console:**
+  - Embedded files carry a content-hash ETag and `Cache-Control: no-cache`, so an unchanged file revalidates as 304.
+  - index.html adds `<link rel=modulepreload>` for the core modules, so they load in parallel instead of as a serial import waterfall.
+  - The admin, report, developer, lyrics and metadata pages are code-split with dynamic `import()`.
+  - Images were already lazy and async-decoded.
+- **Rate limits:** static assets (`/admin/*`) and cached images (`/api/v1/images/*`) use their own per-client bucket at 4× the API budget, so a thumbnail-heavy page cannot starve API calls. API limits are unchanged.
+- **SQLite:** `cache_size=-16000` (16 MB per connection), `temp_store=MEMORY`, `mmap_size=128MB`, and 8 warm idle connections.
+- **Online listings:** identical track DTOs remembered within 10 minutes are not rewritten. Hot pages such as home, search and album become read-only. Previously each view rewrote every track row and its status.
+- **Playback:** the web player resolves the next online track's upstream URL (as a server-side lease) 1.5 s after a track starts, so skip and auto-advance avoid the platform round-trip.
+- **API contract:** `TestEveryRouteDocumented` fails when a registered route is missing from `api/openapi.yaml`. Path parameters are compared positionally; `/api/v1/x` and `/api/x` count as the same path. `/rest` (Subsonic) and the web shell are excluded.

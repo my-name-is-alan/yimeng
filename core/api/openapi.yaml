@@ -466,6 +466,15 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+    put:
+      tags: [admin]
+      summary: Upload a custom cover (image/jpeg|png|webp body, ≤ 10 MiB) for a local album; stored as an override (admin)
+      requestBody: { required: true, content: { image/jpeg: { schema: { type: string, format: binary } }, image/png: { schema: { type: string, format: binary } }, image/webp: { schema: { type: string, format: binary } } } }
+      responses: { "204": { description: Saved }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local }, "413": { description: too large } }
+    delete:
+      tags: [admin]
+      summary: Restore the album's original (file / fetched) cover (admin)
+      responses: { "204": { description: Restored }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local } }
   /api/v1/albums/{id}/cover/from-match:
     post:
       tags: [metadata]
@@ -1070,6 +1079,15 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+    put:
+      tags: [admin]
+      summary: Save user lyrics (LRC text) for a local track; overrides fetched lyrics (admin)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [lrc], properties: { lrc: { type: string, maxLength: 262144 }, offset_ms: { type: integer } } } } } }
+      responses: { "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/Lyrics" } } } }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local (online track) } }
+    delete:
+      tags: [admin]
+      summary: Remove user lyrics (falls back to file / fetched lyrics) (admin)
+      responses: { "204": { description: Removed }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local } }
   /api/v1/lyrics/search:
     get:
       tags: [lyrics]
@@ -2431,6 +2449,52 @@ paths:
       summary: Public web page for a room (uses the web UI's stored token)
       security: []
       responses: { "200": { description: text/html } }
+  # ── Web console admin helpers (admin device; local library items only — online ids → 409 not_local) ──
+  /api/v1/tracks/{id}/lyrics/user:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [admin]
+      summary: The user-edited LRC stored for a local track (admin)
+      responses: { "200": { description: "{lrc, offset_ms, updated_at}", content: { application/json: { schema: { type: object, properties: { lrc: { type: string }, offset_ms: { type: integer }, updated_at: { type: string, format: date-time } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "404": { $ref: "#/components/responses/NotFound" } }
+  /api/v1/tracks/{id}/lyrics/search:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [admin]
+      summary: Search LRCLIB lyric candidates for a local track (admin)
+      parameters: [{ name: q, in: query, description: "Override query (default: title + artist)", schema: { type: string } }]
+      responses: { "200": { description: "{items:[LyricsSearchCandidate]}", content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/LyricsSearchCandidate" } } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local } }
+  /api/v1/tracks/{id}/match:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [admin]
+      summary: Metadata match candidates (MusicBrainz / Spotify …) for a local track (admin)
+      responses: { "200": { description: "{items:[MetadataMatch]}", content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/MetadataMatch" } } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local }, "503": { description: metadata lookup not configured } }
+  /api/v1/albums/{id}/match:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [admin]
+      summary: Metadata match candidates for a local album (admin)
+      responses: { "200": { description: "{items:[MetadataMatch]}", content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/MetadataMatch" } } } } } } }, "403": { $ref: "#/components/responses/Forbidden" }, "409": { description: not_local }, "503": { description: metadata lookup not configured } }
+  /api/v1/overrides/batch:
+    post:
+      tags: [admin]
+      summary: Apply one metadata patch to many tracks or albums (≤ 1000 ids) (admin)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, ids, patch], properties: { type: { type: string, enum: [track, album, artist] }, ids: { type: array, maxItems: 1000, items: { type: string } }, patch: { type: object, additionalProperties: true } } } } } }
+      responses: { "200": { description: "{updated, skipped}" }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } }
+  /api/v1/system/logs:
+    get:
+      tags: [admin]
+      summary: Recent Core log records from the in-memory ring (admin)
+      parameters:
+        - { name: after, in: query, description: "Return records with seq > after (polling)", schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 1000, default: 200 } }
+        - { name: level, in: query, schema: { type: string, enum: [debug, info, warn, error] } }
+      responses: { "200": { description: "{items:[{seq, time, level, msg, attrs}], last}" }, "403": { $ref: "#/components/responses/Forbidden" } }
+  /api/v1/settings/runtime:
+    get:
+      tags: [admin]
+      summary: Runtime info for the dashboard (version, uptime, Go/SQLite versions, memory, goroutines) (admin)
+      responses: { "200": { description: Runtime info, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, "403": { $ref: "#/components/responses/Forbidden" } }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -2452,6 +2516,30 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    MetadataMatch:
+      type: object
+      description: One provider candidate (web console metadata editor)
+      properties:
+        provider: { type: string }
+        score: { type: number }
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        track_no: { type: integer }
+        disc_no: { type: integer }
+        year: { type: integer }
+        duration_ms: { type: integer }
+        isrc: { type: string }
+        mb_recording_id: { type: string }
+        mb_release_id: { type: string }
+        label: { type: string }
+        release_date: { type: string }
+        upc: { type: string }
+        cover_url: { type: string, description: "Provider image URL (do not load directly)" }
+        preview_url: { type: string, description: "Same image via Core's cache (/api/v1/images/{key}, D60)" }
+        popularity: { type: integer }
+        genres: { type: array, items: { type: string } }
+        track_count: { type: integer }
     DevCredential:
       type: object
       properties:
