@@ -22,6 +22,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
+	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -76,6 +77,8 @@ type Deps struct {
 	TrustedProxies *TrustedProxies
 	RateLimits     *RateLimits
 	Subsonic       *subsonic.Handler // optional; mounts /rest/*
+	Sources        *playback.Registry
+	Vault          vault.Vault // for logout / credential delete; never exposed
 }
 
 type contextT = context.Context
@@ -166,6 +169,15 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("PUT /api/favorites/{type}/{id}", d.setFavorite(true))
 		mux.HandleFunc("DELETE /api/favorites/{type}/{id}", d.setFavorite(false))
 		mux.HandleFunc("PUT /api/ratings/{type}/{id}", d.setRating)
+	}
+	if d.Sources != nil {
+		mux.HandleFunc("GET /api/sources", d.listSources)
+		mux.HandleFunc("GET /api/sources/{id}", d.getSource)
+		mux.HandleFunc("POST /api/sources/{id}/login", d.adminOnly(d.loginSource))
+		mux.HandleFunc("POST /api/sources/{id}/login/qr", d.adminOnly(d.startQR))
+		mux.HandleFunc("GET /api/sources/{id}/login/qr/{challenge}", d.adminOnly(d.pollQR))
+		mux.HandleFunc("DELETE /api/sources/{id}/credentials", d.adminOnly(d.logoutSource))
+		mux.HandleFunc("POST /api/sources/{id}/sync", d.adminOnly(d.syncSource))
 	}
 	if d.Subsonic != nil {
 		d.Subsonic.Stream = d.stream

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.12.0
+  version: 0.13.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -19,6 +19,8 @@ servers:
 security:
   - bearer: []
 tags:
+  - name: sources
+    description: StreamSource account management (credentials never leave the vault)
   - name: subsonic
     description: Subsonic-compatible /rest API
   - name: system
@@ -1243,6 +1245,91 @@ paths:
       security: []
       responses:
         "200": { description: "subsonic-response envelope" }
+
+  /api/sources:
+    get:
+      tags: [sources]
+      summary: List StreamSource accounts (health + linked status; never credentials)
+      responses:
+        "200":
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        health: { type: string, enum: [ok, degraded, down, needs_reauth] }
+                        login_methods: { type: array, items: { type: object } }
+                        linked: { type: boolean }
+                        account: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/sources/{id}:
+    get:
+      tags: [sources]
+      summary: Get one StreamSource
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Source }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/sources/{id}/login:
+    post:
+      tags: [sources]
+      summary: Store credentials for a source (admin; cookie/password)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [qr, cookie, password, oauth, api_key] }
+                cookie: { type: string }
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: AccountInfo }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "501": { description: Method not supported by stub }
+  /api/sources/{id}/login/qr:
+    post:
+      tags: [sources]
+      summary: Start QR login (admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: QR challenge }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources/{id}/login/qr/{challenge}:
+    get:
+      tags: [sources]
+      summary: Poll QR login (admin)
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: challenge, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ status }" }
+  /api/sources/{id}/credentials:
+    delete:
+      tags: [sources]
+      summary: Remove stored credentials (admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources/{id}/sync:
+    post:
+      tags: [sources]
+      summary: Sync remote library page (admin; stubs return 501)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: SyncPage }
+        "501": { description: Not implemented by stub }
 
 components:
   securitySchemes:

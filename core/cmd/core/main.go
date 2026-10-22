@@ -30,6 +30,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/playback/sources"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
@@ -108,7 +109,21 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	clear(key)
-	_ = vlt // handed to StreamSource / MetadataProvider factories (vault.Scope) as they land
+	streamReg := playback.NewStreamRegistry()
+	for _, id := range []string{"netease", "qq", "apple"} {
+		srcID := id
+		methods := []vault.LoginMethod{vault.LoginCookie, vault.LoginQRCode}
+		if srcID == "apple" {
+			methods = []vault.LoginMethod{vault.LoginOAuth}
+		}
+		streamReg.RegisterFactory(srcID, func(d playback.StreamDeps) (playback.StreamSource, error) {
+			return sources.NewStub(srcID, methods, d.Credentials), nil
+		})
+		if _, err := streamReg.Enable(srcID, playback.StreamDeps{Credentials: vault.Scope(vlt, srcID)}); err != nil {
+			return err
+		}
+	}
+	log.Info("stream sources registered", "n", len(streamReg.All()))
 
 	hub := events.NewHub()
 	reg := metadata.NewRegistry()
@@ -267,6 +282,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			TrustedProxies:  tp,
 			RateLimits:      rl,
 			Subsonic:        sub,
+			Sources:         streamReg,
+			Vault:           vlt,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
@@ -281,9 +298,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 					"backup": true, "lyrics": true, "history": true, "playlists": true,
 					"loudness": cfg.Library.LoudnessAnalysis, "transcode": tc != nil,
 					"subsonic": cfg.Subsonic, "mdns": cfg.MDNS,
-					"providers":  len(reg.IDs()) > 0 || len(lyricChain) > 0,
-					"tls":        cfg.Server.TLSCert != "",
-					"rate_limit": cfg.Server.RateLimit > 0 || cfg.Server.GlobalRate > 0,
+					"providers":      len(reg.IDs()) > 0 || len(lyricChain) > 0,
+					"tls":            cfg.Server.TLSCert != "",
+					"rate_limit":     cfg.Server.RateLimit > 0 || cfg.Server.GlobalRate > 0,
+					"stream_sources": true,
 				},
 			},
 		}),

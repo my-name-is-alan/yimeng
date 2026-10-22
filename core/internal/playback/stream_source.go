@@ -18,7 +18,9 @@ package playback
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
@@ -54,7 +56,7 @@ type StreamLease struct {
 
 // LoginMethodInfo advertises which login flows a source supports.
 type LoginMethodInfo struct {
-	Method vault.LoginMethod
+	Method vault.LoginMethod `json:"method"`
 }
 
 // QRChallenge is returned to the UI to render; polling happens in Core.
@@ -77,15 +79,15 @@ const (
 // It goes straight to the adapter, which converts it to a vault.Credential;
 // it is never persisted or logged in plain text.
 type LoginInput struct {
-	Method   vault.LoginMethod
-	Cookie   string
-	Username string
-	Password string
+	Method   vault.LoginMethod `json:"method"`
+	Cookie   string            `json:"cookie,omitempty"`
+	Username string            `json:"username,omitempty"`
+	Password string            `json:"password,omitempty"`
 }
 
 type AccountInfo struct {
-	DisplayName string
-	Tier        string // e.g. free / vip; informs ErrPlayableUnavailable
+	DisplayName string `json:"display_name"`
+	Tier        string `json:"tier,omitempty"` // e.g. free / vip; informs ErrPlayableUnavailable
 }
 
 type SourceHealth string
@@ -138,3 +140,61 @@ type StreamDeps struct {
 }
 
 type StreamFactory func(StreamDeps) (StreamSource, error)
+
+// Registry holds enabled StreamSources.
+type Registry struct {
+	mu        sync.Mutex
+	providers map[string]StreamSource
+	factories map[string]StreamFactory
+}
+
+func NewStreamRegistry() *Registry {
+	return &Registry{providers: map[string]StreamSource{}, factories: map[string]StreamFactory{}}
+}
+
+func (r *Registry) RegisterFactory(id string, f StreamFactory) {
+	r.mu.Lock()
+	r.factories[id] = f
+	r.mu.Unlock()
+}
+
+func (r *Registry) Enable(id string, deps StreamDeps) (StreamSource, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if p, ok := r.providers[id]; ok {
+		return p, nil
+	}
+	f, ok := r.factories[id]
+	if !ok {
+		return nil, fmt.Errorf("stream: unknown source %q", id)
+	}
+	p, err := f(deps)
+	if err != nil {
+		return nil, err
+	}
+	r.providers[id] = p
+	return p, nil
+}
+
+func (r *Registry) Put(p StreamSource) {
+	r.mu.Lock()
+	r.providers[p.ID()] = p
+	r.mu.Unlock()
+}
+
+func (r *Registry) Get(id string) (StreamSource, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.providers[id]
+	return p, ok
+}
+
+func (r *Registry) All() []StreamSource {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]StreamSource, 0, len(r.providers))
+	for _, p := range r.providers {
+		out = append(out, p)
+	}
+	return out
+}

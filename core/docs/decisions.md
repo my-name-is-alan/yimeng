@@ -142,3 +142,9 @@ alternative considered. Newest items at the bottom.
 - Minimal OpenSubsonic-flavoured surface: ping, license, folders, indexes,
   artists, albumList2, album, song, search3, playlists, lyrics, coverArt,
   stream/download (delegates to Core stream). JSON via `f=json`.
+
+## D16 StreamSource account management
+- `/api/sources*` manages StreamSource stubs (netease/qq/apple). Credentials go
+  only into the AES-GCM vault; list/get never return secrets. Login/logout/sync
+  are admin-only. ResolveStream/SyncLibrary stay ErrNotSupported until a
+  licensed integration exists — no scraping private APIs.
