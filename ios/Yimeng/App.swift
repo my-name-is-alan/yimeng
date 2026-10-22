@@ -69,7 +69,8 @@ final class AppState: ObservableObject {
             bpm: 100,
             energy: 0.45,
             genre: "navidrome",
-            duration: max(dur, 1)
+            duration: max(dur, 1),
+            lyrics: []
         )
         isPlaying = playing
         trackStart = Date()
@@ -162,6 +163,7 @@ struct Shell: View {
         }
         .environment(\.heroNS, ns)
         .animation(.ui, value: state.nowPlaying)
+        .animation(.ui, value: player.hasRealPlayback)
         .onAppear {
             PlaybackSystem.shared.onCommand = { [weak s = state] c in
                 DispatchQueue.main.async {
@@ -169,9 +171,19 @@ struct Shell: View {
                     switch c { case "next": s.skip(1); case "prev": s.skip(-1); case "play": s.setPlaying(true); case "pause": s.setPlaying(false); default: s.setPlaying(!s.isPlaying) }
                 }
             }
-            state.syncSystem()
+            if state.demo != nil { state.syncSystem() }
             Task { @MainActor in
                 await LibraryStore.shared.bootstrap()
+                await PlayerStore.shared.restore()
+                // Test hook (one-shot): open 曲库 and play the 4th song of the all-songs list.
+                let flag = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/ym-debug-play-library")
+                if FileManager.default.fileExists(atPath: flag.path) {
+                    try? FileManager.default.removeItem(at: flag)
+                    state.tab = .collection
+                    if let s = try? await NavidromeClient.shared.songs(offset: 0, count: 60), s.count > 3 {
+                        PlayerStore.shared.play(songs: s, startAt: 3)
+                    }
+                }
                 let args = ProcessInfo.processInfo.arguments
                 let openND = args.contains("-openFirstND") || UserDefaults.standard.bool(forKey: "ym.debugOpenFirstND")
                 let playND = args.contains("-playFirstND") || UserDefaults.standard.bool(forKey: "ym.debugPlayFirstND")
@@ -227,9 +239,13 @@ struct Shell: View {
         }
     }
 
+    @ObservedObject private var player = PlayerStore.shared
     var chrome: some View {
         VStack(spacing: 12) {
-            MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }
+            if player.hasRealPlayback {
+                MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             HStack(spacing: 0) { ForEach(Tab.allCases, id: \.self) { t in tabItem(t) } }
                 .padding(.horizontal, 4).frame(height: 62).background(GlassCapsule())
         }

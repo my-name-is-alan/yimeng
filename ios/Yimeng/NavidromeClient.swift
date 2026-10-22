@@ -118,6 +118,56 @@ actor NavidromeClient {
         return out
     }
 
+    func songExists(id: String) async throws -> Bool {
+        do { let o = try await rest("getSong.view", query: ["id": id]); return o["song"] != nil }
+        catch NavidromeError.api { return false }
+    }
+
+    /// All songs via search3 with empty query (Navidrome lists everything), paged.
+    func songs(offset: Int, count: Int = 50) async throws -> [NDSong] {
+        let obj = try await rest("search3.view", query: [
+            "query": "", "songCount": "\(count)", "songOffset": "\(offset)",
+            "albumCount": "0", "artistCount": "0",
+        ])
+        let r = obj["searchResult3"] as? [String: Any] ?? [:]
+        return ((r["song"] as? [[String: Any]]) ?? []).compactMap(Self.parseSong)
+    }
+
+    func albumList(type: String, offset: Int, size: Int = 40) async throws -> [NDAlbum] {
+        let obj = try await rest("getAlbumList2.view", query: ["type": type, "size": "\(size)", "offset": "\(offset)"])
+        let list = ((obj["albumList2"] as? [String: Any])?["album"]) as? [[String: Any]] ?? []
+        return list.compactMap(Self.parseAlbum)
+    }
+
+    func artistAlbums(id: String) async throws -> [NDAlbum] {
+        let obj = try await rest("getArtist.view", query: ["id": id])
+        let a = (obj["artist"] as? [String: Any])?["album"]
+        let arr = (a as? [[String: Any]]) ?? ((a as? [String: Any]).map { [$0] } ?? [])
+        return arr.compactMap(Self.parseAlbum)
+    }
+
+    func playlists() async throws -> [NDPlaylist] {
+        let obj = try await rest("getPlaylists.view", query: [:])
+        let list = ((obj["playlists"] as? [String: Any])?["playlist"]) as? [[String: Any]] ?? []
+        return list.compactMap { a in
+            guard let id = a["id"] as? String, let name = a["name"] as? String else { return nil }
+            return NDPlaylist(id: id, name: name, songCount: a["songCount"] as? Int, coverId: a["coverArt"] as? String)
+        }
+    }
+
+    func playlist(id: String) async throws -> [NDSong] {
+        let obj = try await rest("getPlaylist.view", query: ["id": id])
+        let e = (obj["playlist"] as? [String: Any])?["entry"]
+        let arr = (e as? [[String: Any]]) ?? ((e as? [String: Any]).map { [$0] } ?? [])
+        return arr.compactMap(Self.parseSong)
+    }
+
+    func starredSongs() async throws -> [NDSong] {
+        let obj = try await rest("getStarred2.view", query: [:])
+        let r = obj["starred2"] as? [String: Any] ?? [:]
+        return ((r["song"] as? [[String: Any]]) ?? []).compactMap(Self.parseSong)
+    }
+
     /// Build authenticated Subsonic URL for stream / cover (same query auth as REST).
     nonisolated static func authedURL(base: URL, method: String, user: String, token: String, salt: String, query: [String: String]) -> URL? {
         var c = URLComponents(url: base.appendingPathComponent("rest/\(method)"), resolvingAgainstBaseURL: false)!

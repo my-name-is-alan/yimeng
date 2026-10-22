@@ -13,7 +13,7 @@ struct CollectionView: View {
 
     var body: some View {
         if liveOnly {
-            liveBody
+            LibraryView()
         } else {
             dreamBody
         }

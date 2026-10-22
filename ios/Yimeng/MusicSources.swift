@@ -55,6 +55,9 @@ struct SourceConfig: Identifiable, Codable, Equatable {
     var allowSelfSigned = false
     var connected = false
     var statusNote: String = ""
+
+    /// `secret` is deliberately NOT persisted to UserDefaults — passwords live in the Keychain only.
+    enum CodingKeys: String, CodingKey { case kind, host, username, allowSelfSigned, connected, statusNote }
 }
 
 @MainActor

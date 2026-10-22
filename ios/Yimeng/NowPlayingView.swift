@@ -211,6 +211,10 @@ struct LyricsView: View {
         let lines = track.lyrics
         let idx = lines.lastIndex { $0.t <= time } ?? 0
         ZStack {
+            if lines.isEmpty {
+                Color(red: 12 / 255, green: 10 / 255, blue: 14 / 255).opacity(0.52).ignoresSafeArea()
+                Text("暂无歌词").font(.system(size: 17, weight: .semibold)).opacity(0.7)
+            } else {
             Color(red: 12 / 255, green: 10 / 255, blue: 14 / 255).opacity(0.52).ignoresSafeArea()
             GeometryReader { g in
                 VStack(alignment: .leading, spacing: 22) {
@@ -226,6 +230,7 @@ struct LyricsView: View {
                 .clipped()
                 .mask(LinearGradient(stops: [.init(color: .clear, location: 0.08), .init(color: .black, location: 0.2),
                                              .init(color: .black, location: 0.8), .init(color: .clear, location: 0.9)], startPoint: .top, endPoint: .bottom))
+            }
             }
         }
         .saturation(0.55)

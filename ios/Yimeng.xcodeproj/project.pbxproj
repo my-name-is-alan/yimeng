@@ -15,6 +15,7 @@
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		562E8815E35C3538997E3EA0 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10344A37F4E7381B0AA3FBD7 /* Glass.swift */; };
+		58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624D971C2C9BF41CC02A1560 /* LibraryView.swift */; };
 		5D4319F763707E67840F42FE /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03744E138A2E6A2C16E3F4C2 /* MockData.swift */; };
 		5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 221E80FC912CC7CB64F2505A /* MusicSources.swift */; };
 		5F7DC5897731B0F4227472A9 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA6146350902AD251CEEB2 /* Common.swift */; };
@@ -80,6 +81,7 @@
 		4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
 		4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionView.swift; sourceTree = "<group>"; };
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
+		624D971C2C9BF41CC02A1560 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		6672A08DBE481114D1F34B50 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		673E45F12B4A88C9F60BEDEF /* DreamData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamData.swift; sourceTree = "<group>"; };
 		71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				0E250285D45C295C91932A00 /* HomeView.swift */,
 				71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */,
 				197A06AAC57F015AE8C264DD /* LibraryStore.swift */,
+				624D971C2C9BF41CC02A1560 /* LibraryView.swift */,
 				03744E138A2E6A2C16E3F4C2 /* MockData.swift */,
 				A5B459A03FE9FB71837E459E /* Motion.swift */,
 				221E80FC912CC7CB64F2505A /* MusicSources.swift */,
@@ -271,6 +274,7 @@
 				D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */,
 				DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */,
 				D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */,
+				58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */,
 				5D4319F763707E67840F42FE /* MockData.swift in Sources */,
 				E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */,
 				5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */,

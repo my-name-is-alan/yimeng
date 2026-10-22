@@ -16,7 +16,14 @@ struct NDArtist: Identifiable, Hashable {
     let albumCount: Int?
 }
 
-struct NDSong: Identifiable, Hashable {
+struct NDPlaylist: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let songCount: Int?
+    let coverId: String?
+}
+
+struct NDSong: Identifiable, Hashable, Codable {
     let id: String
     let title: String
     let artist: String
