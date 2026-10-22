@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"net/http"
+	"sync"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
@@ -66,4 +67,20 @@ func eventPlayer(data any) string {
 		return v["from"]
 	}
 	return ""
+}
+
+// playerFilter memoizes canControl for one event stream connection.
+func (d Deps) playerFilter(ctx context.Context, me auth.Device) func(pid string) bool {
+	var mu sync.Mutex
+	seen := map[string]bool{}
+	return func(pid string) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		if v, ok := seen[pid]; ok {
+			return v
+		}
+		v := d.canControl(ctx, me, pid)
+		seen[pid] = v
+		return v
+	}
 }

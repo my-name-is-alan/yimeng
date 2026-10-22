@@ -29,6 +29,7 @@ func (d Deps) events(w http.ResponseWriter, r *http.Request) {
 	}
 	ch, unsub := d.Hub.Subscribe()
 	defer unsub()
+	may := d.playerFilter(r.Context(), dev)
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
@@ -60,6 +61,9 @@ func (d Deps) events(w http.ResponseWriter, r *http.Request) {
 			data, ok := eventFor(dev, e.Data)
 			if !ok {
 				continue
+			}
+			if pid := eventPlayer(data); pid != "" && !may(pid) {
+				continue // another account's player (D49)
 			}
 			b, err := json.Marshal(data)
 			if err != nil {

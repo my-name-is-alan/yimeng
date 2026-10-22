@@ -569,3 +569,9 @@ input[type=file]::file-selector-button { border: 0; border-radius: 999px; backgr
 .ym-tip { position: fixed; z-index: 1000; max-width: 280px; padding: 6px 10px; border-radius: 8px; background: var(--fill-2, #1c1c20); color: var(--fg);
   font-size: 12px; line-height: 1.4; box-shadow: 0 6px 20px rgb(0 0 0 / .35); pointer-events: none; white-space: pre-line; animation: ym-pop .12s ease-out; }
 .ym-tip[hidden] { display: none; }
+
+/* Sleep timer (D52) */
+.sleep-btn { gap: 4px; width: auto; padding: 0 6px; }
+.sleep-btn .sleep-left { font-size: 11px; color: var(--fg-2); }
+.sleep-btn .sleep-left:empty { display: none; }
+.sleep-btn.on { color: var(--lime); }

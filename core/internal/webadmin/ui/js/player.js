@@ -11,6 +11,9 @@ export const player = {
   queue: [], order: [], pos: -1, shuffle: false, repeat: "off", volume: 1, muted: false,
   lyrics: null, lyricsFor: null, listeners: new Set(), listened: 0, lastTick: 0, scrobbled: false,
   ent: null, loadSeq: 0, skips: 0, // ent: /online/resolve result for online tracks
+  fade: 1, rg: 1, sleepHook: null, // fade: sleep-timer gain (D52); rg: ReplayGain factor (D53)
+  applyVol() { audio.volume = Math.max(0, Math.min(1, this.volume * this.fade * this.rg)); },
+  pause() { audio.pause(); },
   get track() { return this.pos >= 0 ? this.queue[this.order[this.pos]] : null; },
   get playing() { return !audio.paused && !audio.ended; },
   get time() { return audio.currentTime * 1000; },
@@ -108,7 +111,7 @@ export const player = {
     this.scrobble(); this.pos--; this.load(true);
   },
   seek(ms) { if (this.track) { audio.currentTime = Math.max(0, Math.min(ms, this.duration) / 1000); this.emit("time"); } },
-  setVolume(v) { this.volume = v; audio.volume = v; if (v > 0) { this.muted = false; audio.muted = false; } this.emit("volume"); },
+  setVolume(v) { this.volume = v; this.applyVol(); if (v > 0) { this.muted = false; audio.muted = false; } this.emit("volume"); },
   toggleMute() { this.muted = !this.muted; audio.muted = this.muted; this.emit("volume"); },
   scrobble(completed = false) {
     const t = this.track; if (!t || this.scrobbled) return;
@@ -140,7 +143,7 @@ export const player = {
     try {
       const s = JSON.parse(localStorage.getItem(SKEY) || "null"); if (!s?.queue?.length) return;
       Object.assign(this, { queue: s.queue, order: s.order, pos: s.pos, shuffle: !!s.shuffle, repeat: s.repeat || "off", volume: s.volume ?? 1 });
-      audio.volume = this.volume;
+      this.applyVol();
       if (this.track && isOnline(this.track.id)) this.load(false, s.at || 0);
       else if (this.track) { audio.src = streamURL(this.track.id); if (s.at) audio.currentTime = s.at / 1000; this.loadLyrics(); this.media(); this.emit("track"); }
     } catch {}
@@ -170,7 +173,7 @@ audio.addEventListener("timeupdate", () => {
 audio.addEventListener("seeking", () => { player.lastTick = 0; });
 audio.addEventListener("play", () => player.emit("state"));
 audio.addEventListener("pause", () => { player.emit("state"); });
-audio.addEventListener("ended", () => player.next(true));
+audio.addEventListener("ended", () => { if (player.sleepHook?.()) { player.emit("state"); return; } player.next(true); });
 audio.addEventListener("loadedmetadata", () => player.emit("time"));
 // Explain playback failures in Chinese: ask Core why (JSON error), else map
 // the browser MediaError code.

@@ -407,3 +407,11 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - `prefer_local` maps tracks to local equivalents.
 - **Availability:** the last known availability is recorded in `external_status` (migration 0023) from listings, imports and resolves. Listings expose it as `entitlement` / `playable` / `preview`.
 - **Unavailable or preview items:** they stay in the playlist. Playback auto-switches to an entitled source when one exists (D50).
+
+## D52 — Sleep timer + fade-out
+- **Scope:** a per-player timer kept in Core (in memory). Arm it with `minutes`, or `end_of_track`; set `fade_seconds` (default 30).
+- **Fade:** Core announces `player.sleep.fade` once, when the remaining time drops to the fade length. For `end_of_track` the remaining time is estimated from the track's duration and position. Clients ramp their own volume down.
+- **When it fires:** Core pauses the player and sends `player.sleep`.
+  - For `end_of_track`, the natural end advances the queue and leaves the player paused at the next track (resume continues from there).
+- **Isolation:** only same-account sessions (or admin) can arm or see a timer (D49). The SSE `/events` stream now also filters player events by account; before this, only the WebSocket filtered them.
+- **Web player:** a sleep button in the now-playing bar offers 15/30/45/60/90 min or end of track. The fade is applied as a separate gain factor, so the user's volume is untouched.

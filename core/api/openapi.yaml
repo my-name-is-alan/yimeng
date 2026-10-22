@@ -1598,7 +1598,10 @@ paths:
   /api/v1/players/{id}/sleep:
     post:
       tags: [playback]
-      summary: Arm or clear a sleep timer (pauses when due)
+      summary: Arm or clear a sleep timer (pauses when due, fades out first)
+      description: |
+        D52. Arm with `minutes` (1..1440) or `end_of_track`; an empty body clears it. Clients fade volume to 0 over the last `fade_seconds` (default 30, 0..120).
+        Events (WS and SSE, same-account sessions only): `player.state` carries `sleep`; `player.sleep.fade` {player_id, remaining_ms, fade_ms} when the fade starts; `player.sleep` {player_id, reason: timer|end_of_track} when Core paused the player.
       parameters: [{ $ref: "#/components/parameters/Id" }]
       requestBody:
         required: true
@@ -1608,6 +1611,8 @@ paths:
               type: object
               properties:
                 minutes: { type: integer, description: "0 clears; >0 arms that many minutes from now" }
+                end_of_track: { type: boolean, description: "Stop when the current track ends (the queue advances, paused at the next track)" }
+                fade_seconds: { type: integer, minimum: 0, maximum: 120, description: "Fade-out length (default 30)" }
       responses:
         "200": { description: Player state with sleep_until }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2306,6 +2311,15 @@ components:
     PlayerState:
       type: object
       properties:
+        sleep:
+          type: object
+          nullable: true
+          description: Armed sleep timer (D52)
+          properties:
+            until: { type: string, format: date-time, nullable: true }
+            end_of_track: { type: boolean }
+            fade_ms: { type: integer }
+            fading: { type: boolean }
         player_id: { type: string }
         transport: { type: string, enum: [idle, buffering, playing, paused] }
         position_ms: { type: integer, description: "Extrapolated to updated_at while playing" }

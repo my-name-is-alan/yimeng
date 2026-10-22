@@ -3,6 +3,7 @@ import { get, post, store, connectWS, closeWS, onUnauthorized, onEvent, wsState 
 import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues, confirmDlg } from "./ui.js";
 import { state, isAdmin } from "./state.js";
 import { player, mountNowBar, closeNP } from "./player.js";
+import { initSleep, sleepButton } from "./sleep.js";
 import * as lib from "./library.js";
 import * as adm from "./admin.js";
 import { lyricsPage } from "./lyrics.js";
@@ -159,7 +160,7 @@ async function boot() {
   await onl.loadMode();
   shell();
   onEvent("plugin.updated", async () => { await onl.loadMode(); shell(); });
-  if (!booted) { booted = true; mountNowBar(navigate); player.restore(); }
+  if (!booted) { booted = true; mountNowBar(navigate); document.querySelector("#nowbar .nb-right")?.prepend(sleepButton()); player.restore(); initSleep(); }
   connectWS();
   onEvent("library.cover", () => {}); // reserved for future live refresh
   route();

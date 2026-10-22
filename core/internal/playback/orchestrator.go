@@ -74,6 +74,30 @@ type State struct {
 	Next       *TrackRef  `json:"next"`
 	NextLease  *Lease     `json:"next_lease"`
 	SleepUntil *time.Time `json:"sleep_until,omitempty"` // pause when reached; nil = off
+	Sleep      *SleepInfo `json:"sleep,omitempty"`       // armed sleep timer (D52)
+}
+
+// SleepInfo is an armed sleep timer: pause at Until, or when the current
+// track ends (EndOfTrack); clients fade volume to 0 over the last FadeMs.
+type SleepInfo struct {
+	Until      *time.Time `json:"until,omitempty"`
+	EndOfTrack bool       `json:"end_of_track"`
+	FadeMs     int64      `json:"fade_ms"`
+	Fading     bool       `json:"fading"`
+}
+
+// SleepOpts arms a timer: Minutes > 0, or EndOfTrack; neither clears it.
+type SleepOpts struct {
+	Minutes    int  `json:"minutes"`
+	EndOfTrack bool `json:"end_of_track"`
+	FadeSec    *int `json:"fade_seconds"` // default 30, 0..120
+}
+
+type sleepTimer struct {
+	until      time.Time // zero for end-of-track
+	endOfTrack bool
+	fade       time.Duration
+	fading     bool
 }
 
 type QueueItem struct {
@@ -103,7 +127,7 @@ type Orchestrator struct {
 	now     func() time.Time
 	mu      sync.Mutex
 	sleepMu sync.Mutex
-	sleep   map[string]time.Time // player_id -> deadline
+	sleep   map[string]*sleepTimer // player_id -> timer
 
 	// OnListened, if set before use, is called (outside the lock) whenever the
 	// current track is left: skipped, ended, replaced or stopped.
@@ -121,7 +145,7 @@ type Listen struct {
 }
 
 func NewOrchestrator(ctx context.Context, db *sql.DB, hub *events.Hub, lease LeaseFunc) (*Orchestrator, error) {
-	o := &Orchestrator{db: db, hub: hub, lease: lease, now: time.Now, sleep: map[string]time.Time{}}
+	o := &Orchestrator{db: db, hub: hub, lease: lease, now: time.Now, sleep: map[string]*sleepTimer{}}
 	// No client is producing audio after a restart.
 	_, err := db.ExecContext(ctx, `UPDATE sessions SET state='paused' WHERE state IN ('playing','buffering')`)
 	if err == nil {
@@ -130,13 +154,21 @@ func NewOrchestrator(ctx context.Context, db *sql.DB, hub *events.Hub, lease Lea
 	return o, err
 }
 
-// SetSleep arms (minutes>0) or clears a sleep timer that pauses the player.
-func (o *Orchestrator) SetSleep(ctx context.Context, pid string, minutes int) (State, error) {
+// SetSleep arms (minutes>0 or end of track) or clears a sleep timer that
+// pauses the player, fading out over the last FadeSec (D52).
+func (o *Orchestrator) SetSleep(ctx context.Context, pid string, opt SleepOpts) (State, error) {
+	fade := 30 * time.Second
+	if opt.FadeSec != nil {
+		fade = time.Duration(min(max(*opt.FadeSec, 0), 120)) * time.Second
+	}
 	o.sleepMu.Lock()
-	if minutes <= 0 {
+	switch {
+	case opt.Minutes > 0:
+		o.sleep[pid] = &sleepTimer{until: o.now().Add(time.Duration(min(opt.Minutes, 24*60)) * time.Minute), fade: fade}
+	case opt.EndOfTrack:
+		o.sleep[pid] = &sleepTimer{endOfTrack: true, fade: fade}
+	default:
 		delete(o.sleep, pid)
-	} else {
-		o.sleep[pid] = o.now().Add(time.Duration(minutes) * time.Minute)
 	}
 	o.sleepMu.Unlock()
 	st, err := o.State(ctx, pid)
@@ -146,39 +178,96 @@ func (o *Orchestrator) SetSleep(ctx context.Context, pid string, minutes int) (S
 	return st, err
 }
 
-func (o *Orchestrator) sleepUntilOf(pid string) *time.Time {
+func (o *Orchestrator) sleepInfo(pid string) (*time.Time, *SleepInfo) {
 	o.sleepMu.Lock()
 	defer o.sleepMu.Unlock()
-	if until, ok := o.sleep[pid]; ok {
-		u := until.UTC()
-		return &u
+	t, ok := o.sleep[pid]
+	if !ok {
+		return nil, nil
 	}
-	return nil
+	info := &SleepInfo{EndOfTrack: t.endOfTrack, FadeMs: t.fade.Milliseconds(), Fading: t.fading}
+	if !t.until.IsZero() {
+		u := t.until.UTC()
+		info.Until = &u
+		return &u, info
+	}
+	return nil, info
+}
+
+// sleepAtTrackEnd consumes an end-of-track timer (called on natural end).
+func (o *Orchestrator) sleepAtTrackEnd(pid string) bool {
+	o.sleepMu.Lock()
+	defer o.sleepMu.Unlock()
+	if t, ok := o.sleep[pid]; ok && t.endOfTrack {
+		delete(o.sleep, pid)
+		return true
+	}
+	return false
 }
 
 func (o *Orchestrator) sleepLoop(ctx context.Context) {
-	t := time.NewTicker(2 * time.Second)
+	t := time.NewTicker(time.Second)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			o.sleepMu.Lock()
-			now := o.now()
-			var due []string
-			for pid, until := range o.sleep {
-				if !now.Before(until) {
-					due = append(due, pid)
-					delete(o.sleep, pid)
-				}
+			o.sleepTick(ctx)
+		}
+	}
+}
+
+func (o *Orchestrator) sleepTick(ctx context.Context) {
+	type fadeEv struct {
+		pid       string
+		remaining time.Duration
+		fade      time.Duration
+	}
+	o.sleepMu.Lock()
+	now := o.now()
+	var due []string
+	var fades []fadeEv
+	var eot []string
+	for pid, t := range o.sleep {
+		if t.endOfTrack {
+			if !t.fading && t.fade > 0 {
+				eot = append(eot, pid)
 			}
-			o.sleepMu.Unlock()
-			for _, pid := range due {
-				if _, err := o.Pause(ctx, pid); err == nil {
-					o.hub.Publish("player.sleep", map[string]any{"player_id": pid})
-				}
-			}
+			continue
+		}
+		rem := t.until.Sub(now)
+		if rem <= 0 {
+			due = append(due, pid)
+			delete(o.sleep, pid)
+		} else if !t.fading && t.fade > 0 && rem <= t.fade {
+			t.fading = true
+			fades = append(fades, fadeEv{pid, rem, t.fade})
+		}
+	}
+	o.sleepMu.Unlock()
+	// end-of-track: fade when the current track has ≤ fade left
+	for _, pid := range eot {
+		st, err := o.State(ctx, pid)
+		if err != nil || st.Transport != Playing || st.Track == nil || st.Track.DurationMs <= 0 {
+			continue
+		}
+		rem := time.Duration(st.Track.DurationMs-st.PositionMs) * time.Millisecond
+		o.sleepMu.Lock()
+		t, ok := o.sleep[pid]
+		start := ok && !t.fading && rem <= t.fade
+		if start {
+			t.fading = true
+			fades = append(fades, fadeEv{pid, rem, t.fade})
+		}
+		o.sleepMu.Unlock()
+	}
+	for _, f := range fades {
+		o.hub.Publish("player.sleep.fade", map[string]any{"player_id": f.pid, "remaining_ms": max(f.remaining.Milliseconds(), 0), "fade_ms": f.fade.Milliseconds()})
+	}
+	for _, pid := range due {
+		if _, err := o.Pause(ctx, pid); err == nil {
+			o.hub.Publish("player.sleep", map[string]any{"player_id": pid, "reason": "timer"})
 		}
 	}
 }
@@ -408,7 +497,7 @@ func (o *Orchestrator) state(ctx context.Context, q querier, pid string, s *sess
 	// note: caller holds o.mu or is in mutate
 	st := State{PlayerID: pid, Transport: s.state, PositionMs: o.position(s), UpdatedAt: o.now().UTC(),
 		CurrentIndex: s.idx, QueueLength: len(s.queue), Repeat: s.repeat, Shuffle: s.shuffle, NextIndex: -1}
-	st.SleepUntil = o.sleepUntilOf(pid)
+	st.SleepUntil, st.Sleep = o.sleepInfo(pid)
 	if ni, _ := s.nextIndex(true); ni >= 0 && s.idx >= 0 {
 		t, err := trackRef(ctx, q, s.queue[ni])
 		if err != nil {
@@ -764,12 +853,23 @@ func (o *Orchestrator) Progress(ctx context.Context, pid string, posMs int64) er
 // Ended is reported when the current track finished naturally. trackID
 // guards against stale reports for a track that is no longer current.
 func (o *Orchestrator) Ended(ctx context.Context, pid, trackID string) (State, error) {
-	return o.mutate(ctx, pid, false, func(s *session) error {
+	slept := false
+	st, err := o.mutate(ctx, pid, false, func(s *session) error {
 		if s.idx < 0 || (trackID != "" && s.queue[s.idx] != trackID) || s.state == Idle {
 			return nil
 		}
-		return o.advance(s, true)
+		if err := o.advance(s, true); err != nil {
+			return err
+		}
+		if o.sleepAtTrackEnd(pid) && (s.state == Playing || s.state == Buffering) {
+			s.state, s.pos, slept = Paused, 0, true // stop after this track (D52)
+		}
+		return nil
 	})
+	if slept && err == nil {
+		o.hub.Publish("player.sleep", map[string]any{"player_id": pid, "reason": "end_of_track"})
+	}
+	return st, err
 }
 
 // ── queue ops ──────────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -127,14 +126,12 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 			}
 			st, err = d.Playback.EditQueue(ctx, pid, b)
 		case "sleep":
-			var b struct {
-				Minutes int `json:"minutes"`
-			}
-			if err := decodeBody(r, &b); err != nil {
-				writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
+			var b playback.SleepOpts
+			if err := decodeBody(r, &b); err != nil || b.Minutes < 0 || b.Minutes > 24*60 {
+				writeErr(w, http.StatusBadRequest, "invalid_body", "minutes 0..1440, end_of_track, fade_seconds 0..120")
 				return
 			}
-			st, err = d.Playback.SetSleep(ctx, pid, b.Minutes)
+			st, err = d.Playback.SetSleep(ctx, pid, b)
 		}
 		d.playbackResult(w, d.withOnline(st), err)
 	}
@@ -180,18 +177,7 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	states = d.filterStates(ctx, dev, states)
-	allowed := map[string]bool{}
-	var allowMu sync.Mutex
-	may := func(pid string) bool {
-		allowMu.Lock()
-		defer allowMu.Unlock()
-		if v, ok := allowed[pid]; ok {
-			return v
-		}
-		v := d.canControl(ctx, dev, pid)
-		allowed[pid] = v
-		return v
-	}
+	may := d.playerFilter(ctx, dev)
 	if err := writeWS(ctx, c, "hello", map[string]any{
 		"device_id": dev.ID, "players": states, "online": d.Presence.Snapshot(),
 	}); err != nil {
