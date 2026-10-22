@@ -260,6 +260,10 @@ func TestSubsonicAuthAndEndpoints(t *testing.T) {
 	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "audio/") {
 		t.Fatalf("stream %d %s", res.StatusCode, res.Header.Get("Content-Type"))
 	}
+	res, _ = e.do("POST", "/rest/stream.view", q("id", tr.ID).Encode(), "", "Content-Type", "application/x-www-form-urlencoded")
+	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "audio/") {
+		t.Fatalf("form-post stream %d", res.StatusCode)
+	}
 	// read-only key cannot stream or write
 	ro := e.mkCred(alice, `{"kind":"api_key","name":"ro","scopes":["read"]}`)
 	if r := sub(e, "stream", url.Values{"apiKey": {ro.Secret}, "id": {tr.ID}}); subCode(r) != 50 {

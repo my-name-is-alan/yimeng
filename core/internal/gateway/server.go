@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -305,6 +306,21 @@ func NewRouter(d Deps) http.Handler {
 		d.Subsonic.WithDevice = withDevice
 		d.Subsonic.ClientIP = clientIP
 		d.Subsonic.Decorate = d.markEntitlement
+		d.Subsonic.Cover = func(w http.ResponseWriter, r *http.Request, kind, id string) {
+			r2 := r.Clone(r.Context())
+			r2.SetPathValue("id", id)
+			q := r.URL.Query()
+			v := url.Values{}
+			if sz := q.Get("size"); sz != "" {
+				v.Set("size", sz)
+			}
+			r2.URL.RawQuery = v.Encode()
+			if kind == "track" {
+				d.trackCover(w, r2)
+				return
+			}
+			d.albumCover(w, r2)
+		}
 		if d.UserData != nil && d.Subsonic.UserData == nil {
 			d.Subsonic.UserData = d.UserData
 		}

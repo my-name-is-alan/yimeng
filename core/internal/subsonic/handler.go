@@ -48,6 +48,7 @@ type Handler struct {
 	Decorate   func(context.Context, []library.Track) // fills Entitlement on online tracks
 	ClientIP   func(*http.Request) string
 	OnAuthFail func(ctx context.Context, user, ip string, locked bool)
+	Cover      func(w http.ResponseWriter, r *http.Request, kind, id string) // kind album|track; gateway cover serving (remote CDN, sizes)
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
@@ -344,6 +345,21 @@ func (h *Handler) getLyrics(w http.ResponseWriter, r *http.Request, _ auth.Devic
 
 func (h *Handler) getCoverArt(w http.ResponseWriter, r *http.Request, _ auth.Device) {
 	id := r.URL.Query().Get("id")
+	if h.Cover != nil && !strings.HasPrefix(id, "ar-") && id != "" {
+		kind, raw := "album", id
+		switch {
+		case strings.HasPrefix(id, "al-"):
+			raw = strings.TrimPrefix(id, "al-")
+		case strings.HasPrefix(id, "tr-"):
+			kind, raw = "track", strings.TrimPrefix(id, "tr-")
+		default:
+			if p, err := h.Library.AlbumCover(r.Context(), id); err != nil || p == "" {
+				kind = "track"
+			}
+		}
+		h.Cover(w, r, kind, raw)
+		return
+	}
 	var path string
 	var err error
 	switch {
@@ -387,6 +403,10 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request, _ auth.Device) 
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/api/stream/" + id
 		r2.SetPathValue("id", id)
+		if r2.Method != http.MethodHead {
+			r2.Method = http.MethodGet // formPost: the upstream fetch must be a GET
+		}
+		r2.Body = http.NoBody
 		r2.Header.Set("X-Yimeng-Full-Only", "1") // never hand a preview clip to a Subsonic client
 		if q := r.URL.Query(); q.Get("format") == "raw" || q.Get("format") == "" {
 			q.Del("format")
