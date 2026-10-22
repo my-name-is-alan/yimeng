@@ -203,3 +203,28 @@ alternative considered. Newest items at the bottom.
 ## D28 Shared TS types
 - `packages/shared` holds hand-maintained TypeScript interfaces mirroring Core
   DTOs for web/clients. Not codegen yet.
+
+## D29 Metadata editing is local-library only
+- `tracks`, `albums` and `artists` carry `origin` (migration 0014, `NOT NULL
+  DEFAULT 'local'`); it is exposed as `origin` in the API. Items built from
+  files under a library root are `local`. Future online StreamSources
+  (NetEase, QQ, Apple, …) must insert their items with their own origin
+  (`netease`, `qq`, `apple`, …).
+- Only `local` items can be edited or matched. Guarded endpoints:
+  - overrides `PUT/DELETE /api/overrides/{type}/{id}`
+  - album merge/split
+  - cover replace/clear
+  - MusicBrainz match for tracks and albums
+  - lyrics bind/edit/clear and LRCLIB search-for-binding
+
+  A non-local target gets **409** `{"error":"not_local_source", "ids", "origins"}`. If a request mixes online and missing ids, 409 wins over 404.
+  `POST /api/overrides/batch` applies only the local ids. It reports skipped ids in
+  `skipped_not_local`, and their result rows carry `error:"not_local_source"`.
+- Rationale: online catalogs are owned by the provider. Local overrides would
+  silently diverge from, or be clobbered by, provider refreshes. Bound lyrics and
+  covers would attach to ids the provider may recycle.
+- Rejected: deriving "local" from `source_tracks.source` on every request (costs a
+  join per check, and albums/artists have no direct link). Also rejected:
+  enforcing only in the UI.
+- The web UI hides edit, match, cover and lyrics actions for non-local items.
+  It shows a source badge, and batch selection excludes them.

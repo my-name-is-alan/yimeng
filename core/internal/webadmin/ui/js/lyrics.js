@@ -1,6 +1,6 @@
 // Lyrics workbench: LRCLIB candidates → preview → bind; manual edit / upload LRC; offset; tap-to-sync.
 import { get, put, del, qs, coverURL } from "./api.js";
-import { h, icon, cover, fmtDur, toast, errToast, empty, debounce, confirmDlg } from "./ui.js";
+import { h, icon, cover, fmtDur, toast, errToast, empty, debounce, confirmDlg, isLocal, sourceBadge, NOT_LOCAL_MSG } from "./ui.js";
 import { player } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
@@ -23,6 +23,11 @@ const toLRC = (l) => (l.synced ? l.lines.map((x) => `${ts(x.time_ms)}${x.text}`)
 export async function lyricsPage(main, id, { cleanup }) {
   if (!id) return pickTrack(main);
   const t = await get(`/tracks/${id}`);
+  if (!isLocal(t)) {
+    main.replaceChildren(h("div", { class: "page-head" }, h("div", null, h("h1", null, t.title, " ", sourceBadge(t)), h("div", { class: "sub" }, t.artist_name || ""))),
+      empty(NOT_LOCAL_MSG + "。在线来源的歌词由来源提供，不能在这里绑定、编辑或上传。", "lyrics", h("a", { class: "btn", href: "#/lyrics" }, "换一首")));
+    return;
+  }
   let current = null, bound = null;
   try { current = await get(`/tracks/${id}/lyrics`); } catch {}
   if (isAdmin()) { try { bound = await get(`/tracks/${id}/lyrics/user`); } catch {} }

@@ -1,6 +1,6 @@
 // Library pages: home, albums, album, artists, artist, tracks, search, playlists, favorites, history.
 import { get, post, put, patch, del, qs, coverURL, api } from "./api.js";
-import { h, icon, cover, fmtDur, fmtLong, fmtNum, fmtAgo, empty, toast, errToast, confirmDlg, promptDlg, dialog, menu, debounce } from "./ui.js";
+import { h, icon, cover, fmtDur, fmtLong, fmtNum, fmtAgo, empty, toast, errToast, confirmDlg, promptDlg, dialog, menu, debounce, isLocal, sourceBadge } from "./ui.js";
 import { player } from "./player.js";
 import { albumCard, artistCard, trackList, albumTracks, editAlbum, editArtist, pager, addToPlaylist } from "./components.js";
 import { isAdmin, nav } from "./state.js";
@@ -67,9 +67,9 @@ export async function album(main, id) {
     { label: "加入播放队列", icon: "queue", run: () => player.enqueue(tracks) },
     { label: "下一首播放", icon: "next", run: () => player.playNext(tracks) },
     { label: "添加到歌单…", icon: "list", run: () => addToPlaylist(tracks.map((t) => t.id)) },
-    isAdmin() ? "-" : null,
-    isAdmin() ? { label: "编辑专辑 / 封面 / 匹配", icon: "edit", run: () => editAlbum(al, reload) } : null,
-    isAdmin() ? { label: "批量编辑曲目", icon: "wand", run: () => nav(`#/metadata?album_id=${id}`) } : null,
+    isAdmin() && isLocal(al) ? "-" : null,
+    isAdmin() && isLocal(al) ? { label: "编辑专辑 / 封面 / 匹配", icon: "edit", run: () => editAlbum(al, reload) } : null,
+    isAdmin() && isLocal(al) ? { label: "批量编辑曲目", icon: "wand", run: () => nav(`#/metadata?album_id=${id}`) } : null,
   ]) }, icon("more"));
   const discs = new Set(tracks.map((t) => t.disc_no || 1));
   const lossless = tracks.filter((t) => t.stream?.lossless).length;
@@ -79,7 +79,7 @@ export async function album(main, id) {
   main.replaceChildren(
     h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: al.has_cover ? `url("${coverURL(id, 300)}")` : "none" } }),
       h("div", { class: "hero-row" }, cover(al.has_cover ? coverURL(id, 600) : "", al.title),
-        h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, "专辑"), h("h1", null, al.title),
+        h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, "专辑 ", sourceBadge(al)), h("h1", null, al.title),
           h("div", null, (al.artists?.length ? al.artists : [{ name: al.artist_name }]).map((a, i) => [i ? " / " : "", a.id ? h("a", { href: `#/artist/${a.id}`, style: { fontWeight: 700 } }, a.name) : a.name])),
           h("div", { class: "facts" }, [al.year, al.genre, `${al.track_count} 首`, fmtLong(al.duration_ms), lossless ? `${lossless} 首无损` : ""].filter(Boolean).join(" · ")),
           h("div", { class: "hero-actions" }, h("button", { class: "play-circle", "aria-label": "播放", onclick: () => player.playList(tracks) }, icon("play")),
@@ -110,12 +110,12 @@ export async function artist(main, id) {
   main.replaceChildren(
     h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: first ? `url("${coverURL(first.id, 300)}")` : "none" } }),
       h("div", { class: "hero-row" }, cover(first ? coverURL(first.id, 400) : "", ar.name, "round"),
-        h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, "艺人"), h("h1", null, ar.name),
+        h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, "艺人 ", sourceBadge(ar)), h("h1", null, ar.name),
           h("div", { class: "facts" }, `${ar.album_count} 张专辑 · ${ar.track_count} 首曲目${ar.sort_name && ar.sort_name !== ar.name ? ` · ${ar.sort_name}` : ""}`),
           h("div", { class: "hero-actions" },
             h("button", { class: "play-circle", "aria-label": "播放全部", onclick: async () => { const p = await get(`/tracks${qs({ artist_id: id, sort: "album", limit: 500 })}`); player.playList(p.items); } }, icon("play")),
             h("button", { class: "btn", onclick: async () => { const p = await get(`/tracks${qs({ artist_id: id, limit: 500 })}`); player.playList(p.items, 0, { shuffle: true }); } }, icon("shuffle"), "随机"),
-            isAdmin() ? h("button", { class: "btn", onclick: () => editArtist(ar, reload) }, icon("edit"), "编辑") : null)))),
+            isAdmin() && isLocal(ar) ? h("button", { class: "btn", onclick: () => editArtist(ar, reload) }, icon("edit"), "编辑") : null)))),
     trs.items.length ? h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "热门曲目")), trackList(trs.items, { showCover: true, numbered: false })) : null,
     h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "专辑")), h("div", { class: "album-grid" }, als.items.map((a) => albumCard(a)))));
 }

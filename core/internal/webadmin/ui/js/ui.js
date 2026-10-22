@@ -123,6 +123,7 @@ export function promptDlg(title, label, value = "", placeholder = "") {
 }
 
 let openMenu;
+addEventListener("hashchange", () => { openMenu?.remove(); openMenu = null; });
 export function menu(anchor, items) {
   openMenu?.remove();
   const m = h("div", { class: "menu", role: "menu" });
@@ -192,4 +193,14 @@ export function setRangeFill(r) { const p = ((r.value - r.min) / ((r.max - r.min
 export function conf(score) {
   const p = Math.round((score || 0) * 100);
   return h("span", { class: `conf ${p >= 80 ? "" : p >= 50 ? "mid" : "low"}` }, h("span", { class: "bar" }, h("i", { style: { width: `${p}%` } })), `${p}%`);
+}
+
+// Only local library items (origin "local") can be edited/matched; online
+// StreamSource items are read-only (backend answers 409 not_local_source).
+const ORIGINS = { netease: "网易云", qq: "QQ 音乐", apple: "Apple Music", spotify: "Spotify", tidal: "TIDAL", qobuz: "Qobuz", kugou: "酷狗", kuwo: "酷我" };
+export const isLocal = (x) => !x || !x.origin || x.origin === "local";
+export const originName = (o) => ORIGINS[o] || o;
+export const NOT_LOCAL_MSG = "在线来源的内容不可编辑或匹配，仅本地曲库支持";
+export function sourceBadge(x) {
+  return isLocal(x) ? null : h("span", { class: "badge src", title: `来源：${originName(x.origin)}（元数据只读）` }, originName(x.origin));
 }

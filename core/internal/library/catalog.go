@@ -27,6 +27,7 @@ type Artist struct {
 	MBID       string `json:"mb_id,omitempty"`
 	AlbumCount int    `json:"album_count"`
 	TrackCount int    `json:"track_count"`
+	Origin     string `json:"origin"`
 }
 
 type Album struct {
@@ -44,6 +45,7 @@ type Album struct {
 	Favorite    bool        `json:"favorite"`
 	Rating      int         `json:"rating,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
+	Origin      string      `json:"origin"`
 }
 
 type Track struct {
@@ -67,6 +69,7 @@ type Track struct {
 	Favorite      bool        `json:"favorite"`
 	Rating        int         `json:"rating,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
+	Origin        string      `json:"origin"`
 }
 
 // StreamInfo describes the best source file (Roon-like signal path).
@@ -201,7 +204,7 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM artists a`+w.sql(), w.args); err != nil {
 		return out, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.name, COALESCE(a.sort_name,''), COALESCE(a.mb_id,''), a.album_count, a.track_count
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.name, COALESCE(a.sort_name,''), COALESCE(a.mb_id,''), a.album_count, a.track_count, a.origin
 		FROM artists a`+w.sql()+ob+` LIMIT ? OFFSET ?`, append(w.args, p.Limit, p.Offset)...)
 	if err != nil {
 		return out, err
@@ -209,7 +212,7 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 	defer rows.Close()
 	for rows.Next() {
 		var a Artist
-		if err := rows.Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin); err != nil {
 			return out, err
 		}
 		out.Items = append(out.Items, a)
@@ -219,8 +222,8 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 
 func (s *Scanner) GetArtist(ctx context.Context, id string) (Artist, error) {
 	var a Artist
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, COALESCE(sort_name,''), COALESCE(mb_id,''), album_count, track_count
-		FROM artists WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount)
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, COALESCE(sort_name,''), COALESCE(mb_id,''), album_count, track_count, origin
+		FROM artists WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
@@ -237,12 +240,12 @@ var albumSorts = map[string]string{
 const albumCols = `al.id, al.title, COALESCE(al.artist_name,''), COALESCE(al.year,0), COALESCE(al.genre,''),
 	al.track_count, COALESCE(al.disc_count,1), al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at,
 	EXISTS(SELECT 1 FROM favorites f WHERE f.entity_type='album' AND f.entity_id=al.id),
-	COALESCE((SELECT rating FROM ratings r WHERE r.entity_type='album' AND r.entity_id=al.id),0)`
+	COALESCE((SELECT rating FROM ratings r WHERE r.entity_type='album' AND r.entity_id=al.id),0), al.origin`
 
 func scanAlbum(r interface{ Scan(...any) error }) (Album, error) {
 	var a Album
 	var created int64
-	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DiscCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created, &a.Favorite, &a.Rating)
+	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DiscCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created, &a.Favorite, &a.Rating, &a.Origin)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	return a, err
 }
@@ -335,7 +338,7 @@ const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_i
 	COALESCE(st.codec,''), COALESCE(st.sample_rate,0), COALESCE(st.bit_depth,0), COALESCE(st.channels,0),
 	COALESCE(st.bitrate_kbps,0), COALESCE(st.lossless,0), COALESCE(st.size,0),
 	COALESCE(ts.play_count,0), COALESCE(ts.last_played_at,0), fv.entity_id IS NOT NULL, COALESCE(rt.rating,0),
-	st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,'')`
+	st.rg_track_gain, st.rg_track_peak, st.rg_album_gain, st.rg_album_peak, COALESCE(st.rg_source,''), t.origin`
 
 // bestSource picks the same file TrackFile streams: highest confidence, FLAC first, then path.
 const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
@@ -357,7 +360,7 @@ func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 		&t.DurationMs, &t.ISRC, &t.MBRecordingID, &t.Format, &created,
 		&si.Codec, &si.SampleRate, &si.BitDepth, &si.Channels, &si.BitrateKbps, &si.Lossless, &si.SizeBytes,
 		&t.PlayCount, &lastPlayed, &t.Favorite, &t.Rating,
-		&g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source)
+		&g.TrackGain, &g.TrackPeak, &g.AlbumGain, &g.AlbumPeak, &g.Source, &t.Origin)
 	if g.Source != "" {
 		si.ReplayGain = &g
 	}

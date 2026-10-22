@@ -395,3 +395,5 @@ dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: blur(6px); }
 .pager { display: flex; justify-content: center; gap: 10px; margin-top: 20px; align-items: center; }
 .ws-ind { display: inline-flex; align-items: center; gap: 6px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+.badge.src { background: rgb(90 160 255 / .16); color: #8DB8FF; margin-left: 6px; vertical-align: 1px; }

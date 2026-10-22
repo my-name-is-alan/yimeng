@@ -1,7 +1,7 @@
 // Web player: plays original streams (/api/stream supports HTTP Range → seekable), local queue,
 // shuffle/repeat, Media Session, scrobbles to /api/scrobble, synced lyrics.
 import { get, post, streamURL, coverURL } from "./api.js";
-import { h, icon, cover, fmtDur, setRangeFill, $, toast } from "./ui.js";
+import { h, icon, cover, fmtDur, setRangeFill, $, toast, isLocal, NOT_LOCAL_MSG } from "./ui.js";
 
 const SKEY = "yimeng.player";
 const audio = new Audio();
@@ -250,7 +250,7 @@ export function openNP(nav, tab = "lyrics") {
   const setTab = (m) => { mode = m; [...tabs.children].forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === m)); pane.replaceChildren(m === "lyrics" ? lyr : ql); m === "queue" ? renderQueue() : renderLyrics(true); };
   for (const [m, l] of [["lyrics", "歌词"], ["queue", "播放队列"]]) tabs.append(h("button", { "data-m": m, onclick: () => setTab(m) }, l));
   const close = () => { np.hidden = true; document.documentElement.style.overflow = ""; off(); removeEventListener("keydown", esc); npClose = null; np.replaceChildren(); };
-  const editLyr = h("button", { class: "btn sm", onclick: () => { const id = player.track.id; close(); nav(`#/lyrics/${id}`); } }, icon("edit"), "校对歌词");
+  const editLyr = h("button", { class: "btn sm", hidden: !isLocal(player.track), onclick: () => { if (!isLocal(player.track)) return toast(NOT_LOCAL_MSG, "err"); const id = player.track.id; close(); nav(`#/lyrics/${id}`); } }, icon("edit"), "校对歌词");
   np.replaceChildren(bloom,
     h("div", { class: "np-top" }, h("button", { class: "btn icon ghost", "aria-label": "收起", onclick: () => close() }, icon("down")), h("div", { class: "spacer" }), tabs, h("div", { class: "spacer" }), editLyr),
     h("div", { class: "np-body" }, h("div", { class: "np-left" }, art, h("div", { class: "np-info" }, ti, su), s.el, c.el), pane));

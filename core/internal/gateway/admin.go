@@ -20,6 +20,7 @@ type AdminLibrary interface {
 	GetAlbum(ctx contextT, id string) (library.Album, error)
 	GetTrack(ctx contextT, id string) (library.Track, error)
 	GetArtist(ctx contextT, id string) (library.Artist, error)
+	Origins(ctx contextT, kind string, ids []string) (map[string]string, error)
 }
 
 func (d Deps) patchDevice(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +166,9 @@ func (d Deps) mergeAlbums(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
 	}
+	if b.Target != "" && len(b.Sources) > 0 && !d.requireLocal(w, r, "album", append([]string{b.Target}, b.Sources...)...) {
+		return
+	}
 	al, err := d.Admin.MergeAlbums(r.Context(), b.Target, b.Sources)
 	if err != nil {
 		d.overrideErr(w, err)
@@ -184,6 +188,18 @@ func (d Deps) splitAlbum(w http.ResponseWriter, r *http.Request) {
 	if err := decodeBody(r, &b); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
 		return
+	}
+	if b.Source != "" {
+		ids := []string{b.Source}
+		if b.TargetID != "" {
+			ids = append(ids, b.TargetID)
+		}
+		if !d.requireLocal(w, r, "album", ids...) {
+			return
+		}
+		if len(b.TrackIDs) > 0 && !d.requireLocal(w, r, "track", b.TrackIDs...) {
+			return
+		}
 	}
 	al, err := d.Admin.SplitAlbum(r.Context(), b.Source, b.TrackIDs, b.Title, b.ArtistName, b.TargetID)
 	if err != nil {

@@ -164,8 +164,8 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/settings/library-roots", d.adminOnly(d.getRoots))
 		mux.HandleFunc("PUT /api/settings/library-roots", d.adminOnly(d.putRoots))
 		mux.HandleFunc("GET /api/overrides/{type}/{id}", d.getOverride)
-		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.putOverride))
-		mux.HandleFunc("DELETE /api/overrides/{type}/{id}", d.adminOnly(d.deleteOverride))
+		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.localOnly("", d.putOverride)))
+		mux.HandleFunc("DELETE /api/overrides/{type}/{id}", d.adminOnly(d.localOnly("", d.deleteOverride)))
 		mux.HandleFunc("POST /api/albums/merge", d.adminOnly(d.mergeAlbums))
 		mux.HandleFunc("POST /api/albums/split", d.adminOnly(d.splitAlbum))
 	}

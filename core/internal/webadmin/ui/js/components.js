@@ -1,6 +1,6 @@
 // Reusable library widgets: album/artist cards, track lists with actions, editors.
 import { get, post, put, del, qs, coverURL, downloadURL, bustCover } from "./api.js";
-import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg } from "./ui.js";
+import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG } from "./ui.js";
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
@@ -11,7 +11,7 @@ export function albumCard(al, { onPlay } = {}) {
   } }, icon("play"));
   return h("a", { class: "album-card", href: `#/album/${al.id}` },
     h("div", { class: "art" }, cover(al.has_cover ? coverURL(al.id, 300) : "", al.title), play),
-    h("div", { class: "t ellipsis", title: al.title }, al.title),
+    h("div", { class: "t ellipsis", title: al.title }, al.title, " ", sourceBadge(al)),
     h("div", { class: "s ellipsis" }, [al.artist_name, al.year].filter(Boolean).join(" · ")));
 }
 export function artistCard(ar) {
@@ -43,7 +43,7 @@ export function trackList(tracks, opts = {}) {
       oncontextmenu: (e) => { e.preventDefault(); trackMenu(more, t, tracks, opts); } },
       no, showCover ? cover(t.album_id ? coverURL(t.album_id, 80) : "", t.album_title || t.title, "opt") : null,
       h("div", { style: { minWidth: 0 } },
-        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null),
+        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null, sourceBadge(t)),
         h("div", { class: "ar ellipsis" }, t.artist_name || "未知艺人")),
       h("a", { class: "al ellipsis", href: t.album_id ? `#/album/${t.album_id}` : undefined, onclick: (e) => e.stopPropagation() }, t.album_title || ""),
       h("span", { class: "du" }, fmtDur(t.duration_ms)),
@@ -79,9 +79,9 @@ export function trackMenu(anchor, t, list, opts = {}) {
     "-",
     t.album_id ? { label: "前往专辑", icon: "album", run: () => nav(`#/album/${t.album_id}`) } : null,
     ...(t.artists || []).slice(0, 2).map((a) => ({ label: `前往艺人 · ${a.name}`, icon: "artist", run: () => nav(`#/artist/${a.id}`) })),
-    admin ? "-" : null,
-    admin ? { label: "编辑标签 / MusicBrainz 匹配", icon: "edit", run: () => editTrack(t, opts.onChange) } : null,
-    admin ? { label: "歌词匹配与校对", icon: "lyrics", run: () => nav(`#/lyrics/${t.id}`) } : null,
+    admin && isLocal(t) ? "-" : null,
+    admin && isLocal(t) ? { label: "编辑标签 / MusicBrainz 匹配", icon: "edit", run: () => editTrack(t, opts.onChange) } : null,
+    admin && isLocal(t) ? { label: "歌词匹配与校对", icon: "lyrics", run: () => nav(`#/lyrics/${t.id}`) } : null,
     { label: "下载原始文件", icon: "download", run: () => { location.href = downloadURL(t.id); } },
     opts.playlist && !opts.playlist.smart ? "-" : null,
     opts.playlist && !opts.playlist.smart ? { label: "从歌单移除", icon: "trash", danger: true, run: () => opts.onRemove?.(t, list.indexOf(t)) } : null,
@@ -195,6 +195,7 @@ function mbPane(kind, obj, form, fields) {
 
 export async function editTrack(t, onChange) {
   try { t = await get(`/tracks/${t.id}`); } catch (e) { return errToast(e); }
+  if (!isLocal(t)) return toast(NOT_LOCAL_MSG, "err");
   const form = fieldsForm(TRACK_FIELDS, t);
   const info = h("dl", { class: "kv" },
     h("dt", null, "ID"), h("dd", { class: "mono" }, t.id),
@@ -214,6 +215,7 @@ export async function editTrack(t, onChange) {
 
 export async function editAlbum(al, onChange) {
   try { al = (await get(`/albums/${al.id}`)).album; } catch (e) { return errToast(e); }
+  if (!isLocal(al)) return toast(NOT_LOCAL_MSG, "err");
   const form = fieldsForm(ALBUM_FIELDS, al);
   const preview = h("div", { style: { width: "180px" } }, cover(al.has_cover ? coverURL(al.id, 400) : "", al.title));
   const file = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true, onchange: async () => {
@@ -241,6 +243,7 @@ export async function editAlbum(al, onChange) {
 }
 
 export function editArtist(ar, onChange) {
+  if (!isLocal(ar)) return toast(NOT_LOCAL_MSG, "err");
   const form = fieldsForm(ARTIST_FIELDS, ar);
   const d = dialog({ title: `编辑艺人 · ${ar.name}`, body: form.grid,
     foot: [h("button", { class: "btn danger", onclick: async () => { if (await resetOverride("artist", ar.id)) { d.close(); onChange?.(); } } }, "还原"), h("span", { class: "spacer" }),
@@ -260,7 +263,7 @@ export function batchEdit(ids, onDone) {
       const patch = {};
       for (const r of rows) if (r.on.checked) patch[r.k] = r.type === "number" ? Number(r.inp.value || 0) : r.inp.value.trim();
       if (!Object.keys(patch).length) return toast("请至少勾选一个字段", "err");
-      try { const res = await post("/overrides/batch", { type: "track", ids, patch }); toast(`已更新 ${res.updated} 首`); d.close(); onDone?.(); } catch (e) { errToast(e); }
+      try { const res = await post("/overrides/batch", { type: "track", ids, patch }); toast(`已更新 ${res.updated} 首${res.skipped_not_local?.length ? `，跳过 ${res.skipped_not_local.length} 首在线来源曲目` : ""}`); d.close(); onDone?.(); } catch (e) { errToast(e); }
     } }, "应用")] });
 }
 

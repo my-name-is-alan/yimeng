@@ -1,6 +1,6 @@
 // Metadata workbench: track table with multi-select batch edit, per-row editor, album list with merge.
 import { get, post, qs, coverURL } from "./api.js";
-import { h, icon, cover, fmtDur, fmtNum, toast, errToast, empty, debounce, confirmDlg, dialog } from "./ui.js";
+import { h, icon, cover, fmtDur, fmtNum, toast, errToast, empty, debounce, confirmDlg, dialog, isLocal, sourceBadge } from "./ui.js";
 import { editTrack, editAlbum, batchEdit, pager } from "./components.js";
 import { isAdmin, nav } from "./state.js";
 import { player } from "./player.js";
@@ -9,7 +9,7 @@ export async function metadataPage(main, params) {
   let tab = params.get("tab") || "tracks";
   const body = h("div");
   const seg = h("div", { class: "seg" }, [["tracks", "曲目"], ["albums", "专辑"]].map(([k, l]) => h("button", { "aria-pressed": k === tab, onclick: (e) => { tab = k; [...seg.children].forEach((b) => b.setAttribute("aria-pressed", b === e.currentTarget)); render(); } }, l)));
-  main.replaceChildren(h("div", { class: "page-head" }, h("div", { style: { flex: 1 } }, h("h1", null, "元数据"), h("div", { class: "sub" }, "编辑保存在 Core 数据库中（不改动音频文件），重扫后保留；可随时还原为文件标签。")), seg),
+  main.replaceChildren(h("div", { class: "page-head" }, h("div", { style: { flex: 1 } }, h("h1", null, "元数据"), h("div", { class: "sub" }, "仅本地曲库可编辑。编辑保存在 Core 数据库中（不改动音频文件），重扫后保留；可随时还原为文件标签。在线来源的曲目只读。")), seg),
     isAdmin() ? "" : h("div", { class: "card", style: { marginBottom: "16px" } }, "当前设备不是管理员，只能查看。"), body);
   const render = () => tab === "tracks" ? tracksTab(body, params) : albumsTab(body);
   render();
@@ -28,19 +28,21 @@ async function tracksTab(box, params) {
     h("button", { class: "btn sm accent", disabled: !isAdmin(), onclick: () => batchEdit([...sel], () => { sel.clear(); load(); }) }, icon("wand"), "批量编辑")) : "");
   function draw() {
     const items = page.items.filter((t) => problem === "genre" ? !t.genre : problem === "year" ? !t.year : problem === "track" ? !t.track_no : true);
-    const all = h("input", { type: "checkbox", class: "chk", "aria-label": "全选", checked: items.length && items.every((t) => sel.has(t.id)), onchange: (e) => { items.forEach((t) => e.target.checked ? sel.add(t.id) : sel.delete(t.id)); draw(); } });
+    const all = h("input", { type: "checkbox", class: "chk", "aria-label": "全选", checked: items.some(isLocal) && items.filter(isLocal).every((t) => sel.has(t.id)), onchange: (e) => { items.filter(isLocal).forEach((t) => e.target.checked ? sel.add(t.id) : sel.delete(t.id)); draw(); } });
     list.replaceChildren(items.length ? h("div", { class: "tracks" },
       h("div", { class: "trow head with-check" }, all, h("span"), h("span", null, "标题 / 艺人"), h("span", { class: "al" }, "专辑"), h("span", { class: "ge" }, "流派 · 年份"), h("span", { class: "du" }, "时长"), h("span")),
       items.map((t) => {
-        const cb = h("input", { type: "checkbox", class: "chk", checked: sel.has(t.id), "aria-label": `选择 ${t.title}`, onchange: (e) => { e.target.checked ? sel.add(t.id) : sel.delete(t.id); row.classList.toggle("sel", e.target.checked); drawBar(); } });
+        const ro = !isLocal(t);
+        const cb = h("input", { type: "checkbox", class: "chk", disabled: ro, title: ro ? "在线来源，只读" : undefined, checked: sel.has(t.id), "aria-label": `选择 ${t.title}`, onchange: (e) => { e.target.checked ? sel.add(t.id) : sel.delete(t.id); row.classList.toggle("sel", e.target.checked); drawBar(); } });
         const row = h("div", { class: `trow with-check ${sel.has(t.id) ? "sel" : ""}` }, cb, cover(t.album_id ? coverURL(t.album_id, 80) : "", t.album_title || t.title),
-          h("div", { style: { minWidth: 0 } }, h("div", { class: "ti ellipsis" }, t.track_no ? h("span", { class: "dim" }, `${t.disc_no > 1 ? t.disc_no + "-" : ""}${t.track_no}. `) : null, t.title), h("div", { class: "ar ellipsis" }, t.artist_name || h("span", { style: { color: "var(--warn)" } }, "无艺人"))),
+          h("div", { style: { minWidth: 0 } }, h("div", { class: "ti ellipsis" }, t.track_no ? h("span", { class: "dim" }, `${t.disc_no > 1 ? t.disc_no + "-" : ""}${t.track_no}. `) : null, t.title, " ", sourceBadge(t)), h("div", { class: "ar ellipsis" }, t.artist_name || h("span", { style: { color: "var(--warn)" } }, "无艺人"))),
           h("div", { class: "al ellipsis" }, t.album_title || "—"),
           h("div", { class: "ge ellipsis" }, t.genre || h("span", { style: { color: "var(--warn)" } }, "无流派"), " · ", t.year || h("span", { style: { color: "var(--warn)" } }, "—")),
           h("span", { class: "du" }, fmtDur(t.duration_ms)),
           h("div", { class: "row", style: { justifyContent: "flex-end", gap: "2px" } },
+            ro ? h("span", { class: "dim", style: { fontSize: "12px" } }, "只读") : [
             h("button", { class: "btn icon sm ghost", "aria-label": "编辑", disabled: !isAdmin(), onclick: () => editTrack(t, load) }, icon("edit")),
-            h("a", { class: "btn icon sm ghost", "aria-label": "歌词", href: `#/lyrics/${t.id}` }, icon("lyrics"))));
+            h("a", { class: "btn icon sm ghost", "aria-label": "歌词", href: `#/lyrics/${t.id}` }, icon("lyrics"))]));
         return row;
       })) : empty("没有符合条件的曲目", "check"), pager(page, (o) => { offset = o; load(); }));
     drawBar();
@@ -72,11 +74,11 @@ async function albumsTab(box) {
   }
   function draw() {
     list.replaceChildren(h("div", null, page.items.map((a) => h("div", { class: "li" },
-      h("input", { type: "checkbox", class: "chk", checked: sel.has(a.id), "aria-label": `选择 ${a.title}`, onchange: (e) => { e.target.checked ? sel.add(a.id) : sel.delete(a.id); drawBar(); } }),
+      h("input", { type: "checkbox", class: "chk", disabled: !isLocal(a), checked: sel.has(a.id), "aria-label": `选择 ${a.title}`, onchange: (e) => { e.target.checked ? sel.add(a.id) : sel.delete(a.id); drawBar(); } }),
       h("div", { style: { width: "52px" } }, cover(a.has_cover ? coverURL(a.id, 100) : "", a.title)),
       h("div", { class: "grow" }, h("a", { class: "t ellipsis", href: `#/album/${a.id}`, style: { display: "block" } }, a.title), h("div", { class: "s ellipsis" }, [a.artist_name, a.year, a.genre, `${a.track_count} 首`].filter(Boolean).join(" · "))),
-      a.has_cover ? null : h("span", { class: "badge warn" }, "无封面"),
-      h("button", { class: "btn sm", disabled: !isAdmin(), onclick: () => editAlbum(a, load) }, icon("edit"), "编辑")))), pager(page, (o) => { offset = o; load(); }));
+      sourceBadge(a), a.has_cover ? null : h("span", { class: "badge warn" }, "无封面"),
+      isLocal(a) ? h("button", { class: "btn sm", disabled: !isAdmin(), onclick: () => editAlbum(a, load) }, icon("edit"), "编辑") : h("span", { class: "dim" }, "只读")))), pager(page, (o) => { offset = o; load(); }));
     drawBar();
   }
   async function load() { try { page = await get(`/albums${qs({ q, offset, limit: 100 })}`); draw(); } catch (e) { list.replaceChildren(empty(e.message)); } }

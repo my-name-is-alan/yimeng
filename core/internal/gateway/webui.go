@@ -64,14 +64,14 @@ func (d Deps) mountWebUI(mux *http.ServeMux) {
 func (d Deps) mountWebAdminAPI(mux *http.ServeMux) {
 	if d.UserEdits != nil {
 		mux.HandleFunc("GET /api/tracks/{id}/lyrics/user", d.adminOnly(d.getUserLyrics))
-		mux.HandleFunc("PUT /api/tracks/{id}/lyrics", d.adminOnly(d.putUserLyrics))
-		mux.HandleFunc("DELETE /api/tracks/{id}/lyrics", d.adminOnly(d.deleteUserLyrics))
-		mux.HandleFunc("PUT /api/albums/{id}/cover", d.adminOnly(d.putAlbumCover))
-		mux.HandleFunc("DELETE /api/albums/{id}/cover", d.adminOnly(d.deleteAlbumCover))
+		mux.HandleFunc("PUT /api/tracks/{id}/lyrics", d.adminOnly(d.localOnly("track", d.putUserLyrics)))
+		mux.HandleFunc("DELETE /api/tracks/{id}/lyrics", d.adminOnly(d.localOnly("track", d.deleteUserLyrics)))
+		mux.HandleFunc("PUT /api/albums/{id}/cover", d.adminOnly(d.localOnly("album", d.putAlbumCover)))
+		mux.HandleFunc("DELETE /api/albums/{id}/cover", d.adminOnly(d.localOnly("album", d.deleteAlbumCover)))
 	}
-	mux.HandleFunc("GET /api/tracks/{id}/lyrics/search", d.adminOnly(d.searchLyrics))
-	mux.HandleFunc("GET /api/tracks/{id}/match", d.adminOnly(d.matchTrack))
-	mux.HandleFunc("GET /api/albums/{id}/match", d.adminOnly(d.matchAlbum))
+	mux.HandleFunc("GET /api/tracks/{id}/lyrics/search", d.adminOnly(d.localOnly("track", d.searchLyrics)))
+	mux.HandleFunc("GET /api/tracks/{id}/match", d.adminOnly(d.localOnly("track", d.matchTrack)))
+	mux.HandleFunc("GET /api/albums/{id}/match", d.adminOnly(d.localOnly("album", d.matchAlbum)))
 	if d.Admin != nil {
 		mux.HandleFunc("POST /api/overrides/batch", d.adminOnly(d.batchOverride))
 	}
@@ -317,13 +317,29 @@ func (d Deps) batchOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type res struct {
-		ID    string `json:"id"`
-		OK    bool   `json:"ok"`
-		Error string `json:"error,omitempty"`
+		ID     string `json:"id"`
+		OK     bool   `json:"ok"`
+		Error  string `json:"error,omitempty"`
+		Origin string `json:"origin,omitempty"`
+	}
+	_, foreign, err := d.nonLocal(r, b.Type, b.IDs)
+	if err != nil {
+		if errors.Is(err, library.ErrBadInput) {
+			writeErr(w, http.StatusBadRequest, "invalid_request", err.Error())
+		} else {
+			d.internal(w, "origin lookup", err)
+		}
+		return
 	}
 	out := []res{}
+	skipped := []string{}
 	okN := 0
 	for _, id := range b.IDs {
+		if o, bad := foreign[id]; bad {
+			skipped = append(skipped, id)
+			out = append(out, res{ID: id, Error: codeNotLocal, Origin: o})
+			continue
+		}
 		if err := d.Admin.SetOverride(r.Context(), b.Type, id, b.Patch); err != nil {
 			if errors.Is(err, library.ErrBadInput) {
 				writeErr(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -340,7 +356,7 @@ func (d Deps) batchOverride(w http.ResponseWriter, r *http.Request) {
 		okN++
 		out = append(out, res{ID: id, OK: true})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"updated": okN, "results": out})
+	writeJSON(w, http.StatusOK, map[string]any{"updated": okN, "skipped_not_local": skipped, "results": out})
 }
 
 func (d Deps) getLogs(w http.ResponseWriter, r *http.Request) {
