@@ -564,7 +564,7 @@ artists only had admin-uploaded pictures.
 **Rejected.** fanart.tv / Last.fm artist images (API keys, ToS); scraping platform
 web pages; caching per account (images are not user data; isolation is unaffected).
 
-## D61 · Performance pass (2026-10-22)
+## D61 — Performance pass (2026-10-22)
 
 - **Compression:** gzip (BestSpeed, pooled writers) for JSON / JS / CSS / HTML / XML responses ≥ 1 KiB. Never for audio, images, Range requests, SSE or WebSocket. The decision is made from the handler's Content-Type.
 - **Web console:**
