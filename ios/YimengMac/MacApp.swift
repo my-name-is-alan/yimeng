@@ -88,9 +88,12 @@ struct MacRoot: View {
                             }
                         )
 
-                    MacMiniBar(state: state)
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 18)
+                    if !state.nowPlaying {
+                        MacMiniBar(state: state)
+                            .padding(.horizontal, 28)
+                            .padding(.bottom, 18)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                 }
                 .background(Theme.base(scheme))
             }
@@ -237,6 +240,11 @@ struct MacContent: View {
             Group {
                 if state.macSoundStage {
                     SoundSettingsView()
+                } else if state.macQueueStage {
+                    QueueSheet()
+                        .environment(\.colorScheme, .dark)
+                } else if state.macOfflineStage {
+                    OfflineSettingsView()
                 } else {
                     switch state.tab {
                     case .home: HomeView().environmentObject(state)
@@ -319,11 +327,14 @@ struct MacMiniBar: View {
 
             Spacer(minLength: 8)
 
+            Button { SheetCenter.shared.queue = true } label: {
+                YMIcon(glyph: .queue, size: 16, weight: 1.6).opacity(0.7)
+            }.buttonStyle(.plain)
             Button {
-                withAnimation(.ui) { state.nowPlaying = true }
+                withAnimation(.ui) { state.nowPlaying = true; state.lyricsMode = true }
+                if let s = player.song { LyricsStore.shared.load(s) }
             } label: {
-                YMIcon(glyph: .lyrics, size: 16, weight: 1.6)
-                    .opacity(0.7)
+                YMIcon(glyph: .lyrics, size: 16, weight: 1.6).opacity(0.7)
             }.buttonStyle(.plain)
         }
         .foregroundStyle(Theme.fg(scheme))
@@ -369,7 +380,7 @@ struct MacNowPlaying: View {
             DreamField(track: state.track, animated: true).opacity(0.55).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 10) {
                     Button {
                         withAnimation(.ui) { state.nowPlaying = false }
                     } label: {
@@ -389,6 +400,26 @@ struct MacNowPlaying: View {
                             .foregroundStyle(state.lyricsMode ? Color(white: 0.07) : Theme.fg(scheme))
                             .background(Circle().fill(state.lyricsMode ? Color.white : Theme.fill(scheme)))
                     }.buttonStyle(.plain)
+                    Button {
+                        SheetCenter.shared.queue = true
+                    } label: {
+                        YMIcon(glyph: .queue, size: 15, weight: 1.7)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Theme.fill(scheme)))
+                    }.buttonStyle(.plain)
+                    Menu {
+                        Button("音效设置") { SheetCenter.shared.sound = true }
+                        Button("播放列表") { SheetCenter.shared.queue = true }
+                        Divider()
+                        Button(state.lyricsMode ? "封面模式" : "歌词模式") {
+                            withAnimation(.ui) { state.lyricsMode.toggle() }
+                            if state.lyricsMode, let s = player.song { LyricsStore.shared.load(s) }
+                        }
+                    } label: {
+                        YMIcon(glyph: .more, size: 15, weight: 1.7)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Theme.fill(scheme)))
+                    }
                 }
                 .padding(.horizontal, 28).padding(.top, 18)
 
@@ -490,6 +521,8 @@ enum MacShot {
         else if a.contains("-shotMacColl") { state.tab = .collection }
         else if a.contains("-shotMacSound") { state.tab = .me }
         else if a.contains("-shotMacAlbums") { state.tab = .library }
+        else if a.contains("-shotMacQueue") { state.tab = .home }
+        else if a.contains("-shotMacOffline") { state.tab = .me }
         else { state.tab = .home }
         state.path = []
     }
@@ -602,15 +635,62 @@ enum MacShot {
             await preparePlaying(state)
             try? await Task.sleep(for: .milliseconds(400))
         }
+        state.macSoundStage = false
+        state.macQueueStage = false
+        state.macOfflineStage = false
         if a.contains("-shotMacSound") {
             state.tab = .me
             state.nowPlaying = false
             state.path = []
-            // Offscreen NSHostingView cannot present .sheet — stage SoundSettings inline.
             state.macSoundStage = true
             try? await Task.sleep(for: .milliseconds(300))
-        } else {
-            state.macSoundStage = false
+        }
+        if a.contains("-shotMacQueue") {
+            state.tab = .home
+            state.nowPlaying = false
+            if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }
+            if let d = PlatformStore.shared.dailies.first {
+                let songs = d.tracks.filter { !$0.isUnplayable }
+                if !songs.isEmpty { PlayerStore.shared.play(songs: songs) }
+            }
+            // Prefetch queue row covers so ScrollView shot isn't empty placeholders.
+            var qurls: [URL] = []
+            for s in PlayerStore.shared.queue.prefix(24) {
+                if let u = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) {
+                    qurls.append(CoverCache.sized(u, points: 40))
+                }
+            }
+            await withTaskGroup(of: Void.self) { g in
+                for u in qurls { g.addTask { _ = try? await CoverCache.shared.fetch(u) } }
+            }
+            state.macQueueStage = true
+            try? await Task.sleep(for: .milliseconds(600))
+        }
+        if a.contains("-shotMacOffline") {
+            state.tab = .me
+            state.nowPlaying = false
+            state.macOfflineStage = true
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        if a.contains("-shotMacSearch") {
+            state.tab = .search
+            state.nowPlaying = false
+            if LibraryStore.shared.albums.isEmpty {
+                _ = try? await LibraryStore.shared.search(query: "") // no-op if unsupported
+                await HomeStore.shared.refresh()
+            }
+            // Prefer cache albums if LibraryStore.newest is thin.
+            if LibraryStore.shared.albums.count < 8 {
+                await LibraryCache.shared.open(LibraryView.key(.albums, sort: "newest"), albumSort: "newest")
+                let fromCache = LibraryCache.shared.albumList("newest")
+                if !fromCache.isEmpty { LibraryStore.shared.albums = Array(fromCache.prefix(30)) }
+            }
+            for alb in LibraryStore.shared.albums.prefix(24) {
+                if let u = LibraryStore.shared.coverURL(alb, size: 600) {
+                    _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: YMLayout.tile()))
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(700))
         }
         if a.contains("-shotMacLyrics") {
             state.tab = .home
@@ -639,7 +719,10 @@ enum MacShot {
             }
             try? await Task.sleep(for: .milliseconds(500))
         }
-        if !a.contains("-shotMacPlaying") && !a.contains("-shotMacSound") && !a.contains("-shotMacLyrics") {
+        if a.contains("-shotMacHome") || (!a.contains("-shotMacPlaying") && !a.contains("-shotMacSound")
+            && !a.contains("-shotMacLyrics") && !a.contains("-shotMacQueue") && !a.contains("-shotMacOffline")
+            && !a.contains("-shotMacSearch") && !a.contains("-shotMacLib") && !a.contains("-shotMacAlbums")
+            && !a.contains("-shotMacMe") && !a.contains("-shotMacColl")) {
             await PlatformStore.shared.refresh()
             await warmCovers()
         }
@@ -679,7 +762,15 @@ enum MacShot {
             if a.contains("-shotMacLyrics") { s.lyricsMode = true }
         } else if a.contains("-shotMacAlbums") {
             s.tab = .library; s.librarySeg = .albums; s.nowPlaying = false
-        } else if !a.contains("-shotMacSound") {
+        } else if a.contains("-shotMacQueue") {
+            s.tab = .home; s.nowPlaying = false; s.macQueueStage = true
+        } else if a.contains("-shotMacOffline") {
+            s.tab = .me; s.nowPlaying = false; s.macOfflineStage = true
+        } else if a.contains("-shotMacSound") {
+            s.tab = .me; s.macSoundStage = true
+        } else if a.contains("-shotMacSearch") {
+            s.tab = .search; s.nowPlaying = false
+        } else {
             applyTab(s)
         }
 
@@ -707,15 +798,18 @@ enum MacShot {
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("ymshots")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let name: String
-        if a.contains("-shotMacPlaying") { name = "v44-mac-playing.png" }
-        else if a.contains("-shotMacLyrics") { name = "v45-mac-lyrics.png" }
-        else if a.contains("-shotMacAlbums") { name = "v45-mac-albums.png" }
-        else if a.contains("-shotMacSound") { name = "v44-mac-sound.png" }
-        else if a.contains("-shotMacLib") { name = "v44-mac-library.png" }
-        else if a.contains("-shotMacMe") { name = "v44-mac-me.png" }
-        else if a.contains("-shotMacSearch") { name = "v44-mac-search.png" }
-        else if a.contains("-shotMacColl") { name = "v44-mac-collection.png" }
-        else { name = "v44-mac-home.png" }
+        if a.contains("-shotMacPlaying") { name = "v46-mac-playing.png" }
+        else if a.contains("-shotMacLyrics") { name = "v46-mac-lyrics.png" }
+        else if a.contains("-shotMacAlbums") { name = "v46-mac-albums.png" }
+        else if a.contains("-shotMacSound") { name = "v46-mac-sound.png" }
+        else if a.contains("-shotMacQueue") { name = "v46-mac-queue.png" }
+        else if a.contains("-shotMacOffline") { name = "v46-mac-offline.png" }
+        else if a.contains("-shotMacLib") { name = "v46-mac-library.png" }
+        else if a.contains("-shotMacMe") { name = "v46-mac-me.png" }
+        else if a.contains("-shotMacSearch") { name = "v46-mac-search.png" }
+        else if a.contains("-shotMacColl") { name = "v46-mac-collection.png" }
+        else if a.contains("-shotMacHome") { name = "v46-mac-home.png" }
+        else { name = "v46-mac-home.png" }
         let url = dir.appendingPathComponent(name)
         try? png.write(to: url)
         fputs("[ym] wrote \(url.path) \(png.count)\n", stderr)

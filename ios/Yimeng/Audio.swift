@@ -399,24 +399,27 @@ struct QueueSheet: View {
             }
             .buttonStyle(.plain).foregroundStyle(.secondary)
             .padding(.horizontal, 22).padding(.top, 26).padding(.bottom, 10)
-            List {
-                if history {
-                    ForEach(Array(player.history.enumerated()), id: \.offset) { i, s in
-                        row(s, playing: player.song?.id == s.id)
-                            .onTapGesture { player.play(songs: Array(player.history[i...])) }
-                            .swipeActions { Button(role: .destructive) { player.removeHistory(at: [i]) } label: { Label("移除", systemImage: "trash") } }
-                    }
-                } else {
-                    if let s = player.song { row(s, playing: true) }
-                    ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
-                        row(s, playing: false)
-                            .onTapGesture { player.jump(toUpcoming: i) }
-                            .swipeActions { Button(role: .destructive) { player.removeUpcoming(at: [i]) } label: { Label("移除", systemImage: "trash") } }
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if history {
+                        ForEach(Array(player.history.enumerated()), id: \.offset) { i, s in
+                            row(s, playing: player.song?.id == s.id)
+                                .contentShape(Rectangle())
+                                .onTapGesture { player.play(songs: Array(player.history[i...])) }
+                                .contextMenu { Button("移除", role: .destructive) { player.removeHistory(at: [i]) } }
+                        }
+                    } else {
+                        if let s = player.song { row(s, playing: true) }
+                        ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
+                            row(s, playing: false)
+                                .contentShape(Rectangle())
+                                .onTapGesture { player.jump(toUpcoming: i) }
+                                .contextMenu { Button("移除", role: .destructive) { player.removeUpcoming(at: [i]) } }
+                        }
                     }
                 }
+                .padding(.bottom, 24)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
     }
     private func tab(_ t: String, count: Int, on: Bool, _ a: @escaping () -> Void) -> some View {
@@ -438,12 +441,13 @@ struct QueueSheet: View {
                 Text(s.title).font(.system(size: 15, weight: playing ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
                 Text(s.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
-            Spacer()
+            Spacer(minLength: 0)
             if playing { Image(systemName: "waveform").font(.system(size: 12)).foregroundStyle(Theme.lime) }
         }
+        .padding(.horizontal, 22).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(playing ? Color.white.opacity(0.06) : Color.clear)
         .contentShape(Rectangle())
-        .listRowBackground(playing ? Color.white.opacity(0.05) : Color.clear)
-        .listRowSeparator(.hidden)
     }
 }
 
