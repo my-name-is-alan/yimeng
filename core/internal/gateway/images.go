@@ -111,6 +111,11 @@ func (d Deps) remoteArtistImage(ctx context.Context, id string) string {
 	}
 	alias := "artist:" + id
 	if library.IsExternalID(id) {
+		// remembered picture first: no platform call on repeat hits; search /
+		// artist responses keep the alias fresh (decorateOnlineArtists)
+		if u, ok := d.Covers.Aliased(alias); ok {
+			return u
+		}
 		if d.Online != nil {
 			if a, err := d.Online.Artist(ctx, id); err == nil && a.PictureURL != "" {
 				d.Covers.Alias(alias, a.PictureURL)
@@ -328,4 +333,9 @@ func (d Deps) decorateOnlineArtists(as []online.Artist) {
 		}
 		as[i].Cover = d.onlineCover(as[i].PictureURL)
 	}
+}
+
+func (d Deps) decorateOnlinePlaylist(p *online.Playlist) {
+	p.Cover = d.onlineCover(p.CoverURL)
+	d.decorateOnlineTracks(p.Tracks)
 }

@@ -262,6 +262,7 @@ type MatchCandidate struct {
 	ReleaseDate   string   `json:"release_date,omitempty"`
 	UPC           string   `json:"upc,omitempty"`
 	CoverURL      string   `json:"cover_url,omitempty"`
+	PreviewURL    string   `json:"preview_url,omitempty"` // D60: cover_url via Core's image cache (when the host is allow-listed)
 	Popularity    int      `json:"popularity,omitempty"`
 	Genres        []string `json:"genres,omitempty"`
 	TrackCount    int      `json:"track_count,omitempty"`
@@ -305,7 +306,7 @@ func (d Deps) matchTrack(w http.ResponseWriter, r *http.Request) {
 			Title: m.Title, Artist: m.Artist, Album: m.Album, AlbumArtist: m.AlbumArtist, Genre: m.Genre,
 			TrackNo: m.TrackNo, DiscNo: m.DiscNo, Year: m.Year, DurationMs: m.DurationMs, ISRC: m.ISRC,
 			MBRecordingID: m.MBRecordingID, MBReleaseID: m.MBReleaseID, ReleaseDate: m.ReleaseDate,
-			CoverURL: m.CoverURL, Popularity: m.Popularity})
+			CoverURL: m.CoverURL, PreviewURL: d.imageURL(m.CoverURL), Popularity: m.Popularity})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -339,7 +340,7 @@ func (d Deps) matchAlbum(w http.ResponseWriter, r *http.Request) {
 	for _, in := range infos {
 		c := MatchCandidate{Provider: string(in.Provider), ExternalID: in.ExternalID, Title: in.Title,
 			AlbumArtist: in.AlbumArtist, Artist: in.AlbumArtist, Year: in.Year, MBReleaseID: in.MBReleaseID,
-			Label: in.Label, ReleaseDate: in.ReleaseDate, UPC: in.UPC, CoverURL: in.CoverURL,
+			Label: in.Label, ReleaseDate: in.ReleaseDate, UPC: in.UPC, CoverURL: in.CoverURL, PreviewURL: d.imageURL(in.CoverURL),
 			Popularity: in.Popularity, Genres: in.Genres, TrackCount: in.TrackCount}
 		if len(in.Genres) > 0 {
 			c.Genre = in.Genres[0]

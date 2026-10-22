@@ -618,6 +618,7 @@ func (d Deps) onlineItem(w http.ResponseWriter, r *http.Request) {
 		var p online.Playlist
 		p, err = d.Online.Playlist(ctx, id)
 		if err == nil {
+			d.decorateOnlinePlaylist(&p)
 			v = playlistView(p)
 		}
 	default:
@@ -776,6 +777,7 @@ func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
 					g.Error = errCode(err)
 				} else {
 					full.Kind = "liked"
+					d.decorateOnlinePlaylist(&full)
 					g.Playlist = &full
 				}
 				break

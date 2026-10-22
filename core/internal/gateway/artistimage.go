@@ -61,6 +61,7 @@ type ArtistImageCandidate struct {
 	ExternalID string  `json:"external_id,omitempty"`
 	Name       string  `json:"name"`
 	ImageURL   string  `json:"image_url"`
+	PreviewURL string  `json:"preview_url,omitempty"` // D60: image_url via Core's image cache
 	Followers  int     `json:"followers,omitempty"`
 	Score      float64 `json:"score"`
 }
@@ -99,7 +100,7 @@ func (d Deps) artistImageCandidates(w http.ResponseWriter, r *http.Request) {
 			sc = 1
 		}
 		out = append(out, ArtistImageCandidate{Provider: string(in.Provider), ExternalID: in.ExternalID, Name: in.Name,
-			ImageURL: in.ImageURLs[0], Followers: in.Followers, Score: sc})
+			ImageURL: in.ImageURLs[0], PreviewURL: d.imageURL(in.ImageURLs[0]), Followers: in.Followers, Score: sc})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})

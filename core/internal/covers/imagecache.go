@@ -28,8 +28,8 @@ import (
 
 // DefaultHosts are the image CDNs Core may fetch from (suffix match).
 var DefaultHosts = []string{
-	"music.126.net",                                      // NetEase
-	"y.gtimg.cn", "qpic.cn", "qpic.y.qq.com", "gtimg.cn", // QQ Music
+	"music.126.net",                                                             // NetEase
+	"y.gtimg.cn", "qpic.cn", "qpic.y.qq.com", "gtimg.cn", "music-file.y.qq.com", // QQ Music
 	"kugou.com", "kgimg.com", // Kugou
 	"i.scdn.co", "mosaic.scdn.co", "spotifycdn.com", // Spotify (metadata)
 	"coverartarchive.org", "archive.org", // MusicBrainz Cover Art Archive
