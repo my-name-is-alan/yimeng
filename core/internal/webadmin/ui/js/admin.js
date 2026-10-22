@@ -2,6 +2,7 @@
 import { get, post, put, patch, del, qs, api, onEvent, wsState, store, avatarURL } from "./api.js";
 import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog, strengthMeter, pwIssues } from "./ui.js";
 import { state, isAdmin } from "./state.js";
+import { applyTheme } from "./ui.js";
 import { pluginsSection, localHidden } from "./online.js";
 import { sourceSwitchSec, playbackSec } from "./prefs.js";
 import { lastfmSec } from "./report.js";
@@ -386,12 +387,7 @@ export async function settings(main) {
   const local = !localHidden();
   main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, imgSec, tcSec, bkSec, srcSec, lookSec);
 }
-export function applyTheme() {
-  const t = localStorage.getItem("yimeng.theme") || "dark";
-  const light = t === "light" || (t === "auto" && matchMedia("(prefers-color-scheme: light)").matches);
-  document.documentElement.dataset.theme = light ? "light" : "dark";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", light ? "#ffffff" : "#0A0A0C");
-}
+export { applyTheme };
 
 async function download(path, name) {
   try { const r = await api(path, { raw: true }); const blob = await r.blob(); h("a", { href: URL.createObjectURL(blob), download: name }).click(); } catch (e) { errToast(e); }

@@ -252,3 +252,11 @@ export function strengthMeter(userEl, pwEl) {
   return [bar, hint];
 }
 
+
+// Theme (shared by boot and the settings page).
+export function applyTheme() {
+  const t = localStorage.getItem("yimeng.theme") || "dark";
+  const light = t === "light" || (t === "auto" && matchMedia("(prefers-color-scheme: light)").matches);
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", light ? "#ffffff" : "#0A0A0C");
+}

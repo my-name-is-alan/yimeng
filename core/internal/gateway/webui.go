@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/rank"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
@@ -36,6 +39,38 @@ type UserEdits interface {
 
 // LyricsSearcher lists provider candidates for manual binding (LRCLIB).
 type LyricsSearcher func(ctx context.Context, q, title, artist string) ([]providers.Candidate, error)
+
+// Core modules every page needs: preloaded in parallel from index.html instead
+// of a serial import waterfall. Admin / report / developer / lyrics / metadata
+// pages are code-split and fetched on first visit.
+var webPreload = []string{"api.js", "ui.js", "state.js", "player.js", "components.js", "online.js", "library.js", "sleep.js", "hscroll.js", "select.js", "tooltip.js", "prefs.js"}
+
+var (
+	webETags   sync.Map // path -> etag (embedded files never change at runtime)
+	webIndexMu sync.Once
+	webIndex   []byte
+)
+
+func webETag(p string, b []byte) string {
+	if v, ok := webETags.Load(p); ok {
+		return v.(string)
+	}
+	sum := sha256.Sum256(b)
+	e := `"` + hex.EncodeToString(sum[:8]) + `"`
+	webETags.Store(p, e)
+	return e
+}
+
+func withModulePreload(b []byte) []byte {
+	webIndexMu.Do(func() {
+		var sb strings.Builder
+		for _, m := range webPreload {
+			sb.WriteString(`<link rel="modulepreload" href="js/` + m + `">` + "\n")
+		}
+		webIndex = []byte(strings.Replace(string(b), `<script type="module" src="js/app.js"></script>`, sb.String()+`<script type="module" src="js/app.js"></script>`, 1))
+	})
+	return webIndex
+}
 
 func (d Deps) mountWebUI(mux *http.ServeMux) {
 	ui, _ := fs.Sub(webadmin.FS, "ui")
@@ -61,8 +96,17 @@ func (d Deps) mountWebUI(mux *http.ServeMux) {
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
+		if p == "index.html" {
+			b = withModulePreload(b)
+		}
+		etag := webETag(p, b)
 		w.Header().Set("Content-Type", ct)
-		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Cache-Control", "no-cache") // always revalidate; unchanged files answer 304
+		w.Header().Set("ETag", etag)
+		if inm := r.Header.Get("If-None-Match"); inm != "" && strings.Contains(inm, etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'")
 		w.Write(b)
 	})

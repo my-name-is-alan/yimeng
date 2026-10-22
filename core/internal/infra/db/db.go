@@ -25,11 +25,15 @@ func Open(path string) (*sql.DB, error) {
 		}
 	}
 	dsn := "file:" + path +
-		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)"
+		"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(10000)&_pragma=synchronous(NORMAL)" +
+		"&_pragma=cache_size(-16000)&_pragma=temp_store(MEMORY)&_pragma=mmap_size(134217728)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
+	// Keep warm connections (and their page caches) instead of reopening.
+	db.SetMaxIdleConns(8)
+	db.SetConnMaxIdleTime(0)
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)

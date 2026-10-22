@@ -355,6 +355,7 @@ func NewRouter(d Deps) http.Handler {
 
 	h := securityHeaders(d.requireAuth(mux))
 	h = apiVersionHeader(h)
+	h = compress(h)
 	h = d.cors(h)
 	h = rateLimit(d.RateLimits, h)
 	h = realIP(d.TrustedProxies, h)

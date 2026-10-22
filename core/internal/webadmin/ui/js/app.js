@@ -1,22 +1,21 @@
 // 译梦 web console: shell, username/password sign-in, hash router.
 import { get, post, store, connectWS, closeWS, onUnauthorized, onEvent, wsState } from "./api.js";
-import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues, confirmDlg } from "./ui.js";
+import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues, confirmDlg, applyTheme } from "./ui.js";
+// Code splitting: admin / report / developer / lyrics / metadata pages load on first visit.
+const lazy = (f) => { let p; return () => (p ||= f()); };
+const admL = lazy(() => import("./admin.js")), repL = lazy(() => import("./report.js")), devL = lazy(() => import("./developer.js")),
+  lyrL = lazy(() => import("./lyrics.js")), metL = lazy(() => import("./metadata.js"));
 import { state, isAdmin } from "./state.js";
 import { player, mountNowBar, closeNP, loadPlaybackPrefs } from "./player.js";
 import { initSleep, sleepButton } from "./sleep.js";
 import * as lib from "./library.js";
-import { reportPage } from "./report.js";
-import { developerPage } from "./developer.js";
-import * as adm from "./admin.js";
-import { lyricsPage } from "./lyrics.js";
-import { metadataPage } from "./metadata.js";
 import * as onl from "./online.js";
 import { initHScroll } from "./hscroll.js";
 import { initSelects } from "./select.js";
 import { initTooltips } from "./tooltip.js";
 
-adm.applyTheme();
-matchMedia("(prefers-color-scheme: light)").addEventListener("change", adm.applyTheme);
+applyTheme();
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", applyTheme);
 const app = $("#app"), main = $("#main");
 const navigate = (hash) => { location.hash = hash; };
 
@@ -37,7 +36,7 @@ function shell() {
   $("#sideFoot").replaceChildren(
     h("div", { class: "row" }, wsDot, h("span", { class: "ellipsis", style: { flex: 1 } }, state.me.name), h("span", { class: `badge ${isAdmin() ? "ok" : ""}` }, isAdmin() ? "管理员" : "成员")),
     h("div", { class: "row" },
-      h("button", { class: "btn sm ghost", title: "切换主题", onclick: () => { const cur = document.documentElement.dataset.theme; localStorage.setItem("yimeng.theme", cur === "dark" ? "light" : "dark"); adm.applyTheme(); } }, icon("moon"), "主题"),
+      h("button", { class: "btn sm ghost", title: "切换主题", onclick: () => { const cur = document.documentElement.dataset.theme; localStorage.setItem("yimeng.theme", cur === "dark" ? "light" : "dark"); applyTheme(); } }, icon("moon"), "主题"),
       h("span", { class: "spacer" }),
       h("button", { class: "btn sm ghost", title: "退出登录", onclick: logout }, icon("logout"), "退出")));
   $("#searchForm").onsubmit = (e) => { e.preventDefault(); navigate(`#/search?q=${encodeURIComponent($("#searchInput").value)}`); };
@@ -97,7 +96,7 @@ const browserName = () => { const u = navigator.userAgent; return /Edg\//.test(u
 let cleanups = [];
 const ROUTES = [
   [/^\/?$/, (m, p, c) => lib.home(main, p, c)],
-  [/^\/dashboard$/, (m, p, c) => adm.dashboard(main, c)],
+  [/^\/dashboard$/, async (m, p, c) => (await admL()).dashboard(main, c)],
   [/^\/albums$/, (m, p) => lib.albums(main, p)],
   [/^\/album\/([\w-]+)$/, (m) => lib.album(main, m[1])],
   [/^\/album\/([\w-]+):(.+)$/, (m) => onl.detail(main, m[1], "album", m[2])],
@@ -113,14 +112,14 @@ const ROUTES = [
   [/^\/playlist\/([\w-]+)$/, (m) => lib.playlist(main, m[1])],
   [/^\/favorites$/, () => lib.favorites(main)],
   [/^\/history$/, () => lib.historyPage(main)],
-  [/^\/report$/, () => reportPage(main)],
-  [/^\/metadata$/, (m, p) => metadataPage(main, p)],
-  [/^\/lyrics(?:\/([\w-]+))?$/, (m, p, c) => lyricsPage(main, m[1], c)],
-  [/^\/devices$/, () => adm.devices(main)],
-  [/^\/developer$/, () => developerPage(main)],
-  [/^\/users$/, () => adm.users(main)],
-  [/^\/settings$/, () => adm.settings(main)],
-  [/^\/logs$/, (m, p, c) => adm.logs(main, c)],
+  [/^\/report$/, async () => (await repL()).reportPage(main)],
+  [/^\/metadata$/, async (m, p) => (await metL()).metadataPage(main, p)],
+  [/^\/lyrics(?:\/([\w-]+))?$/, async (m, p, c) => (await lyrL()).lyricsPage(main, m[1], c)],
+  [/^\/devices$/, async () => (await admL()).devices(main)],
+  [/^\/developer$/, async () => (await devL()).developerPage(main)],
+  [/^\/users$/, async () => (await admL()).users(main)],
+  [/^\/settings$/, async () => (await admL()).settings(main)],
+  [/^\/logs$/, async (m, p, c) => (await admL()).logs(main, c)],
 ];
 async function route() {
   if (app.dataset.state !== "ready") return;

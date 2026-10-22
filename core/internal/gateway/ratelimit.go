@@ -47,6 +47,9 @@ func (rl *RateLimits) limiter(key string) *rate.Limiter {
 		return lim
 	}
 	lim := rate.NewLimiter(rl.PerClient, rl.Burst)
+	if strings.HasPrefix(key, "s:") { // cheap static assets / cached images: own, larger bucket
+		lim = rate.NewLimiter(rl.PerClient*staticRateMult, rl.Burst*staticRateMult)
+	}
 	rl.clients[key] = lim
 	// opportunistic prune when map grows large
 	if len(rl.clients) > 10_000 {
@@ -91,7 +94,11 @@ func rateLimit(rl *RateLimits, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ok, wait := rl.allow(rateKey(r))
+		key := rateKey(r)
+		if staticPath(r.URL.Path) {
+			key = "s:" + key
+		}
+		ok, wait := rl.allow(key)
 		if !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds()+0.999)))
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
@@ -114,4 +121,13 @@ func rateKey(r *http.Request) string {
 		}
 	}
 	return key
+}
+
+// staticRateMult scales the per-client budget for static web assets and
+// Core-cached images: a library page lazily loads hundreds of thumbnails,
+// which are served from disk (or 304) and must not starve API calls.
+const staticRateMult = 4
+
+func staticPath(p string) bool {
+	return strings.HasPrefix(p, "/api/v1/images/") || strings.HasPrefix(p, "/admin/")
 }
