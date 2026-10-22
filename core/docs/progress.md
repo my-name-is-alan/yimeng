@@ -19,7 +19,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 13 | Offline download endpoint | done | `dedfcb9` |
 | 14 | Subsonic API layer | done | `6b50626` |
 | 15 | StreamSource account management API | done | `901578b` |
-| 16 | AIFF / APE / DSF / DFF | done | (pending commit) |
+| 16 | AIFF / APE / DSF / DFF | done | `d30be52` |
 | E1 | Pinyin + fuzzy search | pending | |
 | E2 | Radio / auto-continue | pending | |
 | E3 | Classical / multi-disc | pending | |
