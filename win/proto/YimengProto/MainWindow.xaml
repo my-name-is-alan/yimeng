@@ -118,7 +118,7 @@
               <ColumnDefinition Width="42"/><ColumnDefinition Width="12"/>
               <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Border Width="42" Height="42" CornerRadius="9" Background="#FFFF7A1A">
+            <Border x:Name="MiniCoverBorder" Width="42" Height="42" CornerRadius="9" Background="#FFFF7A1A">
               <canvas:CanvasControl Width="22" Height="22" Draw="BrandMark_Draw"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>

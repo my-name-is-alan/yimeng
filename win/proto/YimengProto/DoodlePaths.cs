@@ -212,8 +212,12 @@ public static class DoodlePaths
     public static CanvasGeometry[] MotifInkParts(ICanvasResourceCreator rc, float left, float top, float s)
     {
         float sc = s / 232f;
+        // Frame + cloud wrap the cover slot (Android player doodle language); keep flowers/drips as accents.
+        var frameRect = new RectF(left - 6f * sc, top - 6f * sc, left + s + 6f * sc, top + s + 6f * sc);
         return new CanvasGeometry[]
         {
+            Frame(rc, frameRect, seed: 42, jitter: 3.2f * sc),
+            Cloud(rc, new Vector2(left + s * 0.55f, top - 18f * sc), 72f * sc),
             Flower(rc, new Vector2(left + s - 6f * sc, top + 8f * sc), 22f * sc, 6),
             Flower(rc, new Vector2(left + 10f * sc, top + s - 6f * sc), 15f * sc, 5),
             Loops(rc, new Vector2(left - 30f * sc, top - 24f * sc), 120f * sc, 9f * sc),

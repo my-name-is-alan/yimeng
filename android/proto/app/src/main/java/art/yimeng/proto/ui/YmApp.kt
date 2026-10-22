@@ -244,13 +244,13 @@ private fun SearchPage(onPlay: (CoreTrack) -> Unit) {
                 color = Color.White.copy(if (q.isEmpty()) 0.4f else 0.9f),
                 fontSize = 15.sp,
                 modifier = Modifier.weight(1f).clickable {
-                    q = when (q) {
-                        "梁博" -> "陈粒"
-                        "陈粒" -> "____empty_probe____"
-                        "____empty_probe____" -> "梁博"
-                        else -> "梁博"
+                    // Cycle demo queries; empty uses friendly copy, searches internal ____ probe (never shown).
+                    when (q) {
+                        "梁博" -> { q = "陈粒"; runSearch(q) }
+                        "陈粒" -> { q = "找不到的歌"; runSearch("____empty_probe____") }
+                        "找不到的歌" -> { q = "梁博"; runSearch(q) }
+                        else -> { q = "梁博"; runSearch(q) }
                     }
-                    runSearch(q)
                 },
             )
             Text("搜", color = Lime, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { runSearch(q) })
@@ -569,10 +569,11 @@ private fun YueqianCard(track: CoreTrack?, onPlay: (CoreTrack) -> Unit) {
     val paper = Color(0xFFF3EDE2)
     val ink = Color(0xFF2A241C)
     val accent = Color(0xFFC45C26)
-    val day = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
-    val month = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1
+    val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+    val day = cal.get(java.util.Calendar.DAY_OF_MONTH)
+    val month = cal.get(java.util.Calendar.MONTH) + 1
     val weekdays = listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
-    val wd = weekdays[java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1]
+    val wd = weekdays[cal.get(java.util.Calendar.DAY_OF_WEEK) - 1]
     Box(
         Modifier
             .fillMaxWidth()
@@ -629,7 +630,8 @@ private fun YueqianCard(track: CoreTrack?, onPlay: (CoreTrack) -> Unit) {
 
 @Composable
 private fun DailyMixCard(tracks: List<CoreTrack>, onPlay: (CoreTrack) -> Unit) {
-    val day = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
+    val day = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+        .get(java.util.Calendar.DAY_OF_MONTH)
     val tint = Color(0xFF6B4BD8)
     Row(
         Modifier

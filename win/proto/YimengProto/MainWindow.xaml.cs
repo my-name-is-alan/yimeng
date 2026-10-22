@@ -552,10 +552,9 @@ public sealed partial class MainWindow : Window
     {
         SearchStack.Children.Clear();
         SearchStack.Children.Add(TitleBlock("搜索"));
-        // Empty-state screenshot probe: nonsense query → doodle empty (not spinner/error)
-        var probe = "____empty_probe____";
-        SearchStack.Children.Add(Muted($"查询：{probe}（空态示意）"));
-        var results = await CoreApi.SearchAsync(probe);
+        // Internal empty-state probe (client short-circuits ____*); never show sentinel in UI copy.
+        var results = await CoreApi.SearchAsync("____empty_probe____");
+        SearchStack.Children.Add(Muted("搜歌曲、歌手、专辑"));
         foreach (var t in results.Take(20))
             SearchStack.Children.Add(TrackRow(t));
         if (results.Count == 0)
@@ -768,12 +767,19 @@ public sealed partial class MainWindow : Window
 
     private void SetPlayerCover(string? url)
     {
+        // Full player + mini bar share the same cover_url loader (list CoverBorder path).
+        ApplyCoverTo(PlayerCoverBorder, url, fallbackMarkSize: 88);
+        ApplyCoverTo(MiniCoverBorder, url, fallbackMarkSize: 22);
+    }
+
+    private void ApplyCoverTo(Border border, string? url, double fallbackMarkSize)
+    {
         if (!string.IsNullOrWhiteSpace(url))
         {
             try
             {
-                PlayerCoverBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0x20, 0x18, 0x14));
-                PlayerCoverBorder.Child = new Image
+                border.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0x20, 0x18, 0x14));
+                border.Child = new Image
                 {
                     Stretch = Stretch.UniformToFill,
                     Source = new BitmapImage(new Uri(url)),
@@ -782,10 +788,16 @@ public sealed partial class MainWindow : Window
             }
             catch { }
         }
-        var fb = new CanvasControl { Width = 88, Height = 88, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var fb = new CanvasControl
+        {
+            Width = fallbackMarkSize,
+            Height = fallbackMarkSize,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         fb.Draw += BrandMark_Draw;
-        PlayerCoverBorder.Child = fb;
-        PlayerCoverBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0xFF, 0x7A, 0x1A));
+        border.Child = fb;
+        border.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0xFF, 0x7A, 0x1A));
     }
 
     private void PlayerProgress_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
