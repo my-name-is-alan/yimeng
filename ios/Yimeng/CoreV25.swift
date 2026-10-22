@@ -256,7 +256,36 @@ struct TicketPerforation: Shape {
 
 #else
 struct YueqianPage: View { var body: some View { Text("乐签").foregroundStyle(.secondary) } }
-struct YueqianHomeTicket: View { var body: some View { EmptyView() } }
+/// Mac stub: keep Home 2-col density; full 乐签 lives on iPhone.
+struct YueqianHomeTicket: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        HStack(spacing: 16) {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Theme.fill(scheme))
+                .overlay(
+                    VStack(spacing: 4) {
+                        Text("乐签").font(.system(size: 18, weight: .bold))
+                        Text("今日").font(.system(size: 11)).opacity(0.55)
+                    }.foregroundStyle(Theme.fg(scheme))
+                )
+                .frame(width: 72, height: 72)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("今日乐签").font(.system(size: 16, weight: .semibold))
+                Text("完整手写卡片在 iPhone；Mac 先占位对齐布局。")
+                    .font(.system(size: 13)).opacity(0.65).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Theme.fill(scheme))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Theme.fg(scheme).opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [6, 4])))
+        )
+    }
+}
 #endif
 
 // MARK: - 排行 doodle tabs, glyphs, rank badges, collage
