@@ -126,11 +126,13 @@ struct SettingsView: View {
         .task {
             let a = ProcessInfo.processInfo.arguments
             if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } else if a[i + 1] == "profile" { showProfile = true } else if a[i + 1] == "offline" { showOffline = true } else if a[i + 1] == "fonts" { showFonts = true } else if a[i + 1] == "sound" { SheetCenter.shared.sound = true } else if a[i + 1] == "licenses" { showLicenses = true } }
+            #if os(iOS)
             if let i = a.firstIndex(of: "-uploadAvatarFrom"), i + 1 < a.count, let img = UIImage(contentsOfFile: a[i + 1]) { try? await Task.sleep(for: .seconds(3)); await ProfileView.upload(img) }
+            #endif
             if let i = a.firstIndex(of: "-setNick"), i + 1 < a.count { try? await Task.sleep(for: .seconds(3)); try? await CoreProfileStore.shared.rename(a[i + 1]) }
         }
         #endif
-        .fullScreenCover(isPresented: $showReport) { ListeningReportView() }
+        .ymFullScreenCover(isPresented: $showReport) { ListeningReportView() }
         .sheet(isPresented: $showLastfm) { NavigationStack { LastfmView() } }
         .sheet(isPresented: $showSwitch) { NavigationStack { SourceSwitchView() } }
         .sheet(isPresented: $showAlerts) { NavigationStack { SecurityAlertsView() } }

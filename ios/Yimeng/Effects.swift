@@ -3,6 +3,9 @@ import AudioToolbox
 import Accelerate
 import MediaToolbox
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Settings
 
@@ -348,7 +351,12 @@ struct EQCurve: View {
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { v in
                     let i = dragging ?? max(0, min(9, Int(v.startLocation.x / (w / 10))))
-                    if dragging == nil { withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { dragging = i }; UISelectionFeedbackGenerator().selectionChanged() }
+                    if dragging == nil {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { dragging = i }
+                        #if os(iOS)
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        #endif
+                    }
                     let db = ((h / 2 - v.location.y) / (h / 2 - 8)) * 12
                     var b = bands; b[i] = (max(-12, min(12, Double(db))) * 2).rounded() / 2
                     if b != bands { bands = b }

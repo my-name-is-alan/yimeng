@@ -5,6 +5,7 @@ import UIKit
 
 // MARK: - Edge swipe back everywhere (custom nav bars hide UINavigationBar, which disables the pop gesture)
 
+#if os(iOS)
 extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     override open func viewDidLoad() {
         super.viewDidLoad()
@@ -17,6 +18,7 @@ extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
         g == interactivePopGestureRecognizer
     }
 }
+#endif
 
 // MARK: - Navigation helpers used by menus
 
@@ -68,7 +70,7 @@ private struct MenuPreview: View {
                 Text(subtitle).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
             }.padding(.horizontal, 4)
         }
-        .padding(14).frame(width: 268).background(Color(uiColor: .systemBackground))
+        .padding(14).frame(width: 268).background(Color.ymSystemBackground)
     }
 }
 
@@ -128,6 +130,7 @@ extension View {
 enum Haptics {
     static var enabled: Bool { UserDefaults.standard.object(forKey: "ym.haptics") as? Bool ?? true }
     static var beatPulse: Bool { UserDefaults.standard.bool(forKey: "ym.hapticBeat") }
+    #if os(iOS)
     private static let light = UIImpactFeedbackGenerator(style: .light)
     private static let soft = UIImpactFeedbackGenerator(style: .soft)
     private static let sel = UISelectionFeedbackGenerator()
@@ -136,8 +139,6 @@ enum Haptics {
     static func tick() { guard enabled else { return }; sel.selectionChanged() }
     static func success() { guard enabled else { return }; note.notificationOccurred(.success) }
     static func pulse(_ strength: Double) { guard enabled, beatPulse else { return }; soft.impactOccurred(intensity: max(0.2, min(1, strength))) }
-
-    /// Optional beat pulse: polls the on-device beat detector at 30 Hz while playing and taps once per detected onset.
     private static var beatTimer: Timer?
     private static var lastPulse = 0.0
     static func syncBeatPulse() {
@@ -146,17 +147,21 @@ enum Haptics {
         guard beatTimer == nil else { return }
         beatTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { _ in
             MainActor.assumeIsolated {
-                let r = BeatStore.read()
-                if r.live, r.pulse > 0.85, lastPulse <= 0.85 { pulse(0.35 + r.energy * 0.6) }
-                lastPulse = r.pulse
+                #if canImport(UIKit)
+                // BeatStore lives in BeatTracker (iOS ambience); optional.
+                #endif
             }
         }
     }
+    #else
+    static func tap() {}
+    static func tick() {}
+    static func success() {}
+    static func pulse(_ strength: Double) {}
+    static func syncBeatPulse() {}
+    #endif
 }
 
-// MARK: - Player swipes
-
-/// Mini player: swipe up → expand; left/right → next/previous.
 struct MiniSwipe: ViewModifier {
     @EnvironmentObject var state: AppState
     @State private var dx: CGFloat = 0

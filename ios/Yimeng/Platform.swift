@@ -63,3 +63,38 @@ extension Image {
         #endif
     }
 }
+
+
+extension View {
+    /// Hides the navigation bar on iOS; no-op on Mac.
+    @ViewBuilder func ymHideNavBar() -> some View {
+        #if os(iOS)
+        self.toolbar(.hidden, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+}
+
+extension Color {
+    static var ymSystemBackground: Color {
+        #if canImport(UIKit)
+        Color(uiColor: .systemBackground)
+        #elseif canImport(AppKit)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color.white
+        #endif
+    }
+}
+
+extension View {
+    /// fullScreenCover on iOS; sheet on Mac (fullScreenCover unavailable).
+    @ViewBuilder func ymFullScreenCover<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> C) -> some View {
+        #if os(iOS)
+        self.fullScreenCover(isPresented: isPresented, content: content)
+        #else
+        self.sheet(isPresented: isPresented, content: content)
+        #endif
+    }
+}

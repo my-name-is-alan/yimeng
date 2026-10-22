@@ -57,7 +57,7 @@ struct YMPage<Content: View, Trailing: View>: View {
         }
         .foregroundStyle(Theme.fg(scheme))
         .background(YMBackdrop())
-        .toolbar(.hidden, for: .navigationBar)
+        .ymHideNavBar()
     }
 }
 extension YMPage where Trailing == EmptyView {
@@ -291,7 +291,9 @@ struct YMFieldRow: View {
                 if secure { SecureField(prompt, text: $text) } else { TextField(prompt, text: $text) }
             }
             .multilineTextAlignment(.trailing).font(.system(size: 15))
+            #if os(iOS)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
+            #endif
         }.frame(minHeight: 50)
     }
 }

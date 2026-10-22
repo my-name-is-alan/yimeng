@@ -89,7 +89,7 @@ extension Shell {
             PadSidebar()
                 .navigationSplitViewColumnWidth(min: 200, ideal: Self.padWide ? 200 : 236, max: 260)
                 .toolbar(removing: .sidebarToggle)
-                .toolbar(.hidden, for: .navigationBar)
+                .ymHideNavBar()
         } content: {
             GeometryReader { g in
                 let _ = { YMLayout.pad = true; YMLayout.width = g.size.width }()
@@ -99,7 +99,7 @@ extension Shell {
                     .overlay(alignment: .bottom) { if padPortrait { padTabBar.padding(.horizontal, 16).padding(.bottom, 8) } }
                     .frame(width: g.size.width, height: g.size.height)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .ymHideNavBar()
             .background(YMBackdrop())
             .navigationSplitViewColumnWidth(min: 360, ideal: Self.padWide ? 760 : 560, max: Self.padWide ? 900 : 700)
         } detail: {
@@ -120,7 +120,7 @@ extension Shell {
         #endif
     }
     var padPortrait: Bool {
-        let s = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.size ?? .zero
+        let s = CGSize(width: YMPlatform.screenWidth, height: YMPlatform.screenWidth * 0.75)
         return s.height > s.width
     }
     var padTabBar: some View {
@@ -149,7 +149,7 @@ extension Shell {
                     }
                 }
                 .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 0) }
-                .toolbar(.hidden, for: .navigationBar)
+                .ymHideNavBar()
                 .navigationDestination(for: Route.self) { r in routeView(r) }
             }
         }
@@ -307,8 +307,8 @@ struct PadPlayerColumn: View {
                 }.allowsHitTesting(false)
             }.ignoresSafeArea()
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .fullScreenCover(isPresented: $state.padFull) { PadFullPlayer().environmentObject(state) }
+        .ymHideNavBar()
+        .ymFullScreenCover(isPresented: $state.padFull) { PadFullPlayer().environmentObject(state) }
     }
     private var controls: some View {
         HStack(spacing: 34) {
@@ -447,10 +447,12 @@ struct Tonearm: Shape {
 enum PadDebug {
     @MainActor static func run(_ state: AppState) async {
         let a = ProcessInfo.processInfo.arguments
+#if os(iOS)
         if let i = a.firstIndex(of: "-orient"), i + 1 < a.count, let sc = UIApplication.shared.connectedScenes.first as? UIWindowScene {
             try? await Task.sleep(for: .seconds(1.5))
             sc.requestGeometryUpdate(.iOS(interfaceOrientations: a[i + 1] == "landscape" ? .landscapeRight : .portrait)) { e in NSLog("[ym] orient: %@", e.localizedDescription) }
         }
+        #endif
         if a.contains("-debugPlay") {
             try? await Task.sleep(for: .seconds(4))
             if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }

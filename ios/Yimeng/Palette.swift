@@ -1,8 +1,10 @@
-#if canImport(UIKit)
-import UIKit
-#endif
 import CoreImage
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Dominant-colour extraction: downsample to 24×24, k-means (k=5, deterministic luminance-quantile seeds),
 /// score = count × (0.35 + saturation). Mirrors backdrop-algorithm.md.
@@ -25,10 +27,10 @@ struct Palette: Equatable {
     private static var cache: [String: Palette] = [:]
     static func of(_ name: String) -> Palette {
         if let p = cache[name] { return p }
-        let p = extract(UIImage(named: name)) ; cache[name] = p; return p
+        let p = extract(PlatformImage(named: name)) ; cache[name] = p; return p
     }
-    static func extract(_ image: UIImage?) -> Palette {
-        guard let cg = image?.cgImage else { return Palette(dominant: (40, 30, 60)) }
+    static func extract(_ image: PlatformImage?) -> Palette {
+        guard let cg = image?.ymCGImage else { return Palette(dominant: (40, 30, 60)) }
         let n = 24; var buf = [UInt8](repeating: 0, count: n * n * 4)
         let ctx = CGContext(data: &buf, width: n, height: n, bitsPerComponent: 8, bytesPerRow: n * 4,
                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
@@ -60,17 +62,17 @@ struct Palette: Equatable {
 
 /// Pre-rendered, cached diffused layer (downsample → blur → saturate) so nothing is blurred per frame.
 enum BackdropCache {
-    private static var cache: [String: UIImage] = [:]
+    private static var cache: [String: PlatformImage] = [:]
     private static let ctx = CIContext(options: [.useSoftwareRenderer: false])
-    static func image(_ name: String) -> UIImage {
+    static func image(_ name: String) -> PlatformImage {
         if let i = cache[name] { return i }
-        guard let src = UIImage(named: name), let cg = src.cgImage else { return UIImage() }
+        guard let src = PlatformImage(named: name), let cg = src.ymCGImage else { return PlatformImage() }
         let ci = CIImage(cgImage: cg)
         let scale = 96 / max(ci.extent.width, ci.extent.height)
         let small = ci.transformed(by: .init(scaleX: scale, y: scale))
         let sat = small.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.8])
         let blur = sat.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10]).cropped(to: small.extent)
-        let out = ctx.createCGImage(blur, from: small.extent).map { UIImage(cgImage: $0) } ?? src
+        let out = ctx.createCGImage(blur, from: small.extent).map { PlatformImage.from(cgImage: $0) } ?? src
         cache[name] = out; return out
     }
     static func warm(_ names: [String]) { DispatchQueue.global(qos: .userInitiated).async { for n in names { _ = Palette.of(n); _ = image(n) } } }
@@ -90,7 +92,7 @@ struct DiffusedBackdrop: View {
                     if w > 0.001 {
                         ZStack {
                             Palette.of(name).color
-                            Image(uiImage: BackdropCache.image(name)).resizable().interpolation(.medium).scaledToFill()
+                            Image(platformImage: BackdropCache.image(name)).resizable().interpolation(.medium).scaledToFill()
                                 .frame(width: geo.size.width, height: geo.size.width)
                                 .scaleEffect(2.6)
                                 .position(x: geo.size.width / 2, y: height * 0.4)

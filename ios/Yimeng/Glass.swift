@@ -4,7 +4,7 @@ import SwiftUI
 struct GlassCapsule: View {
     @Environment(\.colorScheme) var scheme
     var body: some View {
-        if #available(iOS 26.0, *), !YMGlass.legacy {
+        if #available(iOS 26.0, macOS 26.0, *), !YMGlass.legacy {
             // iOS 26+: system Liquid Glass (real lensing of the live backdrop, incl. UIKit-backed scroll views).
             Color.clear.glassEffect(.clear, in: Capsule())
                 .overlay(Capsule().fill(scheme == .dark ? Color.black.opacity(0.10) : Color.white.opacity(0.2)).allowsHitTesting(false))
@@ -45,7 +45,7 @@ enum YMGlass {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-legacyGlass") { return true }
         #endif
-        if #available(iOS 26.0, *) { return false }
+        if #available(iOS 26.0, macOS 26.0, *) { return false }
         return true
     }
 }

@@ -350,7 +350,6 @@ extension YMGlyph {
     }
 }
 
-#if os(iOS)
 extension Tab {
     var glyph: YMGlyph {
         switch self {
@@ -362,4 +361,3 @@ extension Tab {
         }
     }
 }
-#endif

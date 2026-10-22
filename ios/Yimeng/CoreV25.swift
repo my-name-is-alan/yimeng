@@ -1,6 +1,8 @@
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 // MARK: - Palette from cover (server colors first, else averaged from the image) → readable paper/ink
@@ -9,31 +11,41 @@ struct PaperPalette: Equatable {
     var paper: Color; var accent: Color; var ink: Color; var glow: [Color]
     static let fallback = PaperPalette(paper: Color(hex: 0xf7f1e6), accent: Color(hex: 0x7a1cff), ink: Color(white: 0.1),
                                        glow: [Color(hex: 0xffd6ec), Color(hex: 0xd9ccff), Color(hex: 0xc9f2e0)])
-    static func make(hex: [String]?, image: UIImage?) -> PaperPalette {
+    static func make(hex: [String]?, image: PlatformImage?) -> PaperPalette {
+        #if os(iOS)
         var ui: [UIColor] = (hex ?? []).compactMap { h in
             UInt32(h.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16).map {
                 UIColor(red: CGFloat(($0 >> 16) & 0xff) / 255, green: CGFloat(($0 >> 8) & 0xff) / 255, blue: CGFloat($0 & 0xff) / 255, alpha: 1) }
         }
         if ui.isEmpty, let img = image, let a = average(img) { ui = [a] }
         guard let base = ui.first else { return fallback }
-        func mix(_ c: UIColor, _ w: CGFloat) -> UIColor {   // toward white by w
+        func mix(_ c: UIColor, _ w: CGFloat) -> UIColor {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0; c.getRed(&r, green: &g, blue: &b, alpha: &a)
             return UIColor(red: r + (1 - r) * w, green: g + (1 - g) * w, blue: b + (1 - b) * w, alpha: 1)
         }
-        func deep(_ c: UIColor) -> UIColor {   // dark, saturated ink-ish accent (contrast on light paper)
+        func deep(_ c: UIColor) -> UIColor {
             var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0; c.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
             return UIColor(hue: h, saturation: max(s, 0.55), brightness: min(v, 0.55), alpha: 1)
         }
         let second = ui.count > 1 ? ui[1] : base, third = ui.count > 2 ? ui[2] : second
         return PaperPalette(paper: Color(mix(base, 0.9)), accent: Color(deep(base)), ink: Color(white: 0.1),
                             glow: [Color(mix(base, 0.35)), Color(mix(second, 0.4)), Color(mix(third, 0.45))])
+        #else
+        if let h = hex?.first, let v = UInt32(h.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) {
+            let c = Color(hex: v)
+            return PaperPalette(paper: Color(hex: 0xf7f1e6), accent: c, ink: Color(white: 0.1), glow: [c.opacity(0.5), fallback.glow[1], fallback.glow[2]])
+        }
+        return fallback
+        #endif
     }
-    static func average(_ img: UIImage) -> UIColor? {
+    #if os(iOS)
+    static func average(_ img: PlatformImage) -> UIColor? {
         let f = UIGraphicsImageRendererFormat(); f.scale = 1
         let px = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: f).image { _ in img.draw(in: CGRect(x: 0, y: 0, width: 1, height: 1)) }
         guard let cg = px.cgImage, let d = cg.dataProvider?.data, let p = CFDataGetBytePtr(d) else { return nil }
         return UIColor(red: CGFloat(p[0]) / 255, green: CGFloat(p[1]) / 255, blue: CGFloat(p[2]) / 255, alpha: 1)
     }
+    #endif
 }
 
 // MARK: - Generic list page (每日推荐 / 推荐歌单 / 排行 / 平台歌单): header, 播放全部, tracks. Only explicit taps play.
@@ -133,17 +145,18 @@ struct DateTile: View {
 
 // MARK: - 今日乐签 page (pushed; no popup)
 
+#if os(iOS)
 struct YueqianPage: View {
     @ObservedObject private var store = YueqianStore.shared
     @EnvironmentObject var state: AppState
-    @State private var rendered: UIImage?
+    @State private var rendered: PlatformImage?
     var body: some View {
         let pal = store.palette
         ZStack(alignment: .top) {
             // Light, colourful backdrop: the cover enlarged + blurred, washed with the palette.
             ZStack {
                 LinearGradient(colors: pal.glow, startPoint: .topLeading, endPoint: .bottomTrailing)
-                if let c = store.cover { Image(uiImage: c).resizable().scaledToFill().scaleEffect(1.6).blur(radius: 60).opacity(0.75) }
+                if let c = store.cover { Image(platformImage: c).resizable().scaledToFill().scaleEffect(1.6).blur(radius: 60).opacity(0.75) }
                 Color.white.opacity(0.28)
             }.ignoresSafeArea()
             ScrollView(showsIndicators: false) {
@@ -153,7 +166,7 @@ struct YueqianPage: View {
                         HStack(spacing: 14) {
                             Button { save() } label: { pill("保存到相册", "square.and.arrow.down", pal) }.buttonStyle(.plain)
                             if let img = rendered {
-                                ShareLink(item: Image(uiImage: img), preview: SharePreview("今日乐签", image: Image(uiImage: img))) { pill("分享", "square.and.arrow.up", pal) }
+                                ShareLink(item: Image(platformImage: img), preview: SharePreview("今日乐签", image: Image(platformImage: img))) { pill("分享", "square.and.arrow.up", pal) }
                             } else { pill("分享", "square.and.arrow.up", pal).opacity(0.5) }
                         }
                     } else { DoodleLoader().padding(.top, 160) }
@@ -240,6 +253,11 @@ struct TicketShape: Shape {
 struct TicketPerforation: Shape {
     func path(in r: CGRect) -> Path { var p = Path(); p.move(to: CGPoint(x: r.midX, y: r.minY + 6)); p.addLine(to: CGPoint(x: r.midX, y: r.maxY - 6)); return p }
 }
+
+#else
+struct YueqianPage: View { var body: some View { Text("乐签").foregroundStyle(.secondary) } }
+struct YueqianHomeTicket: View { var body: some View { EmptyView() } }
+#endif
 
 // MARK: - 排行 doodle tabs, glyphs, rank badges, collage
 

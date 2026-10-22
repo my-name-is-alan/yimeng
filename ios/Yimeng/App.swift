@@ -1,4 +1,10 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
@@ -186,10 +192,18 @@ extension Animation { static let ui = Animation.smooth(duration: 0.45) }
 extension View {
     /// iOS 18+: zoom navigation source. iOS 17: no-op (falls back to standard push).
     @ViewBuilder func zoomSource(_ id: String, _ ns: Namespace.ID?) -> some View {
+        #if os(iOS)
         if #available(iOS 18.0, *), let ns { matchedTransitionSource(id: id, in: ns) { $0.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)) } } else { self }
+        #else
+        self
+        #endif
     }
     @ViewBuilder func zoomDestination(_ id: String, _ ns: Namespace.ID?) -> some View {
+        #if os(iOS)
         if #available(iOS 18.0, *), let ns { navigationTransition(.zoom(sourceID: id, in: ns)) } else { self }
+        #else
+        self
+        #endif
     }
 }
 
@@ -277,25 +291,25 @@ struct Shell: View {
                 case .home:
                     NavigationStack(path: $state.path) {
                         HomeView()
-                            .toolbar(.hidden, for: .navigationBar)
+.ymHideNavBar()
                             .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
                 case .library:
                     NavigationStack(path: $state.path) {
                         LibraryView()
-                            .toolbar(.hidden, for: .navigationBar)
+.ymHideNavBar()
                             .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
                 case .collection:
                     NavigationStack(path: $state.path) {
                         CollectionView()
-                            .toolbar(.hidden, for: .navigationBar)
+.ymHideNavBar()
                             .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
                 case .search:
                     NavigationStack(path: $state.path) {
                         LibrarySearchView()
-                            .toolbar(.hidden, for: .navigationBar)
+.ymHideNavBar()
                             .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
                 case .me: SettingsView()
@@ -331,7 +345,8 @@ struct Shell: View {
             case .yueqian: YueqianPage()
             case .trackList(let s): TrackListPage(spec: s)
             }
-        }.toolbar(.hidden, for: .navigationBar)
+        }
+.ymHideNavBar()
     }
 
     func runDemo() async {
@@ -464,7 +479,14 @@ private struct OptionalMatched: ViewModifier {
 
 extension Color {
     func mix(with other: Color, by t: Double) -> Color {
+        #if os(iOS)
         let a = UIColor(self).cgColor.components ?? [0, 0, 0, 1], b = UIColor(other).cgColor.components ?? [0, 0, 0, 1]
+        #elseif os(macOS)
+        let a = NSColor(self).usingColorSpace(.sRGB)?.cgColor.components ?? [0, 0, 0, 1]
+        let b = NSColor(other).usingColorSpace(.sRGB)?.cgColor.components ?? [0, 0, 0, 1]
+        #else
+        let a: [CGFloat] = [0, 0, 0, 1], b: [CGFloat] = [0, 0, 0, 1]
+        #endif
         func c(_ x: [CGFloat], _ i: Int) -> Double { Double(x.count >= 3 ? x[i] : x[0]) }
         return Color(red: c(a, 0) * (1 - t) + c(b, 0) * t, green: c(a, 1) * (1 - t) + c(b, 1) * t, blue: c(a, 2) * (1 - t) + c(b, 2) * t)
     }
@@ -514,7 +536,7 @@ struct CentreOrb: View {
     }
 
     @ViewBuilder var glass: some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             Color.clear.glassEffect(.regular.tint(tint.opacity(0.45)).interactive(), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 0.8))
         } else {
@@ -552,7 +574,7 @@ struct NoSourceView: View {
         }
         .background(Color(white: 0.04).ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .fullScreenCover(isPresented: $connecting) { SourcesView(initialConnect: .navidrome) }
+        .ymFullScreenCover(isPresented: $connecting) { SourcesView(initialConnect: .navidrome) }
         .onChange(of: LibraryStore.shared.connected) { _, on in if on { connecting = false } }
     }
 }

@@ -102,7 +102,7 @@ struct PlaylistDetailView: View {
             }.ignoresSafeArea()
         }
         .foregroundStyle(Theme.fg(scheme))
-        .toolbar(.hidden, for: .navigationBar)
+        .ymHideNavBar()
         .task(id: playlist.id) { await load() }
         .refreshable { await load() }
         .alert("重命名歌单", isPresented: $renaming) {

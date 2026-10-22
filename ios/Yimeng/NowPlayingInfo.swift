@@ -24,11 +24,17 @@ final class PlaybackSystem {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed,
             MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
         ]
-        if let img = UIImage(named: t.cover) {
+        if let img = PlatformImage(named: t.cover) {
+            #if canImport(UIKit)
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: img.size) { _ in img }
+            #elseif canImport(AppKit)
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: img.size) { _ in img }
+            #endif
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        #if os(iOS)
         MPNowPlayingInfoCenter.default().playbackState = playing ? .playing : .paused
+        #endif
         updateActivity(t, elapsed: elapsed, playing: playing)
     }
 
@@ -38,7 +44,7 @@ final class PlaybackSystem {
     }
 
     func endLiveActivity() {
-        #if canImport(ActivityKit)
+        #if os(iOS) && canImport(ActivityKit)
         if let a = activityRef as? Activity<YimengActivityAttributes> {
             Task { await a.end(nil, dismissalPolicy: .immediate) }
             activityRef = nil
@@ -61,7 +67,7 @@ final class PlaybackSystem {
     private var activityRef: Any?
 
     private func updateActivity(_ t: DreamTrack, elapsed: TimeInterval, playing: Bool) {
-        #if canImport(ActivityKit)
+        #if os(iOS) && canImport(ActivityKit)
         if UserDefaults.standard.object(forKey: "ym.liveActivity") as? Bool == false { endLiveActivity(); return }
         let auth = ActivityAuthorizationInfo()
         guard auth.areActivitiesEnabled else {

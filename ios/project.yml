@@ -78,15 +78,21 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - YimengMac
-      - path: Yimeng/Platform.swift
-      - path: Yimeng/YMIcons.swift
-      - path: Yimeng/Theme.swift
-      - path: Yimeng/Doodle.swift
-      - path: Yimeng/EmptyStates.swift
-      - path: Yimeng/DreamData.swift
-      - path: Yimeng/YMLayout.swift
-      - path: Yimeng/Assets.xcassets
-        buildPhase: resources
+      - path: Yimeng
+        excludes:
+          - WidgetsIntents.swift
+          - DebugSnap.swift
+          - Recognize.swift
+          - Yueqian.swift
+          - OnboardingFlow.swift
+          - NowPlayingMore.swift
+          - CoreV30.swift
+          - CoreV31.swift
+          - NowPlayingView.swift
+      - path: Shared
+        excludes:
+          - "*Activity*"
+          - "*Widget*"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.mac

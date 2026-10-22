@@ -9,7 +9,7 @@ struct DreamField: View {
         let calm = YMMotion.calm(reduceEnv)
         ZStack {
             track.base
-            if #available(iOS 18.0, *) {
+            if #available(iOS 18.0, macOS 15.0, *) {
                 TimelineView(.animation(minimumInterval: calm ? 1 / 4 : 1 / 30, paused: !animated)) { tl in
                     let t = Float((tl.date.timeIntervalSinceReferenceDate * (calm ? 0.12 : 1)).truncatingRemainder(dividingBy: 600))
                     MeshGradient(width: 3, height: 3, points: Self.points(t), colors: meshColors)

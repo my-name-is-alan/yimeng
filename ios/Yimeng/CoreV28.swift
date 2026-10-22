@@ -33,7 +33,10 @@ struct HandoffSheet: View {
                     }
                 }
             }
-            .navigationTitle("接力播放").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("接力播放")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
         }
         .task { await load() }

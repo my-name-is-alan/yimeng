@@ -49,7 +49,9 @@ struct HomeLive: View {
                     }
 
                     if !(NavidromeClient.core && YMLayout.wide) {
+                        #if os(iOS)
                         YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                        #endif
                     }
                     if NavidromeClient.core && library.connected && recent.isEmpty && home.data.frequent.isEmpty && home.data.playlists.isEmpty {
                         NewAccountCard(name: library.user).padding(.horizontal, Theme.margin).padding(.top, 18).motionIn(0.2)
@@ -150,7 +152,9 @@ struct HomeLive: View {
         .refreshable { await home.refresh(force: true) }
         .task {
             await home.refresh()
+            #if os(iOS)
             if YueqianStore.shared.card == nil { await YueqianStore.shared.load() }
+            #endif
             #if DEBUG
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, args[i + 1].hasPrefix("playlist:") {

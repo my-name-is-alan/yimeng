@@ -78,7 +78,9 @@ struct IndexBar: View {
     @State private var touch: String?
     @State private var busy = false
     private let rowH: CGFloat = 15
+    #if os(iOS)
     private let haptic = UISelectionFeedbackGenerator()
+    #endif
 
     var body: some View {
         let shown = touch ?? active
@@ -100,9 +102,13 @@ struct IndexBar: View {
                     let i = max(0, min(letters.count - 1, Int((v.location.y - 4) / rowH)))
                     let l = letters[i]
                     guard l != touch else { return }
+                    #if os(iOS)
                     if touch == nil { haptic.prepare() }
+                    #endif
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) { touch = l }
+                    #if os(iOS)
                     haptic.selectionChanged()
+                    #endif
                     onPick(l)
                 }
                 .onEnded { _ in

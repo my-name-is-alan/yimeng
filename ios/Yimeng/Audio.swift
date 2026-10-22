@@ -52,7 +52,7 @@ extension NDSong {
 @MainActor
 final class AudioRoute: ObservableObject {
     static let shared = AudioRoute()
-    @Published var name = "iPhone"
+    @Published var name = "Mac"
     @Published var portType = ""
     @Published var sampleRate: Double = 0
     @Published var channels = 2
@@ -60,27 +60,36 @@ final class AudioRoute: ObservableObject {
 
     init() {
         refresh()
+        #if os(iOS)
         obs = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { AudioRoute.shared.refresh() }
         }
+        #endif
     }
 
     func refresh() {
+        #if os(iOS)
         let s = AVAudioSession.sharedInstance()
         let out = s.currentRoute.outputs.first
         name = out?.portName ?? "iPhone"
         portType = out?.portType.rawValue ?? ""
         sampleRate = s.sampleRate
         channels = s.outputNumberOfChannels
+        #else
+        name = "Mac"
+        portType = ""
+        sampleRate = 48000
+        channels = 2
+        #endif
     }
 
-    /// Long-form playback session that allows multichannel / spatial content to pass through
-    /// (AirPods spatial, AirPlay, HDMI). Decoding/downmix is left to the system.
     static func configureSession() {
+        #if os(iOS)
         let s = AVAudioSession.sharedInstance()
         try? s.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [])
         try? s.setSupportsMultichannelContent(true)
         try? s.setActive(true)
+        #endif
     }
 }
 
@@ -151,15 +160,18 @@ struct SignalPathSheet: View {
 final class VolumeController: ObservableObject {
     static let shared = VolumeController()
     @Published private(set) var value: Float
+    #if os(iOS)
     weak var systemSlider: UISlider?
+    #endif
     private var obs: NSKeyValueObservation?
-    #if targetEnvironment(simulator)
-    static let usesSystem = false
-    #else
+    #if os(iOS) && !targetEnvironment(simulator)
     static let usesSystem = true
+    #else
+    static let usesSystem = false
     #endif
 
     private init() {
+        #if os(iOS)
         let s = AVAudioSession.sharedInstance()
         value = Self.usesSystem ? s.outputVolume : PlayerStore.shared.userGain
         if Self.usesSystem {
@@ -168,21 +180,27 @@ final class VolumeController: ObservableObject {
                 Task { @MainActor in self?.value = v }
             }
         }
+        #else
+        value = PlayerStore.shared.userGain
+        #endif
     }
 
     func set(_ v: Float) {
         let v = max(0, min(1, v))
         value = v
+        #if os(iOS)
         if Self.usesSystem, let sl = systemSlider {
             sl.value = v
             sl.sendActions(for: .valueChanged)
-        } else {
-            PlayerStore.shared.userGain = v
+            return
         }
+        #endif
+        PlayerStore.shared.userGain = v
     }
 }
 
 /// Off-screen MPVolumeView: gives us the system volume slider (and suppresses the volume HUD while visible).
+#if os(iOS)
 struct HiddenSystemVolume: UIViewRepresentable {
     func makeUIView(context: Context) -> MPVolumeView {
         let v = MPVolumeView(frame: CGRect(x: -200, y: -200, width: 100, height: 30))
@@ -197,6 +215,8 @@ struct HiddenSystemVolume: UIViewRepresentable {
 }
 
 /// Thin custom slider: 3 pt track, small dot thumb that grows while dragging.
+#endif
+
 struct VolumeSlider: View {
     @ObservedObject private var vol = VolumeController.shared
     @State private var dragging = false
@@ -219,7 +239,9 @@ struct VolumeSlider: View {
                 .onEnded { _ in withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragging = false } })
         }
         .frame(height: 24)
+        #if os(iOS)
         .background(HiddenSystemVolume().frame(width: 1, height: 1))
+        #endif
         .accessibilityElement()
         .accessibilityLabel("音量")
         .accessibilityValue("\(Int(vol.value * 100))%")
@@ -236,11 +258,14 @@ struct RouteButton: View {
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(route.portType.contains("AirPlay") || route.portType.contains("Bluetooth") ? Theme.lime : .white.opacity(0.75))
             .frame(width: 28, height: 28)
+            #if os(iOS)
             .overlay(RoutePicker().opacity(0.02))
+            #endif
             .contentShape(Rectangle())
     }
 }
 
+#if os(iOS)
 struct RoutePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let v = AVRoutePickerView()
@@ -250,6 +275,8 @@ struct RoutePicker: UIViewRepresentable {
     }
     func updateUIView(_ v: AVRoutePickerView, context: Context) {}
 }
+
+#endif
 
 struct VolumeRow: View {
     @ObservedObject private var route = AudioRoute.shared
@@ -345,7 +372,7 @@ struct SongMenuPreview: View {
                 HStack(spacing: 6) { SourceBadge(origin: song.origin); if song.preview == true { PreviewCapsule() }; Text(song.durationLabel).font(.system(size: 12)).foregroundStyle(.secondary) }
             }
             Spacer(minLength: 0)
-        }.padding(14).frame(width: 300).background(Color(uiColor: .systemBackground))
+        }.padding(14).frame(width: 300).background(Color.ymSystemBackground)
     }
 }
 extension View { func songMenu(_ s: NDSong) -> some View { modifier(SongMenu(song: s)) } }

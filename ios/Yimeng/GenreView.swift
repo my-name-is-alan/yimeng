@@ -44,7 +44,7 @@ struct GenreView: View {
     private var songs: [NDSong] { cache.songs[genre.name] ?? [] }
 
     var body: some View {
-        let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
+        let w = (YMPlatform.screenWidth - Theme.margin * 2 - 16) / 2
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left", dark: scheme == .dark) }

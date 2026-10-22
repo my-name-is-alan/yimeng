@@ -117,7 +117,6 @@ struct EmptyState: View {
     }
 }
 
-#if os(iOS)
 /// Artist avatar: Navidrome artist image (UA cache) over a doodle monogram tinted by the artist id.
 struct ArtistAvatar: View {
     let artist: NDArtist
@@ -139,10 +138,10 @@ struct ArtistAvatar: View {
 /// Like CoverImage, but transparent until loaded and tolerant of Navidrome's placeholder art.
 private struct ArtistImage: View {
     let url: URL?
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
     init(url: URL?) { self.url = url; _image = State(initialValue: url.flatMap { CoverCache.shared.memory($0) }) }
     var body: some View {
-        ZStack { if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) } }
+        ZStack { if let image { Image(platformImage: image).resizable().scaledToFill().transition(.opacity) } }
             .task(id: url.map(CoverCache.key)) {
                 guard image == nil, let url else { return }
                 if let d = await CoverCache.shared.disk(url) { image = d; return }
@@ -151,4 +150,3 @@ private struct ArtistImage: View {
             }
     }
 }
-#endif

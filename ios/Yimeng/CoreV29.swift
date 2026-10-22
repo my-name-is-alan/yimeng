@@ -241,7 +241,7 @@ struct AlternativesSheet: View {
                 }
             }
             .background(YMBackdrop())
-            .toolbar(.hidden, for: .navigationBar)
+            .ymHideNavBar()
         }
         .task {
             items = (try? await CoreClient.shared.alternatives(song.id)) ?? []
