@@ -21,14 +21,14 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 15 | StreamSource account management API | done | `901578b` |
 | 16 | AIFF / APE / DSF / DFF | done | `d30be52` |
 | E1 | Pinyin + fuzzy search | done | `aa38d23` |
-| E2 | Radio / auto-continue | done |  |
+| E2 | Radio / auto-continue | done | `c7ac85d` |
 | E3 | Classical / multi-disc | pending | |
-| E4 | Genre normalization + sort names | done |  |
+| E4 | Genre normalization + sort names | done | `c7ac85d` |
 | E5 | Library health reports | pending | |
 | E6 | Stats / on-this-day | pending | |
 | E7 | Embedded web admin + setup wizard | pending | |
-| E8 | Sleep timer + session resume | done |  |
+| E8 | Sleep timer + session resume | done | `c7ac85d` |
 | E9 | 100k-track perf | pending | |
-| E10 | Config hot-reload | done |  |
-| E11 | `/api/v1` alias | done |  |
+| E10 | Config hot-reload | done | `c7ac85d` |
+| E11 | `/api/v1` alias | done | `c7ac85d` |
 | E12 | TS types → `packages/shared` | pending | |
