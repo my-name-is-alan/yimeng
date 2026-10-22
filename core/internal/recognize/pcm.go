@@ -40,6 +40,7 @@ func DecodePCM(ctx context.Context, ffmpeg string, audio []byte, maxSec float64)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, ffmpeg,
 		"-hide_banner", "-loglevel", "error",
+		"-fflags", "+bitexact", "-flags", "+bitexact",
 		"-i", tmpPath,
 		"-t", fmt.Sprintf("%.3f", maxSec),
 		"-ac", "1", "-ar", fmt.Sprintf("%d", SampleRate),

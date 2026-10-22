@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
 	"github.com/my-name-is-alan/yimeng/core/internal/online/netease"
 	"github.com/my-name-is-alan/yimeng/core/internal/recognize"
@@ -78,7 +80,8 @@ func (d Deps) recognize(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "login required")
 		return
 	}
-	if !recognizeRL.allow(dev.UserID) {
+	// Enforce 10/min per account BEFORE decoding (expensive ffmpeg + NetEase).
+	if !recognizeRL.allow(recognizeAccountKey(dev)) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "最多每分钟 10 次识曲")
 		return
 	}
@@ -127,16 +130,12 @@ func (d Deps) recognize(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusRequestEntityTooLarge, "too_long", "音频须 ≤15 秒且 ≤2 MiB")
 		return
 	}
-	env := recognize.ExtractPeaks(pcm)
-	if durHint > 0 {
-		env.Duration = float32(durHint / 1000)
-	}
-	fp, err := recognize.Pack(env)
-	if err != nil {
-		d.internal(w, "recognize", err)
-		return
-	}
-	hits, err := np.MatchFingerprint(r.Context(), fp, float64(env.Duration))
+	// duration_ms from the client is informational only (readRecognizeAudio still
+	// parses it for logs/future use). Fingerprint duration is ALWAYS the
+	// server-measured PCM length — overriding it with a short/wrong hint
+	// (e.g. 100 ms) makes NetEase return no_match for an otherwise good clip.
+	_ = durHint
+	hits, err := matchFingerprintWindows(r.Context(), np, pcm)
 	if err != nil {
 		d.onlineErr(w, "recognize", err)
 		return
@@ -220,4 +219,39 @@ func sniffAudio(b []byte) bool {
 		return true
 	}
 	return false
+}
+
+func recognizeAccountKey(dev auth.Device) string {
+	if dev.UserID != "" {
+		return "u:" + dev.UserID
+	}
+	if dev.ID != "" {
+		return "d:" + dev.ID
+	}
+	return "anon"
+}
+
+// matchFingerprintWindows tries a deterministic set of PCM windows until NetEase
+// returns a hit. Duration sent upstream is always measured from that window.
+func matchFingerprintWindows(ctx context.Context, np *netease.Plugin, pcm []float32) ([]netease.Match, error) {
+	var lastErr error
+	for _, w := range recognize.MatchWindows(pcm) {
+		env := recognize.ExtractPeaks(w.PCM)
+		if len(env.Peaks) == 0 {
+			continue
+		}
+		fp, err := recognize.Pack(env)
+		if err != nil {
+			return nil, err
+		}
+		hits, err := np.MatchFingerprint(ctx, fp, float64(env.Duration))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(hits) > 0 {
+			return hits, nil
+		}
+	}
+	return nil, lastErr
 }

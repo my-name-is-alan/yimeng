@@ -2501,11 +2501,14 @@ paths:
       summary: Identify a song from a short audio clip (网易云听歌识曲)
       description: |
         Multipart field `audio` (m4a/AAC preferred; also mp3/wav), optional `duration_ms`.
-        Limits: ≤15 s and ≤2 MiB (413 too_long). Rate limit 10/min per account (429).
-        Audio is never stored (decoded in-memory via ffmpeg, then discarded).
+        `duration_ms` is an informational client hint only — Core always fingerprints
+        using the server-measured PCM duration (overriding with a wrong hint caused
+        false `no_match`). Limits: ≤15 s and ≤2 MiB (413 too_long). Rate limit
+        10/min per account, enforced before decoding (429). Audio is never stored.
         Requires the server-wide NetEase account to be logged in (409 not_logged_in).
         Fingerprint is a clean-room reimplementation of NetEase shazam_v2 (D62); if the
         format NetEase expects changes, Core returns 503 fingerprint_unsupported.
+        Each match `cover` is a CoverRef object (`{url, source_url, …}`), not a string.
       requestBody:
         required: true
         content:
@@ -2515,10 +2518,12 @@ paths:
               required: [audio]
               properties:
                 audio: { type: string, format: binary }
-                duration_ms: { type: number }
+                duration_ms:
+                  type: number
+                  description: Informational hint only; ignored for fingerprint duration (Core measures PCM).
       responses:
         "200":
-          description: "{matches:[{title,artist,album,cover,origin,track_id,offset_ms}]}"
+          description: "{matches:[RecognizeMatch]}"
           content:
             application/json:
               schema:
@@ -2526,16 +2531,7 @@ paths:
                 properties:
                   matches:
                     type: array
-                    items:
-                      type: object
-                      properties:
-                        title: { type: string }
-                        artist: { type: string }
-                        album: { type: string }
-                        cover: { $ref: "#/components/schemas/CoverRef" }
-                        origin: { type: string }
-                        track_id: { type: string }
-                        offset_ms: { type: integer }
+                    items: { $ref: "#/components/schemas/RecognizeMatch" }
         "400": { description: invalid_body }
         "404": { description: no_match }
         "409": { description: not_logged_in }
@@ -2630,6 +2626,20 @@ components:
               avatar_url: { type: string, description: "Platform account avatar (https), authenticated callers only (any role)" }
               vip: { type: boolean }
               capabilities: { type: array, items: { type: string, enum: [search, stream, lyrics, charts, daily, fm, recommend_playlists, user_playlists] } }
+    RecognizeMatch:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        cover:
+          allOf:
+            - $ref: "#/components/schemas/CoverRef"
+          description: CoverRef object (url/source_url/…); never a bare URL string
+        origin: { type: string }
+        track_id: { type: string }
+        offset_ms: { type: integer }
     CoverRef:
       type: object
       properties:
