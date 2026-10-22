@@ -113,6 +113,9 @@ func NewRouter(d Deps) http.Handler {
 	if d.Log == nil {
 		d.Log = slog.Default()
 	}
+	if d.Rooms == nil {
+		d.Rooms = NewRooms()
+	}
 	if d.Presence == nil {
 		d.Presence = NewPresence(d.Hub)
 	}

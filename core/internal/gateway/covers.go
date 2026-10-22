@@ -93,6 +93,18 @@ func (d Deps) coverV1(w http.ResponseWriter, r *http.Request) {
 func (d Deps) coverMeta(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	src, err := d.resolveCover(r.Context(), id)
+	if err != nil && d.Online != nil && d.Covers != nil && library.IsExternalID(id) {
+		// online track: meta of the platform cover; url stays the platform CDN URL
+		if t, terr := d.Online.Track(r.Context(), id); terr == nil && t.CoverURL != "" {
+			if lp, rerr := d.Covers.Remote(r.Context(), t.CoverURL); rerr == nil {
+				if m, merr := d.Covers.Meta(lp); merr == nil {
+					w.Header().Set("Cache-Control", "private, max-age=86400")
+					writeJSON(w, http.StatusOK, library.CoverRef{URL: strings.Replace(t.CoverURL, "http://", "https://", 1), Blurhash: m.Blurhash, Colors: m.Colors})
+					return
+				}
+			}
+		}
+	}
 	if err != nil || d.Covers == nil {
 		writeErr(w, http.StatusNotFound, "not_found", "no cover")
 		return

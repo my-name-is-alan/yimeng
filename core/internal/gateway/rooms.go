@@ -68,14 +68,7 @@ type Rooms struct {
 
 func NewRooms() *Rooms { return &Rooms{rooms: map[string]*Room{}} }
 
-var roomsDefault = NewRooms()
-
-func (d Deps) roomsSvc() *Rooms {
-	if d.Rooms != nil {
-		return d.Rooms
-	}
-	return roomsDefault
-}
+func (d Deps) roomsSvc() *Rooms { return d.Rooms }
 
 const roomCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
