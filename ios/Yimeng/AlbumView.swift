@@ -232,12 +232,14 @@ struct LibrarySearchView: View {
                     Text("搜索")
                         .task { if ProcessInfo.processInfo.arguments.contains("-recognizeFile") { try? await Task.sleep(for: .seconds(2)); recognizing = true } }.font(.system(size: 28, weight: .bold))
                     Spacer()
+                    #if os(iOS)
                     if NavidromeClient.core {
                         Button { recognizing = true } label: {
                             Label { Text("识曲").font(.system(size: 14, weight: .semibold)) } icon: { YMIcon(glyph: .recognize, size: 14, weight: 1.7) }
                                 .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(Theme.fill(scheme)))
                         }.buttonStyle(.plain).accessibilityIdentifier("search.recognize")
                     }
+                    #endif
                 }
                 .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
                 HStack(spacing: 8) {
@@ -260,7 +262,22 @@ struct LibrarySearchView: View {
                 if liveOnly {
                     if !albums.isEmpty {
                         SectionHeader(title: "专辑", more: false)
-                        RemoteAlbumRow(albums: albums)
+                        if YMLayout.wide {
+                            let w = YMLayout.tile()
+                            LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
+                                ForEach(albums.prefix(24)) { a in
+                                    Button { state.path.append(.ndAlbum(a)) } label: {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            RemoteCover(url: library.coverURL(a), size: w)
+                                            Text(a.name).font(.system(size: 14, weight: .semibold)).lineLimit(1).foregroundStyle(Theme.fg(scheme))
+                                            Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
+                                        }
+                                    }.buttonStyle(.plain).albumMenu(a)
+                                }
+                            }.padding(.horizontal, Theme.margin)
+                        } else {
+                            RemoteAlbumRow(albums: albums)
+                        }
                     }
                     if !songs.isEmpty {
                         SectionHeader(title: "歌曲", more: false)
@@ -314,7 +331,23 @@ struct LibrarySearchView: View {
                     }
                     if q.isEmpty && !library.albums.isEmpty {
                         SectionHeader(title: "曲库 · 新入库", more: false)
-                        RemoteAlbumRow(albums: Array(library.albums.prefix(16)))
+                        let newest = Array(library.albums.prefix(YMLayout.wide ? 24 : 16))
+                        if YMLayout.wide {
+                            let w = YMLayout.tile()
+                            LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
+                                ForEach(newest) { a in
+                                    Button { state.path.append(.ndAlbum(a)) } label: {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            RemoteCover(url: library.coverURL(a), size: w)
+                                            Text(a.name).font(.system(size: 14, weight: .semibold)).lineLimit(1).foregroundStyle(Theme.fg(scheme))
+                                            Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
+                                        }
+                                    }.buttonStyle(.plain).albumMenu(a)
+                                }
+                            }.padding(.horizontal, Theme.margin)
+                        } else {
+                            RemoteAlbumRow(albums: newest)
+                        }
                         Text(library.status)
                             .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
                             .padding(.horizontal, Theme.margin).padding(.top, 8)
