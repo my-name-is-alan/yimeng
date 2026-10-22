@@ -382,3 +382,19 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - A duration mismatch now multiplies the score: ×0.8 above 10 s, ×0.55 above 20 s, ×0.3 above 45 s.
   - The last synced timestamp is checked against the track: lyrics that run past the end get ×0.4; lyrics that end before 55 % of the track get ×0.6. This needs ≥5 lines and a track of ≥60 s.
   - For an online track id, that platform's own lyrics are added as a candidate with a +15 bonus.
+
+## D50 — Cross-platform auto source switch
+- **When it applies:** a track is preview-only or unavailable on its platform.
+- **What Core does:** `Resolve` plays, in order:
+  1. a local equivalent;
+  2. a known equivalent on another platform;
+  3. a search hit on another *enabled, logged-in* platform. It must have full entitlement and match by ISRC, or by normalized title + artist with duration within 3 s (score ≥ 0.9).
+- **What it never does:** use unblock or grey-listed sources, or any DRM bypass.
+- **Per-account preference** (`user_prefs` key `source_switch`, migration 0022), set via `GET/PUT /me/source-switch`:
+  - `enabled` (default on);
+  - `priority`, a list of platform ids.
+  - With switching off, only a local equivalent is used. Leases are cached per preference.
+- **What clients see:**
+  - Stream headers `X-Yimeng-Fallback` and `X-Yimeng-Play-Id`, and `fallback`/`play_id` on `/online/resolve/{id}`.
+  - Online track detail embeds `alternatives` when the track is not fully playable.
+  - `GET /tracks/{id}/alternatives` lists them on demand.

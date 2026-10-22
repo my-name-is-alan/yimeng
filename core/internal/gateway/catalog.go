@@ -103,17 +103,27 @@ func (d Deps) listTracks(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) getTrack(w http.ResponseWriter, r *http.Request) {
 	if id := r.PathValue("id"); d.Online != nil && library.IsExternalID(id) {
-		if _, err := d.Library.GetTrack(r.Context(), id); err != nil {
-			t, err := d.Online.Track(r.Context(), id)
+		lt, lerr := d.Library.GetTrack(r.Context(), id)
+		t, err := d.Online.Track(r.Context(), id)
+		if lerr != nil {
 			if err != nil {
 				d.platformErr(w, "track", err)
 				return
 			}
 			ts := []online.Track{t}
 			d.decorateOnlineTracks(ts)
-			writeJSON(w, http.StatusOK, ts[0])
+			writeJSON(w, http.StatusOK, withFields(ts[0], map[string]any{"alternatives": d.alternativesFor(r, id, t.Playable)}))
 			return
 		}
+		// stored snapshot (playlist / history): detail plus alternatives
+		playable := online.EntUnavailable // taken down upstream
+		if err == nil {
+			playable = t.Playable
+		}
+		ts := []library.Track{lt}
+		d.decorateTracks(r.Context(), ts)
+		writeJSON(w, http.StatusOK, withFields(ts[0], map[string]any{"entitlement": playable, "alternatives": d.alternativesFor(r, id, playable)}))
+		return
 	}
 	d.writeOne(w, "track", func() (any, error) {
 		t, err := d.Library.GetTrack(r.Context(), r.PathValue("id"))

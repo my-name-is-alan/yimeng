@@ -756,7 +756,7 @@ func (d Deps) onlineResolve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"track_id": id, "play_id": id, "origin": "local", "local": true, "entitlement": "full", "stream_url": "/api/stream/" + url.PathEscape(id)})
 		return
 	}
-	res, err := d.Online.Resolve(r.Context(), id, qualityQ(r), r.URL.Query().Get("fresh") == "1")
+	res, err := d.Online.Resolve(d.switchCtx(r.Context()), id, qualityQ(r), r.URL.Query().Get("fresh") == "1")
 	if err != nil {
 		d.onlineErr(w, "resolve", err)
 		return
@@ -776,7 +776,7 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	q := qualityQ(r)
 	for attempt := 0; attempt < 2; attempt++ {
-		res, err := d.Online.Resolve(r.Context(), id, q, attempt > 0)
+		res, err := d.Online.Resolve(d.switchCtx(r.Context()), id, q, attempt > 0)
 		if err != nil {
 			d.onlineErr(w, "resolve", err)
 			return true

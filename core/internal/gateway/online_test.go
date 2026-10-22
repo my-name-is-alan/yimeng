@@ -154,7 +154,10 @@ func (p *gwPlugin) Account(ctx context.Context) (online.Account, error) {
 }
 func (p *gwPlugin) Refresh(context.Context) error { return nil }
 
-func newOnlineEnv(t *testing.T) (*env, *gwPlugin) {
+func newOnlineEnv(t *testing.T) (*env, *gwPlugin) { return newOnlineEnvExtra(t) }
+
+// newOnlineEnvExtra also registers extra plugins (built with the gw CDN URL).
+func newOnlineEnvExtra(t *testing.T, extra ...func(cdn string) online.Factory) (*env, *gwPlugin) {
 	plug := &gwPlugin{}
 	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-Cdn-Auth") != "secret-cdn" {
@@ -182,6 +185,9 @@ func newOnlineEnv(t *testing.T) (*env, *gwPlugin) {
 		v, _ := vault.NewSQLStore(db, make([]byte, vault.KeySize))
 		reg := online.NewRegistry(db, v, nil, nil)
 		reg.Register(func(env online.Env) (online.Plugin, error) { plug.env = env; return plug, nil })
+		for _, x := range extra {
+			reg.Register(x(plug.cdn))
+		}
 		if err := reg.Load(context.Background()); err != nil {
 			t.Fatal(err)
 		}

@@ -502,7 +502,7 @@ func (s *Service) resolveOne(ctx context.Context, id string, q Quality) (Stream,
 // another platform the user is logged into with full entitlement; otherwise
 // the original result (preview segment or unavailable). Never anything else.
 func (s *Service) Resolve(ctx context.Context, id string, q Quality, fresh bool) (Resolution, error) {
-	key := id + "|" + string(q)
+	key := id + "|" + string(q) + "|" + switchFrom(ctx).key()
 	if !fresh {
 		s.mu.Lock()
 		r, ok := s.leases[key]
@@ -559,6 +559,14 @@ func (s *Service) resolve(ctx context.Context, id string, q Quality) (Resolution
 				Stream: Stream{Entitlement: EntFull}}, nil
 		}
 	}
+	sw := switchFrom(ctx)
+	if !sw.Enabled { // listener turned cross-platform switching off
+		if primaryErr != nil {
+			return base, primaryErr
+		}
+		return base, nil
+	}
+	sort.SliceStable(eqs, func(i, j int) bool { return sw.rank(eqs[i].Origin) < sw.rank(eqs[j].Origin) })
 	for _, e := range eqs {
 		if e.Origin == o || !s.Reg.LoggedIn(e.Origin) {
 			continue
@@ -569,7 +577,7 @@ func (s *Service) resolve(ctx context.Context, id string, q Quality) (Resolution
 	}
 	// 2) search other logged-in platforms by title+artist+duration
 	if terr == nil {
-		for _, other := range s.Reg.EnabledIDs() {
+		for _, other := range sw.ordered(s.Reg.EnabledIDs()) {
 			if other == o || !s.Reg.LoggedIn(other) {
 				continue
 			}
@@ -582,7 +590,7 @@ func (s *Service) resolve(ctx context.Context, id string, q Quality) (Resolution
 			for _, c := range cands {
 				sc, method := library.MatchScore(library.MatchQuery{ISRC: t.ISRC, Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs},
 					c.ISRC, c.Title, c.ArtistName, c.DurationMs)
-				if sc < 0.75 || c.Playable == EntUnavailable {
+				if sc < switchMinScore || c.Playable == EntUnavailable {
 					continue
 				}
 				alt, err := s.resolveOne(ctx, c.ID, q)

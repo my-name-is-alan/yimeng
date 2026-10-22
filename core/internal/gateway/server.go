@@ -144,6 +144,8 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/covers/{id}", d.coverV1)
 	mux.HandleFunc("GET /api/covers/{id}/meta", d.coverMeta)
 	if d.UserData != nil {
+		mux.HandleFunc("GET /api/me/source-switch", d.getSourceSwitch)
+		mux.HandleFunc("PUT /api/me/source-switch", d.putSourceSwitch)
 		mux.HandleFunc("GET /api/progress", d.getProgress)
 		mux.HandleFunc("PUT /api/progress/{id}", d.putProgress)
 		mux.HandleFunc("DELETE /api/progress/{id}", d.deleteProgress)
@@ -213,6 +215,7 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/tracks/{id}/dream", d.trackDream)
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
+	mux.HandleFunc("GET /api/tracks/{id}/alternatives", d.trackAlternatives)
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
 	mux.HandleFunc("GET /api/lyrics/search", d.lyricsSearchAPI)
 	mux.HandleFunc("GET /api/lyrics/best", d.lyricsBestAPI)

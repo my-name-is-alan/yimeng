@@ -759,6 +759,15 @@ paths:
         "101": { description: Switching protocols }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/v1/tracks/{id}/alternatives:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [online]
+      summary: The same song on other enabled, logged-in platforms (D50)
+      description: Matched by ISRC, or normalized title + artist with duration within ~3 s. Ordered by the caller's platform priority, fully entitled first. Online track detail embeds this as `alternatives` when the track is preview-only/unavailable (or with ?alternatives=1).
+      responses:
+        "200": { description: Alternatives, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Alternative" } } } } } } }
+
   /api/v1/tracks/{id}/credits:
     get:
       tags: [catalog]
@@ -1901,6 +1910,21 @@ paths:
       summary: Cover placeholder data
       responses:
         "200": { description: "{blurhash, colors:[3 x #rrggbb]}" }
+  /api/v1/me/source-switch:
+    get:
+      tags: [online]
+      summary: The caller's cross-platform source switching preference (D50)
+      responses:
+        "200": { description: Preference, content: { application/json: { schema: { $ref: "#/components/schemas/SourceSwitch" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [online]
+      summary: Update source switching (per account) — enabled and platform priority
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, priority: { type: array, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/SourceSwitch" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/progress:
     get:
       tags: [userdata]
@@ -2495,6 +2519,23 @@ components:
         lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
         text: { type: string }
         meta: { type: object, additionalProperties: { type: string } }
+    SourceSwitch:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        priority: { type: array, items: { type: string }, description: "Platform ids, most preferred first" }
+        platforms: { type: array, items: { type: string }, description: "Enabled platforms (read-only)" }
+    Alternative:
+      type: object
+      properties:
+        track_id: { type: string }
+        origin: { type: string }
+        title: { type: string }
+        artist_name: { type: string }
+        duration_ms: { type: integer }
+        playable: { type: string, enum: [full, preview, unavailable] }
+        score: { type: number }
+        method: { type: string, enum: [isrc, meta] }
     Playlist:
       type: object
       properties:
