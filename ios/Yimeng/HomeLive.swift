@@ -72,12 +72,13 @@ struct HomeLive: View {
                             HStack(spacing: 16) {
                                 ForEach(playlists) { pl in
                                     VStack(alignment: .leading, spacing: 4) {
-                                        RemoteCover(url: library.coverArtURL(id: pl.coverId, size: 300), size: 132)
+                                        PlaylistCover(playlist: pl, size: 132, corner: 12)
                                         Text(pl.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
                                         Text("\(pl.songCount ?? 0) 首").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                                     }
                                     .frame(width: 132)
-                                    .onTapGesture { Task { if let s = try? await NavidromeClient.shared.playlist(id: pl.id), !s.isEmpty { PlayerStore.shared.play(songs: s) } } }
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { state.path.append(.ndPlaylist(pl)) }
                                 }
                             }.padding(.horizontal, Theme.margin)
                         }.motionIn(stagger(7))
@@ -116,6 +117,11 @@ struct HomeLive: View {
             await home.refresh()
             #if DEBUG
             let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-open"), i + 1 < args.count, args[i + 1].hasPrefix("playlist:") {
+                let id = String(args[i + 1].dropFirst(9))
+                state.path.append(.ndPlaylist(NDPlaylist(id: id, name: "歌单", songCount: nil, coverId: nil)))
+            }
+            if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {
                 if args[i + 1] == "album" { state.path.append(.ndAlbum(a)) }
                 if args[i + 1] == "np", let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty {

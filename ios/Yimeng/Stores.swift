@@ -30,6 +30,13 @@ final class HomeStore: ObservableObject {
         data = (try? JSONDecoder().decode(HomePayload.self, from: Data(contentsOf: Self.file))) ?? HomePayload()
     }
 
+    func replacePlaylist(_ p: NDPlaylist) {
+        if let i = data.playlists.firstIndex(where: { $0.id == p.id }) { data.playlists[i] = p } else { data.playlists.insert(p, at: 0) }
+        persist()
+    }
+    func removePlaylist(_ id: String) { data.playlists.removeAll { $0.id == id }; persist() }
+    private func persist() { if let d = try? JSONEncoder().encode(data) { try? d.write(to: Self.file, options: .atomic) } }
+
     /// Refresh silently if stale (or forced by pull-to-refresh). Never clears what's on screen.
     func refresh(force: Bool = false) async {
         guard !refreshing, force || Date().timeIntervalSince(data.savedAt) > Self.ttl || data.isEmpty else { return }

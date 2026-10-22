@@ -27,9 +27,13 @@ struct NDGenre: Identifiable, Hashable, Codable {
 
 struct NDPlaylist: Identifiable, Hashable, Codable {
     let id: String
-    let name: String
-    let songCount: Int?
+    var name: String
+    var songCount: Int?
     let coverId: String?
+    var comment: String? = nil
+    var isPublic: Bool? = nil
+    var duration: Int? = nil
+    var owner: String? = nil
 }
 
 struct NDSong: Identifiable, Hashable, Codable {

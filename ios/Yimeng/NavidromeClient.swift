@@ -224,16 +224,46 @@ actor NavidromeClient {
     func playlists() async throws -> [NDPlaylist] {
         let obj = try await rest("getPlaylists.view", query: [:])
         let list = ((obj["playlists"] as? [String: Any])?["playlist"]) as? [[String: Any]] ?? []
-        return list.compactMap { a in
-            guard let id = a["id"] as? String, let name = a["name"] as? String else { return nil }
-            return NDPlaylist(id: id, name: name, songCount: a["songCount"] as? Int, coverId: a["coverArt"] as? String)
-        }
+        return list.compactMap(Self.parsePlaylist)
     }
 
-    func createPlaylist(name: String, songIds: [String]) async throws {
-        var q = ["name": name]
-        if let first = songIds.first { q["songId"] = first }
-        _ = try await rest("createPlaylist.view", query: q)
+    @discardableResult
+    func createPlaylist(name: String, songIds: [String]) async throws -> NDPlaylist? {
+        let obj = try await rest("createPlaylist.view", query: ["name": name], multi: songIds.map { ("songId", $0) })
+        return (obj["playlist"] as? [String: Any]).flatMap(Self.parsePlaylist)
+    }
+
+    /// Replace a playlist's song list in the given order (createPlaylist with playlistId overwrites).
+    func setPlaylistSongs(_ playlistId: String, songIds: [String]) async throws {
+        _ = try await rest("createPlaylist.view", query: ["playlistId": playlistId], multi: songIds.map { ("songId", $0) })
+    }
+
+    func updatePlaylist(_ id: String, name: String? = nil, comment: String? = nil, isPublic: Bool? = nil, removeIndexes: [Int] = []) async throws {
+        var q = ["playlistId": id]
+        if let name { q["name"] = name }
+        if let comment { q["comment"] = comment }
+        if let isPublic { q["public"] = isPublic ? "true" : "false" }
+        _ = try await rest("updatePlaylist.view", query: q, multi: removeIndexes.map { ("songIndexToRemove", String($0)) })
+    }
+
+    func deletePlaylist(_ id: String) async throws {
+        _ = try await rest("deletePlaylist.view", query: ["id": id])
+    }
+
+    func playlistDetail(id: String) async throws -> (NDPlaylist, [NDSong]) {
+        let obj = try await rest("getPlaylist.view", query: ["id": id])
+        let p = obj["playlist"] as? [String: Any] ?? [:]
+        let e = p["entry"]
+        let arr = (e as? [[String: Any]]) ?? ((e as? [String: Any]).map { [$0] } ?? [])
+        guard let pl = Self.parsePlaylist(p) else { throw NavidromeError.decode }
+        return (pl, arr.compactMap(Self.parseSong))
+    }
+
+    static func parsePlaylist(_ a: [String: Any]) -> NDPlaylist? {
+        guard let id = a["id"] as? String, let name = a["name"] as? String else { return nil }
+        return NDPlaylist(id: id, name: name, songCount: a["songCount"] as? Int, coverId: a["coverArt"] as? String,
+                          comment: a["comment"] as? String, isPublic: a["public"] as? Bool,
+                          duration: a["duration"] as? Int, owner: a["owner"] as? String)
     }
 
     func addToPlaylist(_ playlistId: String, songIds: [String]) async throws {
@@ -305,16 +335,23 @@ actor NavidromeClient {
                                                           trackPeak: dbl($0, "trackPeak"), albumPeak: dbl($0, "albumPeak")) })
     }
 
-    private func rest(_ method: String, query: [String: String]) async throws -> [String: Any] {
+    private func rest(_ method: String, query: [String: String], multi: [(String, String)] = []) async throws -> [String: Any] {
         // Views may ask before bootstrap login finishes — wait briefly instead of failing to an empty list.
         var waited = 0
         while token.isEmpty && waited < 60 { try? await Task.sleep(for: .milliseconds(250)); waited += 1 }
         guard let base = baseURL, !user.isEmpty, !token.isEmpty else { throw NavidromeError.api("未登录") }
-        guard let url = Self.authedURL(base: base, method: method, user: user, token: token, salt: salt,
+        guard let built = Self.authedURL(base: base, method: method, user: user, token: token, salt: salt,
                                        query: query.merging(["f": "json"]) { _, n in n }) else {
             throw NavidromeError.badURL
         }
+        var url = built
+        if !multi.isEmpty, var c = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            c.queryItems = (c.queryItems ?? []) + multi.map { URLQueryItem(name: $0.0, value: $0.1) }
+            if let u = c.url { url = u }
+        }
+        let t0 = Date()
         let (data, resp) = try await session.data(from: url)
+        NetLog.record(method, ms: Int(Date().timeIntervalSince(t0) * 1000), bytes: data.count)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else { throw NavidromeError.http(code) }
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],

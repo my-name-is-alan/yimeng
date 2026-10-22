@@ -180,37 +180,52 @@ private struct ArtistsList: View {
 }
 
 private struct PlaylistsList: View {
+    @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
-    @ObservedObject private var library = LibraryStore.shared
-    @State private var lists: [NDPlaylist] = []
-    @State private var loaded = false
-    @State private var open: String?
-    @State private var songs: [String: [NDSong]] = [:]
+    @ObservedObject private var events = PlaylistEvents.shared
+    @State private var creating = false
+    @State private var name = ""
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            if loaded && lists.isEmpty { EmptyState(kind: .playlists) }
-            ForEach(lists) { pl in
-                Button {
-                    withAnimation(.snappy) { open = open == pl.id ? nil : pl.id }
-                    if songs[pl.id] == nil { Task { songs[pl.id] = (try? await NavidromeClient.shared.playlist(id: pl.id)) ?? [] } }
-                } label: {
-                    HStack(spacing: 12) {
-                        RemoteCover(url: library.coverArtURL(id: pl.coverId, size: 120), size: 48, corner: 8)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(pl.name).font(.system(size: 16)).lineLimit(1)
-                            Text("\(pl.songCount ?? 0) 首").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+            Button { name = ""; creating = true } label: { Label("新建歌单", systemImage: "plus") }
+                .buttonStyle(SecondaryButtonStyle())
+                .padding(.horizontal, Theme.margin).padding(.bottom, 8)
+            if let lists = events.lists {
+                if lists.isEmpty { EmptyState(kind: .playlists) }
+                ForEach(lists) { pl in
+                    Button { state.path.append(.ndPlaylist(pl)) } label: {
+                        HStack(spacing: 12) {
+                            PlaylistCover(playlist: pl, size: 52, corner: 8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pl.name).font(.system(size: 16)).lineLimit(1)
+                                Text([ "\(pl.songCount ?? 0) 首", pl.owner ?? "", pl.isPublic == true ? "公开" : ""].filter { !$0.isEmpty }.joined(separator: " · "))
+                                    .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                         }
-                        Spacer()
-                    }
-                    .foregroundStyle(Theme.fg(scheme))
-                    .padding(.horizontal, Theme.margin).frame(height: 64).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                if open == pl.id, let s = songs[pl.id] {
-                    ForEach(s.indices, id: \.self) { i in SongRowPlay(songs: s, i: i) }
+                        .foregroundStyle(Theme.fg(scheme))
+                        .padding(.horizontal, Theme.margin).frame(height: 68).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
+            } else {
+                ForEach(0..<5, id: \.self) { _ in SkeletonRow() }
+            }
+        }
+        .task { await events.load() }
+        .alert("新建歌单", isPresented: $creating) {
+            TextField("歌单名称", text: $name)
+            Button("取消", role: .cancel) {}
+            Button("创建") {
+                let n = name.trimmingCharacters(in: .whitespaces)
+                guard !n.isEmpty else { return }
+                Task {
+                    if let p = try? await NavidromeClient.shared.createPlaylist(name: n, songIds: []) {
+                        PlaylistEvents.updated(p); state.path.append(.ndPlaylist(p))
+                    } else { SheetCenter.shared.say("创建失败") }
                 }
             }
         }
-        .task { if !loaded { lists = (try? await NavidromeClient.shared.playlists()) ?? []; loaded = true } }
     }
 }
 

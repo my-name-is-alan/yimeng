@@ -3,7 +3,7 @@ import SwiftUI
 enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
-enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), artist }
+enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), ndPlaylist(NDPlaylist), artist }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -210,6 +210,7 @@ struct Shell: View {
             case .album(let a): AlbumView(album: a).zoomDestination(a.id, ns)
             case .ndAlbum(let a): NDAlbumView(album: a).zoomDestination("nd-\(a.id)", ns)
             case .ndArtist(let a): ArtistDetailView(artist: a).zoomDestination("ar-\(a.id)", ns)
+            case .ndPlaylist(let p): PlaylistDetailView(playlist: p)
             case .artist: ArtistView().zoomDestination("artist", ns)
             }
         }.toolbar(.hidden, for: .navigationBar)

@@ -342,17 +342,24 @@ struct AddToPlaylistSheet: View {
             .navigationTitle("添加「\(song.title)」").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("取消") { dismiss() } } }
         }
-        .task { lists = (try? await NavidromeClient.shared.playlists()) ?? []; loaded = true }
+        .task { await PlaylistEvents.shared.load(); lists = PlaylistEvents.shared.lists ?? []; loaded = true }
     }
     private func add(_ pl: NDPlaylist) async {
         busy = true; defer { busy = false }
-        do { try await NavidromeClient.shared.addToPlaylist(pl.id, songIds: [song.id]); SheetCenter.shared.say("已添加到「\(pl.name)」"); dismiss() }
+        do {
+            try await NavidromeClient.shared.addToPlaylist(pl.id, songIds: [song.id])
+            var p = pl; p.songCount = (p.songCount ?? 0) + 1; PlaylistEvents.updated(p)
+            SheetCenter.shared.say("已添加到「\(pl.name)」"); dismiss()
+        }
         catch { SheetCenter.shared.say("添加失败") }
     }
     private func create() async {
         busy = true; defer { busy = false }
         let name = newName.trimmingCharacters(in: .whitespaces)
-        do { try await NavidromeClient.shared.createPlaylist(name: name, songIds: [song.id]); SheetCenter.shared.say("已创建「\(name)」"); dismiss() }
+        do {
+            if let p = try await NavidromeClient.shared.createPlaylist(name: name, songIds: [song.id]) { PlaylistEvents.updated(p) }
+            SheetCenter.shared.say("已创建「\(name)」"); dismiss()
+        }
         catch { SheetCenter.shared.say("创建失败") }
     }
 }

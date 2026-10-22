@@ -261,6 +261,24 @@ struct LibrarySearchView: View {
                             }
                         }
                     }
+                    let pls = (PlaylistEvents.shared.lists ?? HomeStore.shared.data.playlists).filter { !q.isEmpty && $0.name.localizedCaseInsensitiveContains(q) }
+                    if !pls.isEmpty {
+                        SectionHeader(title: "歌单", more: false)
+                        ForEach(pls) { pl in
+                            Button { state.path.append(.ndPlaylist(pl)) } label: {
+                                HStack(spacing: 12) {
+                                    PlaylistCover(playlist: pl, size: 48, corner: 8)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(pl.name).font(.system(size: 16)).lineLimit(1)
+                                        Text("歌单 · \(pl.songCount ?? 0) 首").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                                    }
+                                    Spacer()
+                                }
+                                .foregroundStyle(Theme.fg(scheme))
+                                .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
+                    }
                     if !artists.isEmpty {
                         SectionHeader(title: "艺人", more: false)
                         ForEach(artists.prefix(20)) { ar in
