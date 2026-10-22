@@ -382,3 +382,20 @@ func (t *Transcoder) FFmpeg() string {
 	}
 	return t.ffmpeg
 }
+
+// CacheBytes reports the size of completed cached transcodes.
+func (t *Transcoder) CacheBytes() int64 {
+	if t == nil {
+		return 0
+	}
+	var total int64
+	filepath.WalkDir(t.dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if in, err := d.Info(); err == nil {
+				total += in.Size()
+			}
+		}
+		return nil
+	})
+	return total
+}

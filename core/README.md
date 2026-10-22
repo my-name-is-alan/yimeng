@@ -28,6 +28,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 历史：自动记录播放（≥50%/4 分钟），`/api/history`、`/api/history/top`、`POST /api/scrobble`；收藏 `/api/favorites`、评分 `/api/ratings`；曲目带 play_count/favorite/rating，`?favorite=true&sort=plays`。
 - 歌单：`/api/playlists` 静态/智能（规则 JSON：最近添加、最常播放、字段筛选），M3U 导入/导出。
 - 响度：读取 REPLAYGAIN_*/R128；缺失时后台用 ffmpeg ebur128 分析（`YIMENG_LOUDNESS_ANALYSIS`），增益见曲目 `stream.replaygain` 与 `player.state`。
+- 系统：`GET /api/system`（版本/曲库统计/扫描/ffmpeg 能力/根目录诊断）；日志 `YIMENG_LOG_FORMAT=json|text`、`YIMENG_LOG_LEVEL`（访问日志不记 query）。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

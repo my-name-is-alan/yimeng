@@ -21,10 +21,12 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
+	"github.com/my-name-is-alan/yimeng/core/internal/infra/logging"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/loudness"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
@@ -34,13 +36,18 @@ import (
 var version = "dev"
 
 func main() {
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(log)
+	boot := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg, err := config.Load()
 	if err != nil {
-		log.Error("config", "err", err)
+		boot.Error("config", "err", err)
 		os.Exit(1)
 	}
+	log, err := logging.New(os.Stderr, cfg.Log.Format, cfg.Log.Level)
+	if err != nil {
+		boot.Error("log", "err", err)
+		os.Exit(1)
+	}
+	slog.SetDefault(log)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck(cfg.Bind))
 	}
@@ -210,6 +217,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Version:         version,
 			Transcoder:      tc,
 			StreamPrefs:     app.StreamPrefs{DB: database},
+			System: &system.Collector{
+				DB: database, DBPath: cfg.DBPath, Roots: scanner.Roots, CacheDir: cfg.CacheDir,
+				CacheMaxBytes: cfg.CacheMaxBytes, Transcoder: tc, Backup: bk,
+				LatestScan: scanner.Latest, Version: version, SchemaVersion: db.Latest(migrations.FS),
+				Started: time.Now(), LoudnessEnabled: cfg.Library.LoudnessAnalysis,
+				Features: map[string]bool{
+					"backup": true, "lyrics": true, "history": true, "playlists": true,
+					"loudness": cfg.Library.LoudnessAnalysis, "transcode": tc != nil,
+					"subsonic": cfg.Subsonic, "mdns": cfg.MDNS,
+				},
+			},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

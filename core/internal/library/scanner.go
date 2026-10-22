@@ -523,3 +523,10 @@ func rgSource(g local.Gain) any {
 	}
 	return "tag"
 }
+
+// Roots returns a copy of the configured library roots.
+func (s *Scanner) Roots() []string {
+	out := make([]string, len(s.opts.Roots))
+	copy(out, s.opts.Roots)
+	return out
+}

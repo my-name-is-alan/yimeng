@@ -71,3 +71,11 @@ alternative considered. Newest items at the bottom.
   player.state); applying it is the client's job — originals are never altered
   (bit-perfect), and transcodes are not gain-adjusted either.
 - Disable with `YIMENG_LOUDNESS_ANALYSIS=false`.
+
+## D7 Logging and /api/system
+- slog text|json via `YIMENG_LOG_FORMAT` / `YIMENG_LOG_LEVEL`. Access log is one
+  structured line per request: method, path (never query — tokens live there),
+  status, bytes, duration, remote IP, device id when authenticated.
+- `GET /api/system` is readable by every paired device (status for clients);
+  backup/restore stay admin-only. Diagnostics surface root permission errors,
+  low disk, low inotify watches, missing ffmpeg, stale backups, scan failures.

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -950,6 +950,94 @@ paths:
         "200": { description: M3U, content: { audio/x-mpegurl: { schema: { type: string } } } }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/system:
+    get:
+      tags: [system]
+      summary: Version, library stats, scan state, ffmpeg/loudness caps, root diagnostics
+      description: |
+        Available to every paired device. Reports version/uptime, library counts, latest scan,
+        per-root reachability and free space, database size, transcoder formats and cache size,
+        loudness analysis queue, backup freshness, and self-diagnostics (permission errors,
+        low disk, low inotify watches, missing ffmpeg, stale backups). Query strings are never
+        written to the access log (tokens live there for media).
+      responses:
+        "200":
+          description: System info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string }
+                  go_version: { type: string }
+                  os: { type: string }
+                  arch: { type: string }
+                  started_at: { type: string, format: date-time }
+                  uptime_sec: { type: integer }
+                  schema_version: { type: integer }
+                  library:
+                    type: object
+                    properties:
+                      tracks: { type: integer }
+                      albums: { type: integer }
+                      artists: { type: integer }
+                      files: { type: integer }
+                      lossless_files: { type: integer }
+                      playlists: { type: integer }
+                      plays: { type: integer }
+                      duration_ms: { type: integer }
+                      bytes: { type: integer }
+                  scan: { type: object, description: latest scan job, nullable: true }
+                  roots:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        ok: { type: boolean }
+                        error: { type: string }
+                        files: { type: integer }
+                        free_bytes: { type: integer }
+                  database:
+                    type: object
+                    properties:
+                      size_bytes: { type: integer }
+                      wal_bytes: { type: integer }
+                      free_bytes: { type: integer }
+                  transcode:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      formats: { type: array, items: { $ref: "#/components/schemas/FormatInfo" } }
+                      cache_bytes: { type: integer }
+                      cache_max_bytes: { type: integer }
+                  loudness:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      pending: { type: integer }
+                      failed: { type: integer }
+                  backups:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      last: { type: string, format: date-time, nullable: true }
+                  devices:
+                    type: object
+                    properties:
+                      paired: { type: integer }
+                      active_24h: { type: integer }
+                  features: { type: object, additionalProperties: { type: boolean } }
+                  diagnostics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        level: { type: string, enum: [info, warn, error] }
+                        code: { type: string }
+                        message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -1233,3 +1321,10 @@ components:
         sort: { type: string, description: "any /api/tracks sort, or random" }
         order: { type: string, enum: [asc, desc] }
         limit: { type: integer, maximum: 5000, default: 500 }
+    FormatInfo:
+      type: object
+      properties:
+        format: { type: string }
+        lossless: { type: boolean }
+        bitrates: { type: array, items: { type: integer } }
+        default_bitrate: { type: integer }

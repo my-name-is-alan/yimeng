@@ -20,6 +20,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
@@ -87,9 +88,13 @@ func newEnv(t *testing.T) *env {
 	}
 	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
-		Backup:          &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
-		UserData:        &userdata.Store{DB: d},
-		Playlists:       sc,
+		Backup:    &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
+		UserData:  &userdata.Store{DB: d},
+		Playlists: sc,
+		System: &system.Collector{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Roots: sc.Roots,
+			CacheMaxBytes: 1 << 30, Transcoder: tc, Backup: &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
+			LatestScan: sc.Latest, Version: "test", SchemaVersion: db.Latest(migrations.FS), Started: time.Now(),
+			Features: map[string]bool{"backup": true, "lyrics": true, "history": true, "playlists": true}},
 		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS)}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}

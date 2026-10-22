@@ -16,6 +16,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
+	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 )
@@ -64,6 +65,7 @@ type Deps struct {
 	LyricsFetcher library.LyricsFetcher
 	UserData      *userdata.Store
 	Playlists     PlaylistUseCases
+	System        *system.Collector
 }
 
 type contextT = context.Context
@@ -118,6 +120,9 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
 
+	if d.System != nil {
+		mux.HandleFunc("GET /api/system", d.getSystem)
+	}
 	if d.Playlists != nil {
 		mux.HandleFunc("GET /api/playlists", d.listPlaylists)
 		mux.HandleFunc("POST /api/playlists", d.createPlaylist)
@@ -146,7 +151,7 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/system/restore", d.adminOnly(d.restoreBackup))
 	}
 
-	return securityHeaders(d.requireAuth(mux))
+	return accessLog(d.Log, securityHeaders(d.requireAuth(mux)))
 }
 
 type ctxKey struct{}
@@ -197,6 +202,7 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked device token")
 			return
 		}
+		noteDevice(r.Context(), dev.ID)
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, dev)))
 	})
 }

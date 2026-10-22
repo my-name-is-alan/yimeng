@@ -94,3 +94,16 @@ func (d Deps) restoreBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"restart_required": true, "manifest": m,
 		"message": fmt.Sprintf("restore staged (schema %d); restart Core to apply", m.SchemaVersion)})
 }
+
+func (d Deps) getSystem(w http.ResponseWriter, r *http.Request) {
+	if d.System == nil {
+		writeErr(w, http.StatusNotImplemented, "not_configured", "system info unavailable")
+		return
+	}
+	in, err := d.System.Collect(r.Context())
+	if err != nil {
+		d.internal(w, "system", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, in)
+}
