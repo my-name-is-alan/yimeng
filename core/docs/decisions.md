@@ -161,3 +161,23 @@ alternative considered. Newest items at the bottom.
 - List/search `q` expands via ExpandQuery (original + pinyin of Chinese chars)
   and ORs LIKE against name fields and search_text. Not edit-distance fuzzy —
   substring + pinyin is enough for LAN library size.
+
+## D19 /api/v1 alias
+- Middleware rewrites `/api/v1/...` → `/api/...`. No separate handler set.
+
+## D20 Config hot-reload
+- SIGHUP reloads safe fields (log, rate limits, trusted proxies, mdns, subsonic,
+  providers, watch/rescan). Bind/DB/vault/TLS paths require restart.
+
+## D21 Sleep timer
+- In-memory per-player deadline; `POST .../sleep` with minutes (0=clear).
+  Background ticker pauses and publishes `player.sleep`. Not persisted across
+  Core restarts (acceptable for a nap timer).
+
+## D22 Radio / auto-continue
+- `POST .../radio` seeds the queue from same artist then genre (RANDOM).
+  No ML; clients call again for more. Stubs keep Core free of upstream APIs.
+
+## D23 Genre normalization
+- `normGenre` lowercases and maps common aliases at Merge time. Sort names
+  already use `normKey` on artists.

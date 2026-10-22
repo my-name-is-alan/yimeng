@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.15.0
+  version: 0.16.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -1330,6 +1330,43 @@ paths:
       responses:
         "200": { description: SyncPage }
         "501": { description: Not implemented by stub }
+
+  /api/players/{id}/sleep:
+    post:
+      tags: [playback]
+      summary: Arm or clear a sleep timer (pauses when due)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                minutes: { type: integer, description: "0 clears; >0 arms that many minutes from now" }
+      responses:
+        "200": { description: Player state with sleep_until }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/players/{id}/radio:
+    post:
+      tags: [playback]
+      summary: Fill the queue with radio/auto-continue seeds (same artist, then genre)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seed_track_id]
+              properties:
+                seed_track_id: { type: string }
+                limit: { type: integer, default: 25 }
+                replace: { type: boolean }
+      responses:
+        "200": { description: Player state }
+        "404": { $ref: "#/components/responses/NotFound" }
 
 components:
   securitySchemes:

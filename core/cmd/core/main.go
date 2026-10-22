@@ -237,6 +237,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 			log.Warn("scan on start", "err", err)
 		}
 	}
+	reload := config.NewReloader(cfg, log)
+	reload.NotifySIGHUP()
+	_ = reload
 	go bk.Run(ctx, cfg.Backup.Interval)
 	go func() {
 		if err := discovery.Run(ctx, discovery.Options{Enabled: cfg.MDNS, Bind: cfg.Bind, Version: version, Log: log}); err != nil {

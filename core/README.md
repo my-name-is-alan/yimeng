@@ -40,6 +40,10 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 流媒体账号：`GET /api/sources`；登录/登出/同步为 admin（凭据仅进 Vault，永不下发）。网易云/QQ/Apple 现为 stub（可存 cookie，播放 API 未接）。
 - 格式：本地库索引 AIFF/AIF、APE、DSF、DFF（纯 Go 探测时长/采样率；标签靠 dhowden/tag 能读的部分）。
 - 搜索：拼音/首字母（`search_text`，go-pinyin）+ 原字段子串；`q=zhou` 可命中「周杰伦」。
+- 配置热更新：SIGHUP 重载日志级别、限流、mDNS、providers 等（bind/db/vault 不重载）。
+- 睡眠定时：`POST /api/players/{id}/sleep` `{"minutes":30}`（0 取消）；到期自动 pause。
+- Radio：`POST /api/players/{id}/radio` `{"seed_track_id"}` 按同艺人/类型填充队列。
+- 流派归一：入库时折叠常见别名（hip hop→hip-hop、搖滾→rock 等）。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

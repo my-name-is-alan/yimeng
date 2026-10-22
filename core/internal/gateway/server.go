@@ -44,6 +44,7 @@ type LibraryUseCases interface {
 	AlbumCredits(ctx context.Context, albumID string) ([]library.Credit, error)
 	TrackCredits(ctx context.Context, trackID string) ([]library.Credit, error)
 	Lyrics(ctx context.Context, trackID string, fetch library.LyricsFetcher) (library.TrackLyrics, error)
+	RadioSeeds(ctx context.Context, seedTrackID string, limit int, exclude []string) ([]string, error)
 
 	SplitConfig() library.SplitConfig
 	SetSplitConfig(ctx context.Context, c library.SplitConfig) (library.SplitConfig, error)
@@ -125,9 +126,10 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/players", d.listPlayers)
 	mux.HandleFunc("GET /api/players/{id}", d.playerState)
 	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
-	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer"} {
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer", "sleep"} {
 		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
 	}
+	mux.HandleFunc("POST /api/players/{id}/radio", d.playerRadio)
 	mux.HandleFunc("GET /ws", d.ws)
 
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
@@ -195,6 +197,7 @@ func NewRouter(d Deps) http.Handler {
 	h := securityHeaders(d.requireAuth(mux))
 	h = rateLimit(d.RateLimits, h)
 	h = realIP(d.TrustedProxies, h)
+	h = apiV1Alias(h)
 	return accessLog(d.Log, h)
 }
 
@@ -259,6 +262,25 @@ func securityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiV1Alias rewrites /api/v1/... to /api/... so clients can pin a versioned prefix.
+func apiV1Alias(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/api/" + strings.TrimPrefix(r.URL.Path, "/api/v1/")
+			next.ServeHTTP(w, r2)
+			return
+		}
+		if r.URL.Path == "/api/v1" {
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/api"
+			next.ServeHTTP(w, r2)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

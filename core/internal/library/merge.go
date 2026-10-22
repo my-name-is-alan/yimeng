@@ -260,7 +260,7 @@ func (s *Scanner) Merge(ctx context.Context) error {
 			cover_source=CASE WHEN excluded.cover_path IS NULL AND albums.cover_source='remote' THEN 'remote' ELSE 'local' END,
 			mb_release_id=COALESCE(excluded.mb_release_id, albums.mb_release_id), artist_name=excluded.artist_name, genre=excluded.genre,
 			search_text=excluded.search_text, updated_at=excluded.updated_at`,
-			a.id, a.title, nzInt(a.year), nz(a.cover), nz(a.mbRel), a.artistName, nz(a.genre), search.Text(a.title, a.artistName), a.created, now)
+			a.id, a.title, nzInt(a.year), nz(a.cover), nz(a.mbRel), a.artistName, nz(normGenre(a.genre)), search.Text(a.title, a.artistName), a.created, now)
 		for i, c := range a.artists {
 			exec(`INSERT OR IGNORE INTO album_artists(album_id, artist_id, role, position) VALUES (?,?,?,?)`,
 				a.id, artistID(c.Name), c.Role, i)
@@ -275,7 +275,7 @@ func (s *Scanner) Merge(ctx context.Context) error {
 			mb_recording_id=COALESCE(excluded.mb_recording_id, tracks.mb_recording_id), artist_name=excluded.artist_name, genre=excluded.genre,
 			year=excluded.year, search_text=excluded.search_text, updated_at=excluded.updated_at`,
 			t.id, t.title, nz(t.albumID), nzInt(t.discNo), nzInt(t.trackNo), nzInt64(t.dur), nz(t.isrc), nz(t.mbRec),
-			t.artistName, nz(t.genre), nzInt(t.year), search.Text(t.title, t.artistName), t.created, now)
+			t.artistName, nz(normGenre(t.genre)), nzInt(t.year), search.Text(t.title, t.artistName), t.created, now)
 		for i, c := range t.artists {
 			exec(`INSERT OR IGNORE INTO track_artists(track_id, artist_id, role, position) VALUES (?,?,?,?)`,
 				t.id, artistID(c.Name), c.Role, i)

@@ -70,9 +70,10 @@ type State struct {
 	Lease        *Lease    `json:"lease"`
 	// Next is what plays after Track ends naturally (repeat/shuffle aware);
 	// clients prefetch NextLease for gapless transitions.
-	NextIndex int       `json:"next_index"` // -1 = none
-	Next      *TrackRef `json:"next"`
-	NextLease *Lease    `json:"next_lease"`
+	NextIndex  int        `json:"next_index"` // -1 = none
+	Next       *TrackRef  `json:"next"`
+	NextLease  *Lease     `json:"next_lease"`
+	SleepUntil *time.Time `json:"sleep_until,omitempty"` // pause when reached; nil = off
 }
 
 type QueueItem struct {
@@ -96,11 +97,13 @@ type LeaseFunc func(ctx context.Context, trackID string) (Lease, error)
 // persisted (sessions / queue_items) and broadcast as player.state /
 // queue.updated events so every connected client observes the same state.
 type Orchestrator struct {
-	db    *sql.DB
-	hub   *events.Hub
-	lease LeaseFunc
-	now   func() time.Time
-	mu    sync.Mutex
+	db      *sql.DB
+	hub     *events.Hub
+	lease   LeaseFunc
+	now     func() time.Time
+	mu      sync.Mutex
+	sleepMu sync.Mutex
+	sleep   map[string]time.Time // player_id -> deadline
 
 	// OnListened, if set before use, is called (outside the lock) whenever the
 	// current track is left: skipped, ended, replaced or stopped.
@@ -118,10 +121,66 @@ type Listen struct {
 }
 
 func NewOrchestrator(ctx context.Context, db *sql.DB, hub *events.Hub, lease LeaseFunc) (*Orchestrator, error) {
-	o := &Orchestrator{db: db, hub: hub, lease: lease, now: time.Now}
+	o := &Orchestrator{db: db, hub: hub, lease: lease, now: time.Now, sleep: map[string]time.Time{}}
 	// No client is producing audio after a restart.
 	_, err := db.ExecContext(ctx, `UPDATE sessions SET state='paused' WHERE state IN ('playing','buffering')`)
+	if err == nil {
+		go o.sleepLoop(ctx)
+	}
 	return o, err
+}
+
+// SetSleep arms (minutes>0) or clears a sleep timer that pauses the player.
+func (o *Orchestrator) SetSleep(ctx context.Context, pid string, minutes int) (State, error) {
+	o.sleepMu.Lock()
+	if minutes <= 0 {
+		delete(o.sleep, pid)
+	} else {
+		o.sleep[pid] = o.now().Add(time.Duration(minutes) * time.Minute)
+	}
+	o.sleepMu.Unlock()
+	st, err := o.State(ctx, pid)
+	if err == nil {
+		o.hub.Publish("player.state", st)
+	}
+	return st, err
+}
+
+func (o *Orchestrator) sleepUntilOf(pid string) *time.Time {
+	o.sleepMu.Lock()
+	defer o.sleepMu.Unlock()
+	if until, ok := o.sleep[pid]; ok {
+		u := until.UTC()
+		return &u
+	}
+	return nil
+}
+
+func (o *Orchestrator) sleepLoop(ctx context.Context) {
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			o.sleepMu.Lock()
+			now := o.now()
+			var due []string
+			for pid, until := range o.sleep {
+				if !now.Before(until) {
+					due = append(due, pid)
+					delete(o.sleep, pid)
+				}
+			}
+			o.sleepMu.Unlock()
+			for _, pid := range due {
+				if _, err := o.Pause(ctx, pid); err == nil {
+					o.hub.Publish("player.sleep", map[string]any{"player_id": pid})
+				}
+			}
+		}
+	}
 }
 
 type session struct {
@@ -346,8 +405,10 @@ func trackRef(ctx context.Context, q querier, id string) (*TrackRef, error) {
 }
 
 func (o *Orchestrator) state(ctx context.Context, q querier, pid string, s *session) (State, error) {
+	// note: caller holds o.mu or is in mutate
 	st := State{PlayerID: pid, Transport: s.state, PositionMs: o.position(s), UpdatedAt: o.now().UTC(),
 		CurrentIndex: s.idx, QueueLength: len(s.queue), Repeat: s.repeat, Shuffle: s.shuffle, NextIndex: -1}
+	st.SleepUntil = o.sleepUntilOf(pid)
 	if ni, _ := s.nextIndex(true); ni >= 0 && s.idx >= 0 {
 		t, err := trackRef(ctx, q, s.queue[ni])
 		if err != nil {

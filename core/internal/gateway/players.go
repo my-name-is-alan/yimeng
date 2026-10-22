@@ -9,6 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 )
 
@@ -118,6 +119,15 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 				return
 			}
 			st, err = d.Playback.EditQueue(ctx, pid, b)
+		case "sleep":
+			var b struct {
+				Minutes int `json:"minutes"`
+			}
+			if err := decodeBody(r, &b); err != nil {
+				writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
+				return
+			}
+			st, err = d.Playback.SetSleep(ctx, pid, b.Minutes)
 		}
 		d.playbackResult(w, d.withOnline(st), err)
 	}
@@ -228,4 +238,32 @@ func writeWS(ctx context.Context, c *websocket.Conn, typ string, data any) error
 	wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return c.Write(wctx, websocket.MessageText, b)
+}
+
+func (d Deps) playerRadio(w http.ResponseWriter, r *http.Request) {
+	pid := r.PathValue("id")
+	var b struct {
+		SeedTrackID string `json:"seed_track_id"`
+		Limit       int    `json:"limit"`
+		Replace     bool   `json:"replace"`
+	}
+	if err := decodeBody(r, &b); err != nil || b.SeedTrackID == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_body", "seed_track_id required")
+		return
+	}
+	ids, err := d.Library.RadioSeeds(r.Context(), b.SeedTrackID, b.Limit, nil)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not_found", "seed track not found")
+			return
+		}
+		d.internal(w, "radio", err)
+		return
+	}
+	op := playback.QueueOp{Op: "append", TrackIDs: ids}
+	if b.Replace {
+		op = playback.QueueOp{Op: "replace", TrackIDs: append([]string{b.SeedTrackID}, ids...)}
+	}
+	st, err := d.Playback.EditQueue(r.Context(), pid, op)
+	d.playbackResult(w, d.withOnline(st), err)
 }
