@@ -343,7 +343,7 @@ final class PlayerStore: ObservableObject {
         item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
         let p = AVPlayer(playerItem: item)
         player = p
-        if FXStore.shared.s.on { attachFX(item, s) }
+        attachFX(item, s)   // FX off → analysis-only tap (beat breathing); bitstream → none
         fadingOut = false
         let vol = targetVolume(for: s)
         if AudioPrefs.crossfade > 0 && autoplay { p.volume = 0; fadeTask?.cancel() } else { p.volume = vol }

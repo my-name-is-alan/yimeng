@@ -59,7 +59,8 @@ struct WobblyFrame: Shape {
         let pts = [CGPoint(x: rr.minX, y: rr.minY), CGPoint(x: rr.maxX, y: rr.minY), CGPoint(x: rr.maxX, y: rr.maxY), CGPoint(x: rr.minX, y: rr.maxY)]
         var p = Path()
         for pass in 0..<2 {
-            let j = { (v: CGFloat) in v + CGFloat(rng.d(-3, 3)) * (pass == 0 ? 1 : 1.6) }
+            let amp = min(3, r.width / 40)
+            let j = { (v: CGFloat) in v + CGFloat(rng.d(-Double(amp), Double(amp))) * (pass == 0 ? 1 : 1.6) }
             p.move(to: CGPoint(x: j(pts[0].x), y: j(pts[0].y)))
             for i in 1...4 {
                 let a = pts[(i - 1) % 4], b = pts[i % 4]
@@ -242,6 +243,7 @@ struct PlatformHomeSections: View {
             SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false)
             DailyMixCard(origin: d.origin, songs: d.tracks).padding(.horizontal, Theme.margin)
         }
+        Color.clear.frame(height: 0).id("fm")
         ForEach(store.fmOrigins, id: \.self) { o in
             SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false)
             FMCard(origin: o).padding(.horizontal, Theme.margin)

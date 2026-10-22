@@ -79,7 +79,7 @@ ONLINE = [
 for o in ONLINE: o.setdefault("stream_url", sign(f"/api/stream/{urllib.parse.quote(o['id'], safe='')}"))
 ALL_TRACKS = TRACKS + ONLINE
 for t in ALL_TRACKS:   # sort letter from title (mock: first latin letter or pinyin-ish table)
-    c = t["title"][0].upper(); t["sort_letter"] = c if "A" <= c <= "Z" else t.get("sort_letter", "#")
+    c = t["title"][0].upper(); t["sort_letter"] = c if "A" <= c <= "Z" else (t.get("sort_letter") if t["origin"] != "local" else "#")
 
 def track_by(id): return next((t for t in ALL_TRACKS if t["id"] == id), None)
 PLAYLISTS = [{"id": "pl1", "name": "通勤路上", "track_count": 6, "cover": cover("pl1", 1), "origin": "local", "track_ids": ["tr1", "tr3", "netease:186001", "tr5", "qq:003aBc", "tr8"]},
@@ -180,7 +180,7 @@ class H(BaseHTTPRequestHandler):
             if p.endswith("/albums"): return self.send_json(page([a for a in ALBUMS if a["artist"]["id"] == aid], q, "x"))
             return self.send_json(page([t for t in TRACKS if t["artists"][0]["id"] == aid], q, "x"))
         if p == "/api/v1/tracks":
-            items = sorted(ALL_TRACKS, key=lambda t: (t["sort_letter"], t["title"]))
+            items = sorted(ALL_TRACKS, key=lambda t: (t["sort_letter"] == "#", t["sort_letter"], t["title"]))
             return self.send_json(page(items, q, "tracks"))
         if p == "/api/v1/favorites" and m == "GET":
             typ = q.get("type", ["track"])[0]; src = ALL_TRACKS if typ == "track" else ALBUMS

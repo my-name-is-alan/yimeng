@@ -166,7 +166,7 @@ private struct BannerSlide: View {
                 .clipped()
             LinearGradient(stops: [.init(color: .black.opacity(0.22), location: 0), .init(color: .clear, location: 0.32)], startPoint: .top, endPoint: .bottom)
             LinearGradient(stops: [.init(color: .black.opacity(0.72), location: 0), .init(color: .black.opacity(0.18), location: 0.46), .init(color: .clear, location: 0.64)], startPoint: .bottom, endPoint: .top)
-            Text("为你推荐")
+            Text(NavidromeClient.core ? "来自曲库" : "为你推荐")
                 .font(.system(size: 11, weight: .medium)).tracking(0.2).foregroundStyle(.white)
                 .padding(.horizontal, 10).frame(height: 22)
                 .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))

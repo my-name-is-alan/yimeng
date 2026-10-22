@@ -989,7 +989,7 @@ struct SourceConnectView: View {
                 .disabled(busy)
                 .padding(.horizontal, 20)
 
-                Text("密码仅保存在本机钥匙串")
+                Text(kind == .core ? "只在本机钥匙串保存登录令牌，不保存密码" : "密码仅保存在本机钥匙串")
                     .font(.system(size: 13)).opacity(0.55)
                     .frame(maxWidth: .infinity).padding(.top, 12).padding(.bottom, 36)
             }
@@ -1057,7 +1057,7 @@ struct SourceConnectView: View {
             }
             HStack {
                 field(kind == .emby ? (embyMode == .apiKey ? "API Key" : "密码（可留空）")
-                      : (kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key"),
+                      : (kind == .core ? "密码" : (kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key")),
                       text: $draft.secret, secure: !showSecret)
                 Button { showSecret.toggle() } label: {
                     Image(systemName: showSecret ? "eye" : "eye.slash").opacity(0.6)

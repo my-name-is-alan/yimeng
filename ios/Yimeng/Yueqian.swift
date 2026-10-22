@@ -20,9 +20,13 @@ final class YueqianStore: ObservableObject {
     static func dayKey(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
 
     /// Local open log: which days this month the card was opened.
-    static func markOpened() {
+    @Published private(set) var opened = YueqianStore.openedThisMonth
+    func markOpened() {
+        Self.recordOpen(); opened = Self.openedThisMonth
+    }
+    static func recordOpen() {
         var s = Set(UserDefaults.standard.stringArray(forKey: "ym.yueqian.days") ?? [])
-        s.insert(dayKey()); UserDefaults.standard.set(Array(s).sorted().suffix(400), forKey: "ym.yueqian.days")
+        s.insert(dayKey()); UserDefaults.standard.set(Array(Array(s).sorted().suffix(400)), forKey: "ym.yueqian.days")
     }
     static var openedThisMonth: Int {
         let m = String(dayKey().prefix(7))
@@ -118,7 +122,7 @@ struct YueqianCardView: View {
                 .padding(.horizontal, 24).padding(.top, 4).lineLimit(2)
             TicketDivider().stroke(ink.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 5])).frame(height: 18).padding(.top, 18)
             HStack {
-                Text("这个月第 \(YueqianStore.openedThisMonth) 天来取乐签").font(.system(size: 12)).opacity(0.6)
+                Text("这个月第 \(YueqianStore.shared.opened) 天来取乐签").font(.system(size: 12)).opacity(0.6)
                 Spacer()
                 Text("译梦 · 今日乐签").font(.system(size: 12, weight: .semibold)).opacity(0.6)
             }.padding(.horizontal, 24).padding(.vertical, 16)
@@ -165,7 +169,7 @@ struct YueqianSheet: View {
             Button { dismiss() } label: { CircleIconButton(icon: "xmark", dark: true) }.padding(16)
         }
         .task {
-            YueqianStore.markOpened()
+            store.markOpened()
             if store.card == nil { await store.load() }
             render()
         }

@@ -24,6 +24,7 @@ struct HomeLive: View {
         GeometryReader { geo in
             let w = geo.size.width - Theme.margin * 2
             let p = bannerState.position
+            ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .firstTextBaseline) {
@@ -62,7 +63,7 @@ struct HomeLive: View {
                             }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 22)
                         }
                     }
-                    albumSection("最近添加", newest, sort: "newest", i: 2)
+                    albumSection("最近添加", newest, sort: "newest", i: 2).id("library")
                     albumSection("最近播放", recent, sort: "recent", i: 3)
                     albumSection("常听", frequent, sort: "frequent", i: 4)
                     albumSection("随机专辑", random, sort: "random", i: 5)
@@ -124,6 +125,13 @@ struct HomeLive: View {
                 }
             }
             .background(alignment: .top) { RemoteBackdrop(urls: bannerURLs, progress: p).ignoresSafeArea() }
+            #if DEBUG
+            .task {
+                guard let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-homeScroll"), i + 1 < ProcessInfo.processInfo.arguments.count else { return }
+                try? await Task.sleep(for: .seconds(5)); proxy.scrollTo(ProcessInfo.processInfo.arguments[i + 1], anchor: .top)
+            }
+            #endif
+            }
         }
         .background(Theme.base(scheme))
         .refreshable { await home.refresh(force: true) }
@@ -139,12 +147,18 @@ struct HomeLive: View {
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count {
                 if args[i + 1] == "genres" { state.path.append(.genres) }
                 if args[i + 1] == "genre", let g = home.data.genres.first { state.path.append(.genre(g)) }
+                if args[i + 1] == "charts" { state.path.append(.charts) }
+                if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); YueqianStore.shared.showSheet = true }
             }
             if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {
                 if args[i + 1] == "album" { state.path.append(.ndAlbum(a)) }
                 if args[i + 1] == "np", let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty {
                     PlayerStore.shared.playAlbum(al, songs: s); state.nowPlaying = true
+                }
+                if args[i + 1] == "np-lyrics", let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty {
+                    PlayerStore.shared.playAlbum(al, songs: s); state.nowPlaying = true
+                    try? await Task.sleep(for: .seconds(1)); state.lyricsMode = true
                 }
             }
             #endif

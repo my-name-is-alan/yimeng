@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0456FF1C11536093E337FE2E /* CoreClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36BEE64E0933D39F511EBDD /* CoreClientTests.swift */; };
 		0B40A130EB2F83FBEB9DC53A /* OFL-LXGWWenKai.txt in Resources */ = {isa = PBXBuildFile; fileRef = 74444C3DE3123F7866B6EEEB /* OFL-LXGWWenKai.txt */; };
 		0C467222F0AF212833502E34 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */; };
 		0D9231157F1515B2203FAF61 /* fnos-track-list.json in Resources */ = {isa = PBXBuildFile; fileRef = 5178F9895770BE93EE018F18 /* fnos-track-list.json */; };
@@ -175,6 +176,7 @@
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClientTests.swift; sourceTree = "<group>"; };
 		ADFCEC6EA2D41604DD20F029 /* Effects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Effects.swift; sourceTree = "<group>"; };
+		B36BEE64E0933D39F511EBDD /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		B727C7B6B00ECD4C014811FE /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		BF11FEF0B55F7446317FCA11 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
@@ -233,6 +235,7 @@
 		7F632480824F1FEF77789F46 /* YimengTests */ = {
 			isa = PBXGroup;
 			children = (
+				B36BEE64E0933D39F511EBDD /* CoreClientTests.swift */,
 				3318DA59414862B1885E2720 /* EmbyClientTests.swift */,
 				AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */,
 				6F61438FCEA08D7E70B67C51 /* Fixtures */,
@@ -471,6 +474,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0456FF1C11536093E337FE2E /* CoreClientTests.swift in Sources */,
 				112DC50DEE50F63DAFB146ED /* EmbyClientTests.swift in Sources */,
 				3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */,
 			);
