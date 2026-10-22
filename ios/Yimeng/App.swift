@@ -16,6 +16,8 @@ final class AppState: ObservableObject {
     @Published var tab: Tab = .home
     @Published var path: [Route] = []
     @Published var nowPlaying = false
+    /// Mac shot / desktop: stage SoundSettings inline (sheets do not render in offscreen NSHostingView).
+    @Published var macSoundStage = false
     @Published var lyricsMode = false
     /// iPad: full-screen player (turntable in landscape) opened from the player column.
     @Published var padFull = false

@@ -108,6 +108,7 @@ struct MacRoot: View {
             YMLayout.pad = true
             YMLayout.width = w
         }
+        .modifier(GlobalSheets())
         .task { await bootstrap() }
         .onChange(of: player.song?.id) { _, _ in updateTitle() }
         .onChange(of: player.isPlaying) { _, _ in updateTitle() }
@@ -158,6 +159,7 @@ struct MacRoot: View {
         }
         await LibraryStore.shared.connectCore(host: "http://localhost:8741", username: user, password: pass)
         await HomeStore.shared.refresh()
+        await StarStore.shared.load()
         updateTitle()
     }
 }
@@ -233,12 +235,16 @@ struct MacContent: View {
     var body: some View {
         NavigationStack(path: $state.path) {
             Group {
-                switch state.tab {
-                case .home: HomeView().environmentObject(state)
-                case .library: LibraryView().environmentObject(state)
-                case .collection: CollectionView().environmentObject(state)
-                case .search: LibrarySearchView().environmentObject(state)
-                case .me: SettingsView().environmentObject(state)
+                if state.macSoundStage {
+                    SoundSettingsView()
+                } else {
+                    switch state.tab {
+                    case .home: HomeView().environmentObject(state)
+                    case .library: LibraryView().environmentObject(state)
+                    case .collection: CollectionView().environmentObject(state)
+                    case .search: LibrarySearchView().environmentObject(state)
+                    case .me: SettingsView().environmentObject(state)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -399,7 +405,12 @@ struct MacNowPlaying: View {
 
                     Group {
                         if let u = state.remoteCoverURL ?? player.coverURL {
-                            CoverImage(url: u, points: coverSide)
+                            let sized = CoverCache.sized(u, points: coverSide)
+                            if let img = CoverCache.shared.memory(sized) ?? CoverCache.shared.cached(sized) {
+                                Image(platformImage: img).resizable().scaledToFill()
+                            } else {
+                                CoverImage(url: u, points: coverSide)
+                            }
                         } else if !state.track.cover.isEmpty {
                             Image(state.track.cover).resizable().scaledToFill()
                         } else {
@@ -445,6 +456,7 @@ enum MacShot {
         else if a.contains("-shotMacMe") { state.tab = .me }
         else if a.contains("-shotMacSearch") { state.tab = .search }
         else if a.contains("-shotMacColl") { state.tab = .collection }
+        else if a.contains("-shotMacSound") { state.tab = .me }
         else { state.tab = .home }
         state.path = []
     }
@@ -472,8 +484,27 @@ enum MacShot {
             let songs = d.tracks.filter { !$0.isUnplayable }
             if !songs.isEmpty {
                 PlayerStore.shared.play(songs: songs)
-                try? await Task.sleep(for: .milliseconds(1100))
+                // Wait for coverURL from startCurrent / applyNDSong.
+                for _ in 0..<20 {
+                    if PlayerStore.shared.coverURL != nil || state.remoteCoverURL != nil { break }
+                    try? await Task.sleep(for: .milliseconds(40))
+                }
+                if let u = PlayerStore.shared.coverURL ?? state.remoteCoverURL {
+                    let big = CoverCache.sized(u, points: 320)
+                    let mini = CoverCache.sized(u, points: 44)
+                    do {
+                        _ = try await CoverCache.shared.fetch(big)
+                        _ = try await CoverCache.shared.fetch(mini)
+                        let hit = CoverCache.shared.memory(big) != nil
+                        fputs("[ym] cover ok mem=\(hit) \(big.path)\n", stderr)
+                    } catch {
+                        fputs("[ym] cover fail \(error.localizedDescription)\n", stderr)
+                    }
+                } else {
+                    fputs("[ym] coverURL nil after play\n", stderr)
+                }
                 withAnimation(.ui) { state.nowPlaying = true }
+                try? await Task.sleep(for: .milliseconds(500))
                 return
             }
         }
@@ -481,6 +512,33 @@ enum MacShot {
         state.isPlaying = true
         state.remoteCoverURL = nil
         withAnimation(.ui) { state.nowPlaying = true }
+    }
+
+    
+    /// Prefetch visible covers so Home/Library/Now Playing shots aren't blurhash stand-ins.
+    @MainActor static func warmCovers(limit: Int = 24) async {
+        var urls: [URL] = []
+        for r in PlatformStore.shared.recommend {
+            for p in r.lists.prefix(8) {
+                if let u = LibraryStore.shared.coverArtURL(id: p.coverId, size: 300) {
+                    urls.append(CoverCache.sized(u, points: YMLayout.cover(140)))
+                }
+            }
+        }
+        for s in LibraryCache.shared.songs.prefix(16) {
+            if let u = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) {
+                urls.append(CoverCache.sized(u, points: 48))
+            }
+        }
+        if let u = PlayerStore.shared.coverURL {
+            urls.append(CoverCache.sized(u, points: 320))
+            urls.append(CoverCache.sized(u, points: 44))
+        }
+        await withTaskGroup(of: Void.self) { g in
+            for u in urls.prefix(limit) {
+                g.addTask { _ = try? await CoverCache.shared.fetch(u) }
+            }
+        }
     }
 
     @MainActor static func run(state: AppState) async {
@@ -495,12 +553,35 @@ enum MacShot {
             await LibraryCache.shared.open(LibraryView.key(.songs, sort: state.albumSort), albumSort: state.albumSort)
             try? await Task.sleep(for: .milliseconds(600))
         }
+        if a.contains("-shotMacColl") {
+            state.tab = .collection
+            await StarStore.shared.load()
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if a.contains("-shotMacMe") {
+            state.tab = .me
+            await StarStore.shared.load()
+        }
         if a.contains("-shotMacPlaying") {
             state.tab = .home
             await preparePlaying(state)
             try? await Task.sleep(for: .milliseconds(400))
         }
-        try? await Task.sleep(for: .milliseconds(400))
+        if a.contains("-shotMacSound") {
+            state.tab = .me
+            state.nowPlaying = false
+            state.path = []
+            // Offscreen NSHostingView cannot present .sheet — stage SoundSettings inline.
+            state.macSoundStage = true
+            try? await Task.sleep(for: .milliseconds(300))
+        } else {
+            state.macSoundStage = false
+        }
+        if !a.contains("-shotMacPlaying") && !a.contains("-shotMacSound") {
+            await PlatformStore.shared.refresh()
+            await warmCovers()
+        }
+        try? await Task.sleep(for: .milliseconds(500))
         capture(state: state)
     }
 
@@ -524,6 +605,8 @@ enum MacShot {
         guard !pass.isEmpty else { return }
         if SourceStore.shared.active != .core { await SourceStore.shared.activate(.core) }
         await LibraryStore.shared.connectCore(host: "http://localhost:8741", username: user, password: pass)
+        await HomeStore.shared.refresh()
+        await StarStore.shared.load()
     }
 
     @MainActor static func capture(state: AppState?) {
@@ -556,12 +639,13 @@ enum MacShot {
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("ymshots")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let name: String
-        if a.contains("-shotMacPlaying") { name = "v43-mac-playing.png" }
-        else if a.contains("-shotMacLib") { name = "v43-mac-library.png" }
-        else if a.contains("-shotMacMe") { name = "v43-mac-me.png" }
-        else if a.contains("-shotMacSearch") { name = "v43-mac-search.png" }
-        else if a.contains("-shotMacColl") { name = "v43-mac-collection.png" }
-        else { name = "v43-mac-home.png" }
+        if a.contains("-shotMacPlaying") { name = "v44-mac-playing.png" }
+        else if a.contains("-shotMacSound") { name = "v44-mac-sound.png" }
+        else if a.contains("-shotMacLib") { name = "v44-mac-library.png" }
+        else if a.contains("-shotMacMe") { name = "v44-mac-me.png" }
+        else if a.contains("-shotMacSearch") { name = "v44-mac-search.png" }
+        else if a.contains("-shotMacColl") { name = "v44-mac-collection.png" }
+        else { name = "v44-mac-home.png" }
         let url = dir.appendingPathComponent(name)
         try? png.write(to: url)
         fputs("[ym] wrote \(url.path) \(png.count)\n", stderr)

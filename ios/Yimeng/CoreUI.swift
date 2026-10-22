@@ -323,20 +323,48 @@ struct PlatformHomeSections: View {
         }
     }
     @ViewBuilder func recRow(_ r: (origin: String, lists: [NDPlaylist]), pad: CGFloat) -> some View {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(r.lists) { p in
+            let cover = YMLayout.cover(140)
+            if YMLayout.wide && pad == 0 {
+                let cols = Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: max(2, min(4, r.lists.count)))
+                LazyVGrid(columns: cols, alignment: .leading, spacing: 14) {
+                    ForEach(r.lists.prefix(8)) { p in
                         Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: r.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
                             VStack(alignment: .leading, spacing: 6) {
-                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: YMLayout.cover(140))
-                                Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: YMLayout.cover(140), alignment: .leading)
+                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: cover)
+                                Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: cover, alignment: .leading)
+                            }
+                        }.buttonStyle(.plain)
+                    }
+                }
+            } else if YMLayout.wide {
+                let n = max(3, min(5, Int((YMLayout.width - pad * 2) / (cover + 14))))
+                let cols = Array(repeating: GridItem(.flexible(), spacing: 14, alignment: .top), count: n)
+                LazyVGrid(columns: cols, alignment: .leading, spacing: 16) {
+                    ForEach(r.lists.prefix(n * 2)) { p in
+                        Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: r.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: cover)
+                                Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }.buttonStyle(.plain)
                     }
                 }.padding(.horizontal, pad)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(r.lists) { p in
+                            Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: r.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: cover)
+                                    Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: cover, alignment: .leading)
+                                }
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(.horizontal, pad)
+                }
             }
-        
     }
+
 }
 
 struct DailyMixCard: View {
