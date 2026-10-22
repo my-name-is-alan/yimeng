@@ -162,6 +162,7 @@ struct YimengApp: App {
 }
 
 struct Shell: View {
+    @AppStorage("ym.appearance") var padAppearance = 0
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @Namespace private var ns

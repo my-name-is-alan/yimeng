@@ -114,32 +114,32 @@ final class RecognizeStore: ObservableObject {
 struct RecognizeSheet: View {
     @StateObject private var store = RecognizeStore()
     @Environment(\.dismiss) private var dismiss
-    private let lime = Color(red: 0.784, green: 0.961, blue: 0.259)
+    @Environment(\.colorScheme) private var scheme
+    private var lime: Color { Theme.accent(scheme) }
     var body: some View {
         VStack(spacing: 22) {
-            Capsule().fill(.white.opacity(0.25)).frame(width: 40, height: 5).padding(.top, 8)
-            Text("听歌识曲").font(.system(size: 20, weight: .bold))
+            Text("听歌识曲").font(.system(size: 17, weight: .semibold)).padding(.top, 18)
             ZStack {
                 // Doodle ring (decorative): the only thing that animates with the listening progress.
                 Circle().strokeBorder(lime.opacity(0.25), style: StrokeStyle(lineWidth: 2, dash: [4, 6])).frame(width: 168, height: 168)
                 Circle().trim(from: 0, to: progress).stroke(lime, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90)).frame(width: 150, height: 150)
                 Button { if case .listening = store.phase { store.cancel() } else { store.start() } } label: {
-                    Image(systemName: icon).font(.system(size: 40, weight: .semibold)).foregroundStyle(.black)
+                    Image(systemName: icon).font(.system(size: 40, weight: .semibold)).foregroundStyle(scheme == .dark ? Color.black : .white)
                         .frame(width: 104, height: 104).background(Circle().fill(lime))
                 }
                 .accessibilityIdentifier("recognize.go")
             }
-            Text(status).font(.system(size: 15)).foregroundStyle(.white.opacity(0.7)).multilineTextAlignment(.center).padding(.horizontal, 24)
+            Text(status).font(.system(size: 15)).foregroundStyle(Theme.secondary(scheme)).multilineTextAlignment(.center).padding(.horizontal, 24)
                 .accessibilityIdentifier("recognize.status")
             if case .done(let ms) = store.phase {
                 ScrollView { VStack(spacing: 10) { ForEach(ms) { MatchRow(m: $0) } }.padding(.horizontal, 16) }
             }
             Spacer(minLength: 0)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.fg(scheme))
         .frame(maxWidth: .infinity)
-        .background(Color(white: 0.07).ignoresSafeArea())
+        .background(YMBackdrop())
         .onDisappear { store.cancel() }
     }
     private var progress: CGFloat { if case .listening(let p) = store.phase { CGFloat(p) }; return store.phase == .matching ? 1 : 0 }
@@ -165,18 +165,15 @@ private struct MatchRow: View {
                 .frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(m.title).font(.system(size: 16, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                Text([m.artist, m.album].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.white.opacity(0.6))
+                Text([m.artist, m.album].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 13)).opacity(0.6)
                     .lineLimit(1).truncationMode(.middle)
             }
             Spacer(minLength: 8)
             if let s = m.song {
                 // Only the play button plays.
-                Button { PlayerStore.shared.play(songs: [s], startAt: 0); Haptics.tap() } label: {
-                    Image(systemName: "play.fill").font(.system(size: 14, weight: .bold)).foregroundStyle(.black)
-                        .frame(width: 36, height: 36).background(Circle().fill(Color(red: 0.784, green: 0.961, blue: 0.259)))
-                }.accessibilityLabel("播放 \(m.title)")
+                Button { PlayerStore.shared.play(songs: [s], startAt: 0); Haptics.tap() } label: { PlayCircle(size: 36) }.accessibilityLabel("播放 \(m.title)")
             }
         }
-        .padding(10).background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white.opacity(0.06)))
+        .padding(.vertical, 6).ymCard(padding: 10)
     }
 }

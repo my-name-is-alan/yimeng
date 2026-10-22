@@ -431,30 +431,24 @@ struct AddToPlaylistSheet: View {
     @State private var busy = false
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        TextField("新建歌单名称", text: $newName)
-                        Button("创建并添加") { Task { await create() } }
+            YMPage("添加「\(song.title)」") {
+                YMSection(title: "新建歌单") {
+                    HStack(spacing: 10) {
+                        TextField("新建歌单名称", text: $newName).font(.system(size: 16)).frame(minHeight: 50)
+                        Button("创建并添加") { Task { await create() } }.buttonStyle(YMPillButtonStyle())
                             .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || busy)
                     }
                 }
-                Section("添加到已有歌单") {
-                    if !loaded { ProgressView() }
-                    else if lists.isEmpty { Text("还没有歌单").foregroundStyle(.secondary) }
-                    ForEach(lists) { pl in
-                        Button { Task { await add(pl) } } label: {
-                            HStack {
-                                Text(pl.name)
-                                Spacer()
-                                Text("\(pl.songCount ?? 0) 首").foregroundStyle(.secondary)
-                            }
-                        }.disabled(busy)
+                YMSection(title: "添加到已有歌单") {
+                    if !loaded { ProgressView().frame(maxWidth: .infinity, minHeight: 50) }
+                    else if lists.isEmpty { YMRow("还没有歌单") }
+                    ForEach(Array(lists.enumerated()), id: \.element.id) { i, pl in
+                        if i > 0 { YMDivider() }
+                        Button { Task { await add(pl) } } label: { YMRow(icon: "music.note.list", pl.name, "\(pl.songCount ?? 0) 首") }
+                            .buttonStyle(.plain).disabled(busy)
                     }
                 }
             }
-            .navigationTitle("添加「\(song.title)」").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("取消") { dismiss() } } }
         }
         .task { await PlaylistEvents.shared.load(); lists = PlaylistEvents.shared.lists ?? []; loaded = true }
     }
@@ -497,45 +491,33 @@ struct SoundSettingsView: View {
             .onChange(of: gapless) { CoreAccountStore.pushPlaybackPrefs() }
     }
     private var form: some View {
-        Form {
-            Section {
-                EffectsPanel()
-            } footer: {
-                Text("关闭音效 = 原始直通（AVPlayer，FLAC / 杜比不经处理）；开启 = 边下边播 + 实时 12 段 EQ + 峰值限制。切换无需重启播放。")
+        YMPage("音效设置") {
+            YMSection(title: "音效", footer: "关闭音效 = 原始直通（AVPlayer，FLAC / 杜比不经处理）；开启 = 边下边播 + 实时 12 段 EQ + 峰值限制。切换无需重启播放。") {
+                EffectsPanel().padding(.vertical, 8)
             }
-            Section {
-                Picker("串流音质", selection: $maxBitRate) {
-                    Text("原始 · 无损直通").tag(0)
-                    Text("320 kbps").tag(320); Text("192 kbps").tag(192); Text("128 kbps").tag(128)
-                }
-            } header: { Text("音质") } footer: {
-                Text("「原始」请求未转码文件（FLAC / ALAC / 杜比 E-AC-3），由 iOS 直接解码；多声道与杜比全景声交给 AirPods、AirPlay 或 HDMI 输出。")
+            YMSection(title: "音质", footer: "「原始」请求未转码文件（FLAC / ALAC / 杜比 E-AC-3），由 iOS 直接解码；多声道与杜比全景声交给 AirPods、AirPlay 或 HDMI 输出。") {
+                YMPickerRow(icon: "waveform", "串流音质", selection: $maxBitRate, options: [(0, "原始 · 无损直通"), (320, "320 kbps"), (192, "192 kbps"), (128, "128 kbps")])
             }
-            Section {
-                Toggle("无缝播放（预加载下一首）", isOn: $gapless)
-                VStack(alignment: .leading) {
-                    HStack { Text("淡入淡出"); Spacer(); Text(crossfade == 0 ? "关" : "\(Int(crossfade)) 秒").foregroundStyle(.secondary) }
-                    Slider(value: $crossfade, in: 0...12, step: 1)
-                }
-            } header: { Text("过渡") } footer: { Text("无缝播放在淡入淡出为「关」时生效：下一首提前排入播放队列，首尾零间隙。") }
-            Section { NavigationLink("离线缓存") { OfflineSettingsView() } }
-            Section {
-                Picker("回放增益", selection: $rgMode) { Text("关").tag(0); Text("单曲").tag(1); Text("专辑").tag(2) }
-                    .pickerStyle(.segmented)
+            YMSection(title: "过渡", footer: "无缝播放在淡入淡出为「关」时生效：下一首提前排入播放队列，首尾零间隙。") {
+                YMToggleRow(icon: "infinity", "无缝播放", isOn: $gapless)
+                YMDivider()
+                YMSliderRow(icon: "waveform.path.ecg", title: "淡入淡出", value: crossfade == 0 ? "关" : "\(Int(crossfade)) 秒", v: $crossfade, range: 0...12)
+            }
+            YMSection(title: "音量标准化", footer: "使用服务器提供的 ReplayGain 标签调整音量，不改变音频数据，不影响直通。") {
+                YMChips(selection: $rgMode, options: [(0, "关"), (1, "单曲"), (2, "专辑")])
                 if rgMode > 0 {
-                    VStack(alignment: .leading) {
-                        HStack { Text("预增益"); Spacer(); Text(String(format: "%+.0f dB", preamp)).foregroundStyle(.secondary) }
-                        Slider(value: $preamp, in: -12...6, step: 1)
-                    }
-                    Toggle("防削波（按峰值限制）", isOn: $clipGuard)
+                    YMDivider()
+                    YMSliderRow(icon: "plusminus", title: "预增益", value: String(format: "%+.0f dB", preamp), v: $preamp, range: -12...6)
+                    YMDivider()
+                    YMToggleRow(icon: "waveform.badge.exclamationmark", "防削波（按峰值限制）", isOn: $clipGuard)
                 }
-            } header: { Text("音量标准化") } footer: {
-                Text("使用服务器提供的 ReplayGain 标签调整音量，不改变音频数据，不影响直通。")
+            }
+            YMSection(title: "离线") {
+                NavigationLink { OfflineSettingsView(back: true) } label: {
+                    YMRow(icon: "arrow.down.circle", "离线缓存", "\(OfflineCache.shared.entries.count) 首", chevron: true)
+                }.buttonStyle(.plain)
             }
         }
-        .navigationTitle("音效设置")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } } }
         .onChange(of: rgMode) { _, _ in PlayerStore.shared.applyGain() }
         .onChange(of: preamp) { _, _ in PlayerStore.shared.applyGain() }
         .onChange(of: clipGuard) { _, _ in PlayerStore.shared.applyGain() }

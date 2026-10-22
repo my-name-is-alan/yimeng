@@ -138,29 +138,52 @@ final class OfflineCache: ObservableObject {
 }
 
 struct OfflineSettingsView: View {
+    var back = false
     @ObservedObject var c = OfflineCache.shared
+    @Environment(\.colorScheme) var scheme
+    @State private var confirmClear = false
     private let limits = [512, 1024, 2048, 4096, 8192, 16384]
+    private func gb(_ mb: Int) -> String { mb >= 1024 ? "\(mb / 1024) GB" : "\(mb) MB" }
     var body: some View {
-        Form {
-            Section {
-                Toggle("智能预缓存", isOn: $c.enabled)
-                Toggle("仅 Wi-Fi 下载", isOn: $c.wifiOnly)
-                Picker("存储上限", selection: $c.limitMB) {
-                    ForEach(limits, id: \.self) { Text($0 >= 1024 ? "\($0 / 1024) GB" : "\($0) MB").tag($0) }
+        YMPage("离线缓存", back: back) {
+            // Doodle storage ring
+            HStack(spacing: 22) {
+                ZStack {
+                    YMDoodleRing(fraction: Double(c.usedBytes) / Double(max(c.limitBytes, 1)))
+                    VStack(spacing: 2) {
+                        Text("\(Int((Double(c.usedBytes) / Double(max(c.limitBytes, 1)) * 100).rounded()))%").font(.system(size: 26, weight: .bold, design: .rounded))
+                        Text("已用").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                    }
                 }
-            } footer: { Text("自动缓存今日每日推荐和常听的歌，断网时直接从缓存播放。缓存是原始文件，不转码。") }
-            Section("已缓存") {
-                LabeledContent("歌曲", value: "\(c.entries.count) 首")
-                LabeledContent("占用", value: ByteCountFormatter.string(fromByteCount: c.usedBytes, countStyle: .file))
-                LabeledContent("网络", value: c.onWiFi ? "Wi-Fi" : c.online ? "蜂窝" : "离线")
-                if !c.busy.isEmpty { LabeledContent("正在缓存", value: "\(c.busy.count) 首") }
-                Button("立即缓存") { c.precache() }.disabled(!c.mayDownload)
-                Button("清空缓存", role: .destructive) { c.clearAll() }.disabled(c.entries.isEmpty)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(ByteCountFormatter.string(fromByteCount: c.usedBytes, countStyle: .file)).font(.system(size: 22, weight: .bold))
+                    Text("共 \(gb(c.limitMB)) · \(c.entries.count) 首").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                    HStack(spacing: 6) {
+                        Circle().fill(c.onWiFi ? Theme.accent(scheme) : Theme.secondary(scheme)).frame(width: 6, height: 6)
+                        Text(c.busy.isEmpty ? (c.onWiFi ? "Wi-Fi" : c.online ? "蜂窝网络" : "离线") : "正在缓存 \(c.busy.count) 首")
+                            .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                    }
+                }
+                Spacer(minLength: 0)
             }
+            .padding(18).ymCard(padding: 0).padding(.top, 12)
+            .accessibilityIdentifier("offline.settings")
+
+            YMSection(title: "下载", footer: "自动缓存今日每日推荐和常听的歌，断网时直接从缓存播放。缓存是原始文件，不转码。") {
+                YMToggleRow(icon: "sparkles", "智能预缓存", isOn: $c.enabled)
+                YMDivider()
+                YMToggleRow(icon: "wifi", "仅 Wi-Fi 下载", isOn: $c.wifiOnly)
+                YMDivider()
+                YMPickerRow(icon: "internaldrive", "存储上限", selection: $c.limitMB, options: limits.map { ($0, gb($0)) })
+            }
+            HStack(spacing: 12) {
+                Button("立即缓存") { c.precache(); Haptics.tap() }.buttonStyle(PrimaryButtonStyle()).disabled(!c.mayDownload).opacity(c.mayDownload ? 1 : 0.4)
+                Button("清空缓存") { confirmClear = true }.buttonStyle(YMDestructiveButtonStyle()).disabled(c.entries.isEmpty).opacity(c.entries.isEmpty ? 0.4 : 1)
+            }.padding(.top, 24)
         }
-        .navigationTitle("离线缓存")
-        .navigationBarTitleDisplayMode(.inline)
         .onChange(of: c.limitMB) { c.enforceLimit() }
-        .accessibilityIdentifier("offline.settings")
+        .confirmationDialog("清空离线缓存？", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("清空", role: .destructive) { c.clearAll() }
+        } message: { Text("已缓存的 \(c.entries.count) 首会被删除，需要时会重新下载。") }
     }
 }

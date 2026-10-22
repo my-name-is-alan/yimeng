@@ -188,29 +188,7 @@ struct NowPlayingView: View {
     }
 
     var controls: some View {
-        HStack {
-            Button { PlayerStore.shared.cyclePlayMode() } label: {
-                Image(systemName: { switch player.playMode { case .loop: "repeat"; case .one: "repeat.1"; case .shuffle: "shuffle"; case .order: "arrow.right" } }())
-                    .font(.system(size: 17)).opacity(0.8)
-            }
-            Spacer()
-            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
-            Spacer()
-            Button { state.setPlaying(!(player.hasRealPlayback ? player.isPlaying : state.isPlaying)) } label: {
-                Image(systemName: (player.hasRealPlayback ? player.isPlaying : state.isPlaying) ? "pause.fill" : "play.fill").font(.system(size: 22)).foregroundStyle(Color(white: 0.07))
-                    .frame(width: 48, height: 48).background(Circle().fill(.white))
-            }
-            Spacer()
-            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
-            Spacer()
-            Text(player.rate == 1 ? "1×" : String(format: "%g×", player.rate)).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.7)
-                .lineLimit(1).fixedSize().frame(minWidth: 24)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 22).frame(height: 64)
-        // Solid, quiet capsule: no glass lensing of the (beat-pulsing) doodles behind it.
-        .background(Capsule().fill(Color.black.opacity(0.32)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)))
-        .environment(\.colorScheme, .dark)
+        PlayerTransport()
         .padding(.horizontal, Theme.margin).padding(.bottom, 8)
     }
 }

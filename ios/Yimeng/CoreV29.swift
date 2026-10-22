@@ -167,29 +167,34 @@ struct SourceSwitchView: View {
     @ObservedObject private var store = CoreAccountStore.shared
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        List {
+        YMPage("跨平台换源") {
             if let s = store.sourceSwitch {
-                Section {
-                    Toggle("跨平台自动换源", isOn: Binding(get: { s.enabled }, set: { var n = s; n.enabled = $0; store.saveSwitch(n) }))
-                } footer: { Text("歌曲在当前平台无版权或只能试听时，自动改用其他平台的同一首歌（按下方优先级）。") }
-                Section {
-                    ForEach(order(s), id: \.self) { o in
-                        HStack(spacing: 12) {
-                            PlatformGlyph(origin: o, color: Theme.lime).frame(width: 22, height: 22)
-                            Text(CoreOrigin.label(o))
+                YMSection(footer: "歌曲在当前平台无版权或只能试听时，自动改用其他平台的同一首歌（按下方优先级）。") {
+                    YMToggleRow(icon: "arrow.triangle.swap", "跨平台自动换源", isOn: Binding(get: { s.enabled }, set: { var n = s; n.enabled = $0; store.saveSwitch(n) }))
+                }
+                YMSection(title: "平台优先级") {
+                    let l = order(s)
+                    ForEach(Array(l.enumerated()), id: \.element) { i, o in
+                        if i > 0 { YMDivider() }
+                        HStack(spacing: 14) {
+                            Text("\(i + 1)").font(.system(size: 13, weight: .bold, design: .rounded)).foregroundStyle(Theme.accent(scheme)).frame(width: 18)
+                            PlatformGlyph(origin: o, color: Theme.accent(scheme)).frame(width: 22, height: 22)
+                            Text(CoreOrigin.label(o)).font(.system(size: 16))
                             Spacer()
-                        }
+                            Button { move(s, i, -1) } label: { CircleIconButton(icon: "chevron.up", size: 32) }.buttonStyle(.plain).disabled(i == 0).opacity(i == 0 ? 0.3 : 1)
+                            Button { move(s, i, 1) } label: { CircleIconButton(icon: "chevron.down", size: 32) }.buttonStyle(.plain).disabled(i == l.count - 1).opacity(i == l.count - 1 ? 0.3 : 1)
+                        }.frame(minHeight: 52)
                     }
-                    .onMove { from, to in var n = s; var l = order(s); l.move(fromOffsets: from, toOffset: to); n.priority = l; store.saveSwitch(n) }
-                } header: { Text("平台优先级（拖动排序）") }
-                .disabled(!s.enabled)
+                }
+                .disabled(!s.enabled).opacity(s.enabled ? 1 : 0.5)
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
             }
         }
-        .environment(\.editMode, .constant(.active))
-        .navigationTitle("跨平台换源")
         .task { await store.refreshAll() }
+    }
+    private func move(_ s: CoreSourceSwitch, _ i: Int, _ d: Int) {
+        var n = s; var l = order(s); l.swapAt(i, i + d); n.priority = l; store.saveSwitch(n); Haptics.tick()
     }
     private func order(_ s: CoreSourceSwitch) -> [String] {
         let all = s.platforms ?? []
@@ -215,24 +220,28 @@ struct AlternativesSheet: View {
                         Text(song.unplayableToast).font(.system(size: 13)).opacity(0.6)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(items) { a in
-                        Button { play(a) } label: {
-                            HStack(spacing: 12) {
-                                PlatformGlyph(origin: a.origin ?? "", color: Theme.lime).frame(width: 22, height: 22)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(a.title ?? song.title).font(.system(size: 15)).lineLimit(1)
-                                    Text([a.artistName, a.durationMs.map { String(format: "%d:%02d", $0 / 60000, $0 / 1000 % 60) }, a.playable == "preview" ? "试听" : nil]
-                                        .compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
-                                }
-                                Spacer()
-                                Image(systemName: "play.circle").opacity(a.playable == "unavailable" ? 0.3 : 1)
+                    YMPage("换个平台播放") {
+                        YMSection(title: song.title) {
+                            ForEach(Array(items.enumerated()), id: \.element.id) { i, a in
+                                if i > 0 { YMDivider() }
+                                HStack(spacing: 12) {
+                                    PlatformGlyph(origin: a.origin ?? "", color: Theme.lime).frame(width: 22, height: 22)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(a.title ?? song.title).font(.system(size: 15)).lineLimit(1).truncationMode(.middle)
+                                        Text([a.artistName, a.durationMs.map { String(format: "%d:%02d", $0 / 60000, $0 / 1000 % 60) }, a.playable == "preview" ? "试听" : nil]
+                                            .compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
+                                    }
+                                    Spacer()
+                                    Button { play(a) } label: { PlayCircle(size: 34) }.buttonStyle(.plain)
+                                        .disabled(a.playable == "unavailable").opacity(a.playable == "unavailable" ? 0.3 : 1)
+                                }.frame(minHeight: 56)
                             }
-                        }.disabled(a.playable == "unavailable")
+                        }
                     }
                 }
             }
-            .navigationTitle("换个平台播放").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } } }
+            .background(YMBackdrop())
+            .toolbar(.hidden, for: .navigationBar)
         }
         .task {
             items = (try? await CoreClient.shared.alternatives(song.id)) ?? []
@@ -262,19 +271,18 @@ struct CloneSheet: View {
     @State private var lastResult: String?
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Button { into = nil } label: { pick("新建歌单「\(name)」", on: into == nil) }
+            YMPage("导入歌单") {
+                YMSection {
+                    Button { into = nil } label: { pick("新建歌单「\(name)」", on: into == nil) }.buttonStyle(.plain)
                 }
-                Section("导入到已有歌单") {
-                    if mine.isEmpty { Text("你还没有自己的歌单").opacity(0.55) }
-                    ForEach(mine) { p in Button { into = p.id } label: { pick(p.name, on: into == p.id) } }
+                YMSection(title: "导入到已有歌单") {
+                    if mine.isEmpty { YMRow("你还没有自己的歌单") }
+                    ForEach(Array(mine.enumerated()), id: \.element.id) { i, p in
+                        if i > 0 { YMDivider() }
+                        Button { into = p.id } label: { pick(p.name, on: into == p.id) }.buttonStyle(.plain)
+                    }
                 }
-            }
-            .navigationTitle("导入歌单").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(busy ? "导入中…" : "导入") { Task { await run() } }.disabled(busy) }
+                Button(busy ? "导入中…" : "导入") { Task { await run() } }.buttonStyle(PrimaryButtonStyle()).disabled(busy).padding(.top, 24)
             }
         }
         .task {
@@ -292,7 +300,8 @@ struct CloneSheet: View {
         }
     }
     private func pick(_ t: String, on: Bool) -> some View {
-        HStack { Text(t).foregroundStyle(.primary); Spacer(); if on { Image(systemName: "checkmark").foregroundStyle(Theme.lime) } }
+        HStack { Text(t).font(.system(size: 16)).lineLimit(1).truncationMode(.middle); Spacer(); if on { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.lime) } }
+            .frame(minHeight: 50).contentShape(Rectangle())
     }
     private func run() async {
         busy = true; defer { busy = false }
@@ -311,30 +320,39 @@ struct CloneSheet: View {
 
 struct SecurityAlertsView: View {
     @ObservedObject private var store = CoreAccountStore.shared
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        List {
+        YMPage("安全提醒", trailing: {
+            if store.unread > 0 { Button("全部已读") { Task { await store.markAllRead() } }.buttonStyle(YMPillButtonStyle()) }
+        }) {
             if store.alerts.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "checkmark.shield").font(.system(size: 30)).foregroundStyle(Theme.lime)
-                    Text("一切正常").font(.system(size: 16, weight: .semibold))
-                    Text("新设备配对、陌生 IP 登录或多次登录失败时，会在这里提醒你。").font(.system(size: 13)).opacity(0.6).multilineTextAlignment(.center)
-                }.frame(maxWidth: .infinity).padding(.vertical, 30).listRowBackground(Color.clear)
-            }
-            ForEach(store.alerts) { a in
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: a.severity == "critical" ? "exclamationmark.octagon.fill" : a.severity == "warn" ? "exclamationmark.triangle.fill" : "info.circle.fill")
-                        .foregroundStyle(a.severity == "critical" ? .red : a.severity == "warn" ? .orange : .secondary)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(a.title).font(.system(size: 15, weight: a.read == true ? .regular : .semibold))
-                        Text([a.ip, Self.when(a.at)].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
+                VStack(spacing: 10) {
+                    ZStack {
+                        Crayon(shape: WobblyFrame(seed: 11, inset: 2), color: Theme.accent(scheme), width: 1.6).frame(width: 74, height: 74)
+                        Image(systemName: "checkmark.shield").font(.system(size: 30)).foregroundStyle(Theme.accent(scheme))
                     }
-                    Spacer()
-                    if a.read != true { Circle().fill(.red).frame(width: 7, height: 7).padding(.top, 6) }
+                    Text("一切正常").font(.system(size: 17, weight: .semibold))
+                    Text("新设备配对、陌生 IP 登录或多次登录失败时，会在这里提醒你。").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).multilineTextAlignment(.center)
+                }.frame(maxWidth: .infinity).padding(.vertical, 40).ymCard().padding(.top, 20)
+            } else {
+                YMSection {
+                    ForEach(Array(store.alerts.enumerated()), id: \.element.id) { i, a in
+                        if i > 0 { YMDivider() }
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: a.severity == "critical" ? "exclamationmark.octagon.fill" : a.severity == "warn" ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                                .foregroundStyle(a.severity == "critical" ? Color(hex: 0xff6b6b) : a.severity == "warn" ? Color(hex: 0xffb347) : Theme.secondary(scheme))
+                                .frame(width: 28)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(a.title).font(.system(size: 15, weight: a.read == true ? .regular : .semibold))
+                                Text([a.ip, Self.when(a.at)].compactMap { $0 }.joined(separator: " · ")).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                            }
+                            Spacer()
+                            if a.read != true { Circle().fill(Theme.accent(scheme)).frame(width: 7, height: 7).padding(.top, 6) }
+                        }.padding(.vertical, 12)
+                    }
                 }
             }
         }
-        .navigationTitle("安全提醒")
-        .toolbar { if store.unread > 0 { Button("全部已读") { Task { await store.markAllRead() } } } }
         .task { await store.refreshAlerts() }
     }
     static func when(_ s: String?) -> String? {

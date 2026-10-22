@@ -86,17 +86,10 @@ enum YMHandoff {
 extension Shell {
     var padLayout: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            List {
-                ForEach(Tab.allCases, id: \.self) { t in
-                    Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
-                        Label(t.rawValue, systemImage: t.icon)
-                    }
-                    .listRowBackground(state.tab == t ? Theme.lime.opacity(0.25).clipShape(RoundedRectangle(cornerRadius: 10)) : nil)
-                    .foregroundStyle(.primary)
-                }
-            }
-            .navigationTitle("译梦")
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 260)
+            PadSidebar()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 236, max: 260)
+                .toolbar(removing: .sidebarToggle)
+                .toolbar(.hidden, for: .navigationBar)
         } content: {
             GeometryReader { g in
                 padRoot
@@ -104,11 +97,15 @@ extension Shell {
                     .overlay(alignment: .bottom) { if padPortrait { padTabBar.padding(.horizontal, 16).padding(.bottom, 8) } }
                     .frame(width: g.size.width, height: g.size.height)
             }
-            .navigationSplitViewColumnWidth(min: 340, ideal: 460)
+            .toolbar(.hidden, for: .navigationBar)
+            .background(YMBackdrop())
+            .navigationSplitViewColumnWidth(min: 360, ideal: 560)
         } detail: {
             PadPlayerColumn()
         }
         .navigationSplitViewStyle(.balanced)
+        // The persistent player column is always dark; the rest follows it unless the user explicitly picked 浅色.
+        .environment(\.colorScheme, padAppearance == 1 ? .light : .dark)
     }
 
     var padPortrait: Bool {
@@ -148,6 +145,102 @@ extension Shell {
     }
 }
 
+/// iPad sidebar: doodle logo, small tab rows, lime crayon selection mark. Not the system sidebar look.
+struct PadSidebar: View {
+    @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) var scheme
+    @ObservedObject private var acct = CoreAccountStore.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Crayon(shape: WobblyCircle(), color: Theme.fg(scheme), width: 1.8).frame(width: 30, height: 30)
+                    Path { p in p.addPath(DoodlePaths.sparkle(center: CGPoint(x: 23, y: 7), r: 5)) }.stroke(Theme.accent(scheme), lineWidth: 1.4).frame(width: 30, height: 30)
+                }
+                Text("译梦").font(.system(size: 20, weight: .bold))
+            }
+            .padding(.leading, 8).padding(.bottom, 18).padding(.top, 8)
+            ForEach(Tab.allCases, id: \.self) { t in
+                let on = state.tab == t
+                Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            if on { Crayon(shape: WobblyCircle(), color: Theme.accent(scheme), width: 1.6).frame(width: 34, height: 34) }
+                            Image(systemName: t.icon).font(.system(size: 16, weight: on ? .semibold : .regular))
+                                .foregroundStyle(on ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.75))
+                        }.frame(width: 36, height: 36)
+                        Text(t.rawValue).font(.system(size: 15, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? Theme.fg(scheme) : Theme.fg(scheme).opacity(0.75))
+                        Spacer()
+                        if t == .me, acct.unread > 0 { UnreadBadge(n: acct.unread) }
+                    }
+                    .padding(.horizontal, 8).frame(height: 46)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(on ? Theme.fill(scheme) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sidebar.\(t.rawValue)")
+            }
+            Spacer()
+            Crayon(shape: WaveShape(), color: Theme.fg(scheme).opacity(0.25), width: 1.4).frame(width: 90, height: 10).padding(.leading, 10).padding(.bottom, 20)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .foregroundStyle(Theme.fg(scheme))
+        .background(Theme.base(scheme).overlay(alignment: .trailing) { Rectangle().fill(Theme.divider(scheme)).frame(width: 0.5) }.ignoresSafeArea())
+    }
+}
+
+/// Hand-drawn circle (two jittered passes) for selection marks and the logo.
+struct WobblyCircle: Shape {
+    var seed: UInt64 = 3
+    func path(in r: CGRect) -> Path {
+        var rng = SeededRNG(seed); var p = Path()
+        let c = CGPoint(x: r.midX, y: r.midY), R = min(r.width, r.height) / 2
+        for pass in 0..<2 {
+            let n = 14
+            for i in 0...n {
+                let a = Double(i) / Double(n) * 2 * .pi + (pass == 0 ? 0 : 0.3)
+                let rr = R * CGFloat(1 + rng.d(-0.05, 0.05))
+                let pt = CGPoint(x: c.x + CGFloat(cos(a)) * rr, y: c.y + CGFloat(sin(a)) * rr)
+                i == 0 ? p.move(to: pt) : p.addLine(to: pt)
+            }
+        }
+        return p
+    }
+}
+
+/// The iPhone player's transport (play mode · prev · play/pause · next · rate) in its quiet solid capsule.
+struct PlayerTransport: View {
+    @EnvironmentObject var state: AppState
+    @ObservedObject private var player = PlayerStore.shared
+    var big = false
+    var body: some View {
+        HStack {
+            Button { PlayerStore.shared.cyclePlayMode() } label: {
+                Image(systemName: { switch player.playMode { case .loop: "repeat"; case .one: "repeat.1"; case .shuffle: "shuffle"; case .order: "arrow.right" } }())
+                    .font(.system(size: 17)).opacity(0.8)
+            }
+            Spacer()
+            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: big ? 26 : 24)) }
+            Spacer()
+            Button { state.setPlaying(!(player.hasRealPlayback ? player.isPlaying : state.isPlaying)) } label: {
+                Image(systemName: (player.hasRealPlayback ? player.isPlaying : state.isPlaying) ? "pause.fill" : "play.fill").font(.system(size: big ? 24 : 22)).foregroundStyle(Color(white: 0.07))
+                    .frame(width: big ? 56 : 48, height: big ? 56 : 48).background(Circle().fill(.white))
+            }
+            Spacer()
+            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: big ? 26 : 24)) }
+            Spacer()
+            Text(player.rate == 1 ? "1×" : String(format: "%g×", player.rate)).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.7)
+                .lineLimit(1).fixedSize().frame(minWidth: 24)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 22).frame(height: big ? 72 : 64)
+        .background(Capsule().fill(Color.black.opacity(0.32)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)))
+        .environment(\.colorScheme, .dark)
+    }
+}
+
 /// Persistent right column: cover, scrubber, controls, then lyrics or up-next.
 struct PadPlayerColumn: View {
     @EnvironmentObject var state: AppState
@@ -164,20 +257,24 @@ struct PadPlayerColumn: View {
                         Text("从左边挑一首歌吧").font(.system(size: 13)).opacity(0.7)
                     }.foregroundStyle(.white)
                 } else {
+                    let side = min(g.size.width - 64, g.size.height * 0.34, 380)
+                    DoodleLayer(track: state.track, slot: CoverSlot(rect: CGRect(x: (g.size.width - side) / 2, y: 20, width: side, height: side), radius: 18),
+                                ambience: state.ambience == .aurora ? .pure : state.ambience, intensity: state.intensity * 0.7, beat: state.beatSync)
+                        .allowsHitTesting(false)
                     VStack(spacing: 14) {
-                        let side = min(g.size.width - 64, g.size.height * 0.34, 380)
                         CoverImage(url: state.remoteCoverURL ?? player.coverURL, points: side)
                             .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .shadow(color: .black.opacity(0.35), radius: 24, y: 16)
                             .modifier(CoverSwipe())
                             .padding(.top, 20)
                         VStack(spacing: 3) {
-                            Text(state.track.title).font(.system(size: 20, weight: .bold)).lineLimit(1)
+                            Text(state.track.title).font(.system(size: 20, weight: .bold)).lineLimit(1).truncationMode(.middle)
                             Text(state.track.artist).font(.system(size: 15)).opacity(0.75).lineLimit(1)
-                        }
+                            if let s = player.song { QualityBadge(song: s).padding(.top, 6) }
+                        }.padding(.horizontal, 24)
                         TimelineView(.periodic(from: .now, by: 0.5)) { _ in ScrubBar(elapsed: player.elapsed, total: max(player.duration, 1)) }
                             .padding(.horizontal, 32)
-                        controls
+                        PlayerTransport().padding(.horizontal, 24)
                         HStack(spacing: 22) {
                             pill(lyrics ? "歌词" : "接下来", "quote.bubble", on: lyrics) { lyrics.toggle() }
                             pill("全屏", "arrow.up.left.and.arrow.down.right") { state.padFull = true }
@@ -209,7 +306,7 @@ struct PadPlayerColumn: View {
     }
     private func pill(_ t: String, _ icon: String, on: Bool = false, _ a: @escaping () -> Void) -> some View {
         Button(action: a) { Label(t, systemImage: icon).font(.system(size: 13, weight: .semibold)).padding(.horizontal, 14).frame(height: 32)
-            .background(Capsule().fill(.white.opacity(on ? 0.26 : 0.12))) }.buttonStyle(.plain)
+            .background(Capsule().fill(Color.black.opacity(on ? 0.4 : 0.24)).overlay(Capsule().strokeBorder(Color.white.opacity(on ? 0.2 : 0.08), lineWidth: 0.5))) }.buttonStyle(.plain)
     }
     private var upNext: some View {
         ScrollView {
@@ -224,7 +321,7 @@ struct PadPlayerColumn: View {
                 }
             }
         }
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.black.opacity(0.25)))
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.black.opacity(0.32)))
     }
 }
 
@@ -258,26 +355,19 @@ struct VinylNowPlaying: View {
                 layout {
                     turntable(disc)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(state.track.title).font(.system(size: 30, weight: .bold)).lineLimit(2)
+                        Text(state.track.title).font(.system(size: 30, weight: .bold)).lineLimit(1).truncationMode(.middle)
                         Text(state.track.artist).font(.system(size: 19)).opacity(0.75)
                         if let s = player.song { QualityBadge(song: s).padding(.top, 4) }
                         TimelineView(.periodic(from: .now, by: 0.5)) { _ in ScrubBar(elapsed: player.elapsed, total: max(player.duration, 1)) }
                             .padding(.top, 18)
-                        HStack(spacing: 40) {
-                            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 26)) }
-                            Button { state.setPlaying(!player.isPlaying) } label: {
-                                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 24)).foregroundStyle(Color(white: 0.07))
-                                    .frame(width: 60, height: 60).background(Circle().fill(.white))
-                            }
-                            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 26)) }
-                        }.buttonStyle(.plain).padding(.top, 10)
+                        PlayerTransport(big: true).padding(.top, 10)
                         TimelineView(.periodic(from: .now, by: 0.25)) { _ in LiveLyricsView(time: player.elapsed, accent: Theme.lime) }
                             .frame(height: g.size.height * (land ? 0.32 : 0.2)).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)).padding(.top, 8)
                     }
                     .frame(maxWidth: 460)
                 }
                 .padding(40)
-                VStack { HStack { Button(action: onClose) { Image(systemName: "chevron.down").font(.system(size: 16, weight: .semibold)).frame(width: 44, height: 44).background(Circle().fill(.white.opacity(0.14))) }.buttonStyle(.plain).accessibilityIdentifier("chevron.down"); Spacer() }; Spacer() }.padding(24)
+                VStack { HStack { Button(action: onClose) { CircleIconButton(icon: "chevron.down", dark: true) }.buttonStyle(.plain).accessibilityIdentifier("chevron.down"); Spacer() }; Spacer() }.padding(24)
             }
             .foregroundStyle(.white)
         }

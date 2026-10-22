@@ -23,6 +23,7 @@
 		2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D025F1147743E7047E3D665 /* IPadTests.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
 		37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */ = {isa = PBXBuildFile; fileRef = 80FCD065D95D1B20100769C5 /* fnos-login.json */; };
+		3910C3724D6C6B435A2F0F0A /* YMKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FB6A2259ED997A5DED8CDA /* YMKit.swift */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
 		3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */; };
 		3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26134EFA3C10B18CD7770A97 /* LibraryCache.swift */; };
@@ -97,6 +98,7 @@
 		F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */; };
 		F221D6B11849B10A14B694EC /* HomeWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CF7DEAD24E618638BD9983 /* HomeWidgets.swift */; };
 		F279CB8120FF9E2A75D7B257 /* BeatTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA0EA736750E92E629C0055 /* BeatTracker.swift */; };
+		F47E16BDF48EFCA4B661D935 /* PadStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A933C296DDC8B099629F5875 /* PadStyleTests.swift */; };
 		F56243364D38BE09D937684A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3855754257202630A564173A /* App.swift */; };
 		F962E90B44855B5B757C1431 /* NavidromeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */; };
 		FA8BA6D132C3E72B1D9A5A7A /* Blurhash.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF74DDA417906B01BE2E7748 /* Blurhash.swift */; };
@@ -201,6 +203,7 @@
 		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
 		81F7B82EDBCFF2E3A3BB65FE /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
 		82445EEABCC63CDF9736B076 /* RecognizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeTests.swift; sourceTree = "<group>"; };
+		84FB6A2259ED997A5DED8CDA /* YMKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YMKit.swift; sourceTree = "<group>"; };
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
 		8C8B62B755DBDA5C79962202 /* RecognizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeTests.swift; sourceTree = "<group>"; };
@@ -216,6 +219,7 @@
 		A14B0D85AF014834401939FD /* FnosClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClient.swift; sourceTree = "<group>"; };
 		A272403B835110F9DA3A860E /* CoreBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreBackend.swift; sourceTree = "<group>"; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		A933C296DDC8B099629F5875 /* PadStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadStyleTests.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClientTests.swift; sourceTree = "<group>"; };
 		ADFCEC6EA2D41604DD20F029 /* Effects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Effects.swift; sourceTree = "<group>"; };
@@ -251,6 +255,7 @@
 				065726152CF03E6FD2BF5A3A /* GestureTests.swift */,
 				8D025F1147743E7047E3D665 /* IPadTests.swift */,
 				81F7B82EDBCFF2E3A3BB65FE /* OfflineTests.swift */,
+				A933C296DDC8B099629F5875 /* PadStyleTests.swift */,
 				82445EEABCC63CDF9736B076 /* RecognizeTests.swift */,
 				912E4AF5EC42BFE248E5DC92 /* WidgetTests.swift */,
 			);
@@ -384,6 +389,7 @@
 				E6C097B69274838BB315DE62 /* WidgetsIntents.swift */,
 				575967C96AA037C6933C8F7B /* Yimeng.entitlements */,
 				03072A4E8BE3A7C8176E3047 /* YimengSim.entitlements */,
+				84FB6A2259ED997A5DED8CDA /* YMKit.swift */,
 				39E1D191594AA3C9B06D6B1C /* Yueqian.swift */,
 				BFD3A502AEFDC946A2C20E20 /* Fonts */,
 			);
@@ -578,6 +584,7 @@
 				4174A2343A33535F95EDA60D /* GestureTests.swift in Sources */,
 				2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */,
 				B781CFE1FD4E6D240B2F5822 /* OfflineTests.swift in Sources */,
+				F47E16BDF48EFCA4B661D935 /* PadStyleTests.swift in Sources */,
 				51569C2A7545A723CBB9974B /* RecognizeTests.swift in Sources */,
 				E23168831EC9FF6906280B66 /* WidgetTests.swift in Sources */,
 			);
@@ -659,6 +666,7 @@
 				C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */,
 				D333CE70C2E9BFB4686D2D5B /* WidgetShared.swift in Sources */,
 				DFECE7933EB3CC46C86CFAD5 /* WidgetsIntents.swift in Sources */,
+				3910C3724D6C6B435A2F0F0A /* YMKit.swift in Sources */,
 				DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */,
 				81A2CEB572C553218B29556B /* Yueqian.swift in Sources */,
 			);

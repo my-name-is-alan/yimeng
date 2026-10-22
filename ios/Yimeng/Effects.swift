@@ -252,7 +252,7 @@ struct EffectsPanel: View {
                 }
                 Spacer()
                 Toggle("", isOn: Binding(get: { fx.s.on }, set: { v in withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { fx.s.on = v } }))
-                    .labelsHidden().tint(Theme.accent(scheme))
+                    .labelsHidden().toggleStyle(YMToggleStyle()).fixedSize()
             }
             if fx.s.on {
                 HStack(alignment: .top, spacing: 8) {

@@ -241,33 +241,31 @@ struct LyricFontPicker: View {
         let sample = lyrics.lines.map(\.text).filter { !$0.isEmpty }.prefix(2)
         let preview = sample.isEmpty ? [player.song?.title ?? "", player.song?.album ?? ""].filter { !$0.isEmpty } : Array(sample)
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(preview, id: \.self) { Text($0).font(fonts.font(size: 22)).lineLimit(1) }
-                    }.padding(.vertical, 8)
+            YMPage("歌词字体") {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(preview, id: \.self) { Text($0).font(fonts.font(size: 22)).lineLimit(1).truncationMode(.middle) }
                 }
-                Section("歌词字体") {
-                    ForEach(LyricFontStore.options) { o in
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14).ymCard().padding(.top, 12)
+                YMSection(title: "歌词字体", footer: "字体均为 SIL Open Font License 1.1 开源授权，许可见 我的 › 开源许可。") {
+                    ForEach(Array(LyricFontStore.options.enumerated()), id: \.element.id) { i, o in
+                        if i > 0 { YMDivider() }
                         Button {
-                            if fonts.available.contains(o.id) { fonts.selected = o.id } else { Task { await fonts.download(o) } }
+                            if fonts.available.contains(o.id) { fonts.selected = o.id; Haptics.tick() } else { Task { await fonts.download(o) } }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(o.name).font(fonts.available.contains(o.id) && o.ps != nil ? .custom(o.ps!, size: 17) : .system(size: 17))
-                                    if !o.sizeLabel.isEmpty { Text(o.sizeLabel).font(.system(size: 11)).foregroundStyle(.secondary) }
+                                    if !o.sizeLabel.isEmpty { Text(o.sizeLabel).font(.system(size: 11)).opacity(0.55) }
                                 }
                                 Spacer()
                                 if fonts.downloading == o.id { ProgressView() }
-                                else if fonts.selected == o.id { Image(systemName: "checkmark").foregroundStyle(Theme.lime) }
-                                else if !fonts.available.contains(o.id) { Image(systemName: "icloud.and.arrow.down").foregroundStyle(.secondary) }
-                            }
+                                else if fonts.selected == o.id { Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.lime) }
+                                else if !fonts.available.contains(o.id) { Image(systemName: "icloud.and.arrow.down").opacity(0.55) }
+                            }.frame(minHeight: 54).contentShape(Rectangle())
                         }.buttonStyle(.plain)
                     }
                 }
-                Section { Text("字体均为 SIL Open Font License 1.1 开源授权，许可见 我的 › 关于译梦 › 开源许可。").font(.system(size: 12)).foregroundStyle(.secondary) }
             }
-            .navigationTitle("歌词字体").navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -275,18 +273,18 @@ struct LyricFontPicker: View {
 /// 关于 › 开源许可: font notices (full license text from the bundle).
 struct LicensesView: View {
     var body: some View {
-        List {
-            ForEach(LyricFontStore.options.filter { $0.ps != nil }) { o in
-                NavigationLink {
-                    ScrollView {
-                        Text(Self.text(o.licenseFile)).font(.system(size: 12, design: .monospaced)).padding()
-                    }.navigationTitle(o.name)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) { Text(o.name); Text(o.license).font(.system(size: 12)).foregroundStyle(.secondary) }
+        YMPage("开源许可") {
+            YMSection {
+                ForEach(Array(LyricFontStore.options.filter { $0.ps != nil }.enumerated()), id: \.element.id) { i, o in
+                    if i > 0 { YMDivider() }
+                    NavigationLink {
+                        YMPage(o.name, back: true) {
+                            Text(Self.text(o.licenseFile)).font(.system(size: 12, design: .monospaced)).padding(.vertical, 14).ymCard().padding(.top, 12)
+                        }
+                    } label: { YMRow(icon: "doc.text", o.name, o.license, chevron: true) }.buttonStyle(.plain)
                 }
             }
         }
-        .navigationTitle("开源许可")
     }
     static func text(_ name: String) -> String {
         Bundle.main.url(forResource: name, withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "SIL Open Font License 1.1"

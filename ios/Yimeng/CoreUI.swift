@@ -302,7 +302,7 @@ struct DailyMixCard: View {
         HStack(spacing: 16) {
             Button { state.path.append(.trackList(Self.spec(origin, songs))) } label: {
             HStack(spacing: 16) {
-                DateTile()
+                DateTile(tint: Color(hexString: songs.first?.colors?.first))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号").font(.system(size: 13)).opacity(0.65)
                     ForEach(songs.prefix(2)) { s in Text("\(s.title) — \(s.artist)").font(.system(size: 14)).lineLimit(1).truncationMode(.middle) }
@@ -319,20 +319,20 @@ struct DailyMixCard: View {
 
 struct FMCard: View {
     let origin: String
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
+        // Quiet doodle card (same tokens as 我的); the lime crayon wave is the only accent — no fixed brand gradient.
         ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(LinearGradient(colors: [Color(hex: 0xff3d8b), Color(hex: 0x7a1cff)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                Crayon(shape: WaveShape(), color: .white.opacity(0.5)).frame(width: 180, height: 16).offset(x: 150, y: 30)
+                RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.fill(scheme))
+                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.fg(scheme).opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [6, 4])))
+                Crayon(shape: WaveShape(), color: Theme.accent(scheme).opacity(0.8)).frame(width: 180, height: 16).offset(x: 150, y: 30)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("私人 FM").font(.system(size: 26, weight: .bold))
                     Text("\(CoreOrigin.label(origin)) 按你的口味一直放下去").font(.system(size: 13)).opacity(0.8)
                     // Only this button starts FM; the card body does nothing on tap.
-                    Button { Task { await FMStore.shared.start(origin) } } label: {
-                        Image(systemName: "play.fill").font(.system(size: 18)).frame(width: 44, height: 44)
-                            .background(Circle().fill(.white.opacity(0.22)))
-                    }.buttonStyle(.plain).padding(.top, 4)
-                }.padding(20).foregroundStyle(.white)
+                    Button { Task { await FMStore.shared.start(origin) } } label: { PlayCircle(size: 44) }
+                        .buttonStyle(.plain).padding(.top, 4)
+                }.padding(20).foregroundStyle(Theme.fg(scheme))
             }.frame(height: 160)
     }
 }

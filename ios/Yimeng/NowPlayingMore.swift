@@ -50,12 +50,7 @@ struct NowPlayingMoreSheet: View {
         .environment(\.colorScheme, .dark)
         .onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.82).delay(0.05)) { appeared = true } }
         .sheet(isPresented: $handoff) { HandoffSheet().presentationDetents([.medium]) }
-        .confirmationDialog("定时关闭", isPresented: $askSleep, titleVisibility: .visible) {
-            ForEach([15, 30, 45, 60, 90], id: \.self) { m in Button("\(m) 分钟后") { player.setSleep(minutes: m); SheetCenter.shared.say("将在 \(m) 分钟后暂停") } }
-            Button("播完当前歌曲") { player.setSleep(minutes: 0); SheetCenter.shared.say("当前歌曲播完后暂停") }
-            if player.sleepAt != nil || player.sleepAfterTrack { Button("关闭定时", role: .destructive) { player.setSleep(minutes: nil) } }
-            Button("取消", role: .cancel) {}
-        }
+        .sheet(isPresented: $askSleep) { SleepTimerSheet().presentationDetents([.height(440)]).presentationCornerRadius(28) }
     }
 
     private var header: some View {
@@ -93,7 +88,7 @@ struct NowPlayingMoreSheet: View {
                     Text(sleepCountdown).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.8)
                 }
                 Spacer()
-                Toggle("渐弱", isOn: $acct.sleepFade).toggleStyle(.switch).font(.system(size: 13)).fixedSize()
+                Toggle(isOn: $acct.sleepFade) { Text("渐弱").font(.system(size: 13)) }.toggleStyle(YMToggleStyle()).fixedSize()
             }
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.07)))
@@ -188,6 +183,40 @@ struct NowPlayingMoreSheet: View {
             if ar == nil { ar = (try? await LibraryStore.shared.search(query: name))?.artists.first { $0.name == name } }
             guard let ar else { SheetCenter.shared.say("没找到这位歌手"); return }
             close { state.path.append(.ndArtist(ar)) }
+        }
+    }
+}
+
+
+/// 定时关闭: kit sheet (replaces the system action sheet).
+struct SleepTimerSheet: View {
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var acct = CoreAccountStore.shared
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+    private let mins = [15, 30, 45, 60, 90]
+    var body: some View {
+        YMPage("定时关闭") {
+            YMSection(title: "多久后暂停") {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(mins, id: \.self) { m in
+                        Button { player.setSleep(minutes: m); SheetCenter.shared.say("将在 \(m) 分钟后暂停"); Haptics.tap(); dismiss() } label: {
+                            Text("\(m) 分钟").font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                                .background(Capsule().fill(Theme.fill(scheme)))
+                        }.buttonStyle(.plain)
+                    }
+                    Button { player.setSleep(minutes: 0); SheetCenter.shared.say("当前歌曲播完后暂停"); Haptics.tap(); dismiss() } label: {
+                        Text("本首播完").font(.system(size: 15, weight: .semibold)).frame(maxWidth: .infinity, minHeight: 44)
+                            .background(Capsule().fill(Theme.fill(scheme)))
+                    }.buttonStyle(.plain)
+                }.padding(.vertical, 12)
+            }
+            YMSection(footer: "到点前 30 秒逐渐降低音量。") {
+                YMToggleRow(icon: "speaker.wave.1", "渐弱", isOn: $acct.sleepFade)
+            }
+            if player.sleepAt != nil || player.sleepAfterTrack {
+                Button("关闭定时") { player.setSleep(minutes: nil); dismiss() }.buttonStyle(YMDestructiveButtonStyle()).padding(.top, 20)
+            }
         }
     }
 }

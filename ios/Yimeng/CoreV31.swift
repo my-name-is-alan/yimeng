@@ -100,46 +100,48 @@ struct ProfileView: View {
     @FocusState private var nameFocus: Bool
 
     var body: some View {
-        Form {
-            Section {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 12) {
-                        PhotosPicker(selection: $pick, matching: .images) {
-                            ZStack(alignment: .bottomTrailing) {
-                                Group {
-                                    if let a = store.avatar { Image(uiImage: a).resizable().scaledToFill() }
-                                    else { MonogramAvatar(name: store.displayName ?? "梦", size: 96) }
-                                }
-                                .frame(width: 96, height: 96).clipShape(Circle())
-                                .overlay { if busy { Circle().fill(.black.opacity(0.35)); ProgressView().tint(.white) } }
-                                Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.black)
-                                    .padding(7).background(Circle().fill(Theme.lime))
-                            }
-                        }.buttonStyle(.plain).disabled(busy)
-                        if store.me?.avatarUrl?.isEmpty == false {
-                            Button("移除头像", role: .destructive) { confirmRemove = true }.font(.system(size: 14)).disabled(busy)
-                        } else {
-                            Text("点击更换头像").font(.system(size: 13)).foregroundStyle(.secondary)
+        YMPage("个人资料", trailing: {
+            Button("保存") { Task { await save() } }.buttonStyle(YMPillButtonStyle())
+                .disabled(busy || name == (store.me?.nickname ?? "")).opacity(busy || name == (store.me?.nickname ?? "") ? 0.4 : 1)
+        }) {
+            VStack(spacing: 12) {
+                PhotosPicker(selection: $pick, matching: .images) {
+                    ZStack(alignment: .bottomTrailing) {
+                        Group {
+                            if let a = store.avatar { Image(uiImage: a).resizable().scaledToFill() }
+                            else { MonogramAvatar(name: store.displayName ?? "梦", size: 96) }
                         }
+                        .frame(width: 96, height: 96).clipShape(Circle())
+                        .overlay { if busy { Circle().fill(.black.opacity(0.35)); ProgressView().tint(.white) } }
+                        .overlay(Crayon(shape: Circle(), color: Theme.accent(scheme).opacity(0.7), width: 1.4).padding(-6))
+                        Image(systemName: "camera.fill").font(.system(size: 12, weight: .bold)).foregroundStyle(.black)
+                            .padding(7).background(Circle().fill(Theme.lime))
                     }
-                    Spacer()
-                }.listRowBackground(Color.clear)
-            }
-            Section {
-                HStack {
-                    Text("昵称")
+                }.buttonStyle(.plain).disabled(busy)
+                if store.me?.avatarUrl?.isEmpty == false {
+                    Button("移除头像") { confirmRemove = true }.buttonStyle(YMPillButtonStyle(destructive: true)).disabled(busy)
+                } else {
+                    Text("点击更换头像").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                }
+            }.frame(maxWidth: .infinity).padding(.top, 16)
+            YMSection(footer: "昵称最多 32 个字，留空则显示用户名。") {
+                HStack(spacing: 14) {
+                    YMIcon(name: "pencil")
+                    Text("昵称").font(.system(size: 16))
                     TextField(store.me?.username ?? "昵称", text: $name).multilineTextAlignment(.trailing).focused($nameFocus)
                         .submitLabel(.done).onSubmit { Task { await save() } }
                         .onChange(of: name) { _, v in if v.count > 32 { name = String(v.prefix(32)) } }
-                }
-                row("用户名", store.me?.username ?? "—")
-                row("身份", store.me?.role == "admin" ? "管理员" : "成员")
-            } footer: { Text("昵称最多 32 个字，留空则显示用户名。") }
-            Section("平台账号") {
+                }.frame(minHeight: 50)
+                YMDivider()
+                YMRow(icon: "person", "用户名", store.me?.username ?? "—")
+                YMDivider()
+                YMRow(icon: "checkmark.seal", "身份", store.me?.role == "admin" ? "管理员" : "成员")
+            }
+            YMSection(title: "平台账号") {
                 let ps = platforms.filter { $0.loggedIn == true }
-                if ps.isEmpty { Text("还没有登录任何音乐平台").foregroundStyle(.secondary) }
-                ForEach(ps, id: \.origin) { p in
+                if ps.isEmpty { YMRow(icon: "music.note", "还没有登录任何音乐平台") }
+                ForEach(Array(ps.enumerated()), id: \.element.origin) { i, p in
+                    if i > 0 { YMDivider() }
                     HStack(spacing: 12) {
                         Group {
                             if let s = p.avatarUrl, let u = URL(string: s) { CoverImage(url: u, points: 40) }
@@ -153,19 +155,12 @@ struct ProfileView: View {
                                         .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.lime))
                                 }
                             }
-                            Text(p.name ?? CoreOrigin.label(p.origin)).font(.system(size: 13)).foregroundStyle(.secondary)
+                            Text(p.name ?? CoreOrigin.label(p.origin)).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
                         }
                         Spacer()
                         SourceBadge(origin: p.origin)
-                    }
+                    }.padding(.vertical, 10)
                 }
-            }
-        }
-        .navigationTitle("个人资料").navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("保存") { Task { await save() } }.disabled(busy || name == (store.me?.nickname ?? ""))
             }
         }
         .confirmationDialog("移除头像？", isPresented: $confirmRemove, titleVisibility: .visible) {

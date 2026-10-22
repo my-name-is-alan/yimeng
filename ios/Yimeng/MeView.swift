@@ -27,6 +27,7 @@ struct SettingsView: View {
     @State private var showReplay = false
     @State private var showFonts = false
     @State private var showLicenses = false
+    @State private var showOffline = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -93,10 +94,12 @@ struct SettingsView: View {
                     HStack {
                         row("internaldrive", "缓存", ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file))
                         Button("清除") { Cache.clear(); LibraryCache.shared.clear(); cacheBytes = Cache.size() }
-                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.fg(scheme))
-                            .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Theme.fill(scheme)))
-                            .buttonStyle(.plain)
+                            .buttonStyle(YMPillButtonStyle())
                     }
+                    divider
+                    Button { showOffline = true } label: {
+                        row("arrow.down.circle", "离线缓存", "\(OfflineCache.shared.entries.count) 首 · " + ByteCountFormatter.string(fromByteCount: OfflineCache.shared.usedBytes, countStyle: .file), chevron: true)
+                    }.buttonStyle(.plain)
                     divider
                     toggleRow("dot.radiowaves.left.and.right", "灵动岛 / 实时活动", $liveActivity)
                     divider
@@ -114,14 +117,15 @@ struct SettingsView: View {
             }
             .padding(.horizontal, Theme.margin)
         }
-        .background(Theme.base(scheme))
+        .background(YMBackdrop())
         .sheet(isPresented: $showSources) { SourcesView(embedded: true) }
         .sheet(isPresented: $showFonts) { LyricFontPicker().presentationDetents([.medium, .large]) }
         .sheet(isPresented: $showLicenses) { NavigationStack { LicensesView() } }
+        .sheet(isPresented: $showOffline) { NavigationStack { OfflineSettingsView() } }
         #if DEBUG
         .task {
             let a = ProcessInfo.processInfo.arguments
-            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } else if a[i + 1] == "profile" { showProfile = true } }
+            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } else if a[i + 1] == "profile" { showProfile = true } else if a[i + 1] == "offline" { showOffline = true } else if a[i + 1] == "fonts" { showFonts = true } else if a[i + 1] == "sound" { SheetCenter.shared.sound = true } else if a[i + 1] == "licenses" { showLicenses = true } }
             if let i = a.firstIndex(of: "-uploadAvatarFrom"), i + 1 < a.count, let img = UIImage(contentsOfFile: a[i + 1]) { try? await Task.sleep(for: .seconds(3)); await ProfileView.upload(img) }
             if let i = a.firstIndex(of: "-setNick"), i + 1 < a.count { try? await Task.sleep(for: .seconds(3)); try? await CoreProfileStore.shared.rename(a[i + 1]) }
         }
@@ -184,39 +188,15 @@ struct SettingsView: View {
     }
 
     func row(_ ic: String, _ title: String, _ detail: String, chevron: Bool = false) -> some View {
-        HStack(spacing: 14) {
-            icon(ic)
-            Text(title).font(.system(size: 16))
-            Spacer(minLength: 8)
-            Text(detail).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
-            if chevron { Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.secondary(scheme)) }
-        }
-        .frame(minHeight: 50).contentShape(Rectangle())
+        YMRow(icon: ic, title, detail, chevron: chevron)
     }
 
     func toggleRow(_ ic: String, _ title: String, _ b: Binding<Bool>) -> some View {
-        HStack(spacing: 14) {
-            icon(ic)
-            Toggle(title, isOn: b).font(.system(size: 16)).tint(Theme.accent(scheme))
-        }.frame(minHeight: 50)
+        YMToggleRow(icon: ic, title, isOn: b)
     }
 
     func pickerRow(_ ic: String, _ title: String, selection: Binding<Int>, options: [(Int, String)]) -> some View {
-        HStack(spacing: 14) {
-            icon(ic)
-            Text(title).font(.system(size: 16))
-            Spacer()
-            Menu {
-                ForEach(options, id: \.0) { o in Button(o.1) { selection.wrappedValue = o.0 } }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(options.first { $0.0 == selection.wrappedValue }?.1 ?? "")
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
-                }
-                .font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.fg(scheme))
-                .padding(.horizontal, 12).frame(height: 30).background(Capsule().fill(Theme.fill(scheme)))
-            }
-        }.frame(minHeight: 50)
+        YMPickerRow(icon: ic, title, selection: selection, options: options)
     }
 }
 

@@ -116,12 +116,15 @@ struct TrackListPage: View {
 /// Date doodle tile used by 每日推荐 (card + list header).
 struct DateTile: View {
     var size: CGFloat = 92
+    /// Cover colour of the first pick; nil → quiet card fill with a lime number (never a fixed purple).
+    var tint: Color? = nil
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         let day = Calendar.current.component(.day, from: Date())
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous).fill(Color(hex: 0x7a1cff).opacity(0.88))
-            WobblyFrame(seed: UInt64(day)).stroke(.white.opacity(0.8), lineWidth: 1.6)
-            Text("\(day)").font(.system(size: size * 0.44, weight: .black, design: .rounded)).foregroundStyle(.white)
+            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous).fill(tint.map { AnyShapeStyle($0.opacity(0.9)) } ?? AnyShapeStyle(Theme.fill(scheme)))
+            WobblyFrame(seed: UInt64(day)).stroke((tint == nil ? Theme.accent(scheme) : .white).opacity(0.8), lineWidth: 1.6)
+            Text("\(day)").font(.system(size: size * 0.44, weight: .black, design: .rounded)).foregroundStyle(tint == nil ? Theme.accent(scheme) : .white)
         }.frame(width: size, height: size)
     }
 }

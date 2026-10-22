@@ -261,41 +261,39 @@ struct LastfmView: View {
     @State private var err: String?
     @State private var confirmDisconnect = false
 
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
-        Form {
+        YMPage("Last.fm") {
             if let s = st {
-                Section {
-                    HStack {
-                        Text("状态")
-                        Spacer()
-                        Text(s.connected == true ? "已连接" + (s.username.map { " · \($0)" } ?? "") : s.configured == true ? "已填写密钥，待授权" : "未连接")
-                            .foregroundStyle(s.connected == true ? Theme.lime : .secondary)
-                    }
+                YMSection(footer: "你的听歌记录由译梦服务端代为上传到 Last.fm（只含这个账号的播放）。") {
+                    YMRow(icon: "dot.radiowaves.left.and.right", "状态",
+                          s.connected == true ? "已连接" + (s.username.map { " · \($0)" } ?? "") : s.configured == true ? "已填写密钥，待授权" : "未连接",
+                          detailColor: s.connected == true ? Theme.accent(scheme) : nil)
                     if s.connected == true {
-                        Toggle("同步听歌记录", isOn: Binding(get: { s.enabled ?? false }, set: { v in Task { await run { try await CoreClient.shared.lastfmEnable(v) } } }))
-                        HStack { Text("待上传"); Spacer(); Text("\(s.pending ?? 0) 条").foregroundStyle(.secondary) }
+                        YMDivider()
+                        YMToggleRow(icon: "arrow.up.circle", "同步听歌记录", isOn: Binding(get: { s.enabled ?? false }, set: { v in Task { await run { try await CoreClient.shared.lastfmEnable(v) } } }))
+                        YMDivider()
+                        YMRow(icon: "tray.full", "待上传", "\(s.pending ?? 0) 条")
                     }
-                } footer: { Text("你的听歌记录由译梦服务端代为上传到 Last.fm（只含这个账号的播放）。") }
-
+                }
                 if s.connected != true {
-                    Section {
-                        SecureField("API Key（32 位）", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        SecureField("Shared Secret（32 位）", text: $secret).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        Button(busy ? "请稍候…" : (s.configured == true && key.isEmpty ? "去 Last.fm 授权" : "保存并去授权")) { Task { await connect() } }
-                            .disabled(busy || (s.configured != true && !(Self.valid(key) && Self.valid(secret))))
-                    } header: { Text("你的 Last.fm API 账号") } footer: {
-                        Text("在 last.fm/api/account/create 申请。密钥只发给你的译梦服务端并加密保存，不会显示或存在本机。")
+                    YMSection(title: "你的 Last.fm API 账号", footer: "在 last.fm/api/account/create 申请。密钥只发给你的译梦服务端并加密保存，不会显示或存在本机。") {
+                        YMFieldRow(title: "API Key", prompt: "32 位", text: $key, secure: true)
+                        YMDivider()
+                        YMFieldRow(title: "Shared Secret", prompt: "32 位", text: $secret, secure: true)
                     }
+                    let ok = !(busy || (s.configured != true && !(Self.valid(key) && Self.valid(secret))))
+                    Button(busy ? "请稍候…" : (s.configured == true && key.isEmpty ? "去 Last.fm 授权" : "保存并去授权")) { Task { await connect() } }
+                        .buttonStyle(PrimaryButtonStyle()).disabled(!ok).opacity(ok ? 1 : 0.4).padding(.top, 24)
                 } else {
-                    Section { Button("断开 Last.fm", role: .destructive) { confirmDisconnect = true } }
+                    Button("断开 Last.fm") { confirmDisconnect = true }.buttonStyle(YMDestructiveButtonStyle()).padding(.top, 24)
                 }
             } else if let err {
-                Section { Text(err).foregroundStyle(.secondary) }
+                YMSection { YMRow(icon: "exclamationmark.circle", err) }
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
             }
         }
-        .navigationTitle("Last.fm")
         .task { await reload() }
         .sheet(item: Binding(get: { authURL.map { DebugID(id: $0.absoluteString) } }, set: { if $0 == nil { authURL = nil } }), onDismiss: {
             Task { await run { try await CoreClient.shared.lastfmComplete() } }   // back from the browser: confirm
