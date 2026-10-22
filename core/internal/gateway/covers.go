@@ -201,6 +201,7 @@ func (d Deps) coverRef(devID, id, src string) *library.CoverRef {
 // decorateTracks adds signed cover/stream URLs and placeholder data.
 func (d Deps) decorateTracks(ctx context.Context, ts []library.Track) {
 	dev, _ := DeviceFrom(ctx)
+	d.markEntitlement(ctx, ts)
 	for i := range ts {
 		t := &ts[i]
 		if t.AlbumID != "" && t.CoverPath != "" {
@@ -266,5 +267,36 @@ func (d Deps) decorateOnlineTracks(ts []online.Track) {
 func (d Deps) decorateOnlinePlaylists(ps []online.Playlist) {
 	for i := range ps {
 		ps[i].Cover = d.onlineCover(ps[i].CoverURL)
+	}
+}
+
+// markEntitlement flags online snapshots that are preview-only or taken
+// down upstream (D51); playback still auto-switches (D50).
+func (d Deps) markEntitlement(ctx context.Context, ts []library.Track) {
+	src, ok := d.OnlineLib.(interface {
+		ExternalStatus(context.Context, []string) (map[string]string, error)
+	})
+	if !ok {
+		return
+	}
+	var ids []string
+	for _, t := range ts {
+		if library.IsExternalID(t.ID) {
+			ids = append(ids, t.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	st, err := src.ExternalStatus(ctx, ids)
+	if err != nil {
+		return
+	}
+	for i := range ts {
+		if e, ok := st[ts[i].ID]; ok {
+			ts[i].Entitlement = e
+			ts[i].Playable = e != string(online.EntUnavailable)
+			ts[i].Preview = e == string(online.EntPreview)
+		}
 	}
 }

@@ -1,6 +1,6 @@
 // Reusable library widgets: album/artist cards, track lists with actions, editors.
 import { get, post, put, del, qs, coverURL, downloadURL, bustCover, artistImageURL } from "./api.js";
-import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel } from "./ui.js";
+import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel, originName } from "./ui.js";
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
@@ -59,7 +59,17 @@ export function trackList(tracks, opts = {}) {
   wrap.append(h("div", { class: `trow head ${cls}` },
     idx ? h("span", { class: "no" }, "#") : null, showCover ? h("span", { class: "opt" }) : null, h("span", null, "标题"), h("span", { class: "al" }, "专辑"), h("span", { class: "du" }, "时长"), h("span")));
   const blocked = (t) => (t.playable === false || t.entitlement === "unavailable");
-  const play = (i) => { const t = tracks[i]; if (blocked(t)) return toast(unavailableReason(t), "err"); player.playList(tracks.filter((x) => !blocked(x)), tracks.filter((x) => !blocked(x)).indexOf(t)); };
+  const play = async (i) => {
+    const t = tracks[i];
+    if (blocked(t)) {
+      // D50: another logged-in platform may have the same song with full rights
+      const alt = String(t.id).includes(":") ? await get(`/tracks/${encodeURIComponent(t.id)}/alternatives`).catch(() => ({ items: [] })) : { items: [] };
+      if (!alt.items.some((a) => a.playable === "full")) return toast(unavailableReason(t), "err");
+      toast(`已自动切换到 ${originName(alt.items.find((a) => a.playable === "full").origin)}`);
+      return player.playList([t], 0);
+    }
+    player.playList(tracks.filter((x) => !blocked(x)), tracks.filter((x) => !blocked(x)).indexOf(t));
+  };
   const rows = tracks.map((t, i) => {
     const no = idx ? h("span", { class: "no" }, t.track_no || i + 1) : null;
     const fav = h("button", { class: `btn icon sm ghost ${t.favorite ? "fav-on" : ""}`, "aria-label": "收藏", title: "收藏", onclick: async (e) => {

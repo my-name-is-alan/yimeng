@@ -88,6 +88,9 @@ type Track struct {
 	Playable  bool        `json:"playable"`
 	Album     *AlbumRef   `json:"album,omitempty"`
 	Preview   bool        `json:"preview"`
+	// Entitlement is the last known state of an online snapshot (D51):
+	// full | preview | unavailable ("" = local or unknown).
+	Entitlement string `json:"entitlement,omitempty"`
 	HasLyrics bool        `json:"has_lyrics"`
 	Audio     *StreamInfo `json:"audio,omitempty"`      // same as stream; app name
 	Cover     *CoverRef   `json:"cover,omitempty"`      // set by the gateway

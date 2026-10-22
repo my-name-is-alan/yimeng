@@ -1850,9 +1850,12 @@ paths:
   /api/v1/online/{origin}/playlists/{id}/clone:
     post:
       tags: [online]
-      summary: Clone an external playlist into a local playlist. Body {name?, prefer_local? (default true), skip_unavailable?}
+      summary: Import an external playlist into a 译梦 playlist (new, or merged into `into`). Body {name?, prefer_local? (default true), skip_unavailable?, into?}
+      description: Tracks are stored as metadata snapshots so they survive takedowns (D51). Unavailable tracks are kept (unless skip_unavailable) and counted in `unavailable`; they carry `entitlement` in playlist listings and auto-switch on playback (D50). `into` must be one of the caller's playlists (404 otherwise).
       responses:
-        "201": { description: Created, content: { application/json: { schema: { type: object } } } }
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { playlist: { $ref: "#/components/schemas/Playlist" }, tracks: { type: integer }, linked_local: { type: integer }, skipped: { type: integer }, unavailable: { type: integer } } } } } }
+        "200": { description: Merged into an existing playlist (same body) }
+        "404": { description: into playlist not found }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ---- App API (D45). All paths also available under /api/v1. ----
@@ -2435,6 +2438,8 @@ components:
     Track:
       type: object
       properties:
+        entitlement: { type: string, enum: [full, preview, unavailable], description: "Online snapshots only: last known state on the platform (D51). Playback still auto-switches (D50)." }
+        alternatives: { type: array, items: { $ref: "#/components/schemas/Alternative" }, description: "Detail of a not-fully-playable online track only (D50)" }
         playable: { type: boolean, description: "false = cannot be played (see unplayable_reason)" }
         entitlement: { type: string, enum: [full, preview, unavailable], description: "online tracks; non-VIP plays official preview only" }
         unplayable_reason: { type: string, nullable: true }

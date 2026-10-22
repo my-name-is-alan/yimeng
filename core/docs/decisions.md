@@ -398,3 +398,12 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - Stream headers `X-Yimeng-Fallback` and `X-Yimeng-Play-Id`, and `fallback`/`play_id` on `/online/resolve/{id}`.
   - Online track detail embeds `alternatives` when the track is not fully playable.
   - `GET /tracks/{id}/alternatives` lists them on demand.
+
+## D51 — Merged playlists
+- **Mixed tracks:** a 译梦 playlist can hold local and online ids side by side.
+- **Snapshots:** online tracks are stored as metadata snapshots (title, artists, album, cover, duration) in `tracks`.
+- **Import:** `POST /online/{origin}/playlists/{id}/clone` creates a new playlist, or with `into` appends to one of the caller's playlists (owner-checked: 404 otherwise).
+  - Unavailable tracks are kept and counted as `unavailable`.
+  - `prefer_local` maps tracks to local equivalents.
+- **Availability:** the last known availability is recorded in `external_status` (migration 0023) from listings, imports and resolves. Listings expose it as `entitlement` / `playable` / `preview`.
+- **Unavailable or preview items:** they stay in the playlist. Playback auto-switches to an entitled source when one exists (D50).

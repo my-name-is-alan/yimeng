@@ -650,6 +650,7 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		PreferLocal *bool  `json:"prefer_local"` // default true
 		SkipUnavail bool   `json:"skip_unavailable"`
+		Into        string `json:"into"` // append to this 译梦 playlist instead of creating one
 	}
 	if r.ContentLength != 0 {
 		if err := decodeBody(r, &b); err != nil {
@@ -676,18 +677,31 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, t.ID)
 		}
 	}
-	name := strings.TrimSpace(b.Name)
-	if name == "" {
-		name = p.Name
+	unavailable := 0
+	for _, t := range p.Tracks {
+		if t.Playable == online.EntUnavailable && !(prefer && t.LocalID != "") && !b.SkipUnavail {
+			unavailable++
+		}
 	}
-	comment := "从 " + p.Origin + " 克隆 · " + p.ID
-	pl, err := d.Playlists.CreatePlaylist(r.Context(), library.PlaylistInput{Name: &name, Comment: &comment, TrackIDs: ids})
+	var pl library.Playlist
+	status := http.StatusCreated
+	if b.Into != "" { // merge into an existing playlist (owner-checked)
+		pl, err = d.Playlists.EditPlaylist(r.Context(), b.Into, library.PlaylistOp{Op: "append", TrackIDs: ids})
+		status = http.StatusOK
+	} else {
+		name := strings.TrimSpace(b.Name)
+		if name == "" {
+			name = p.Name
+		}
+		comment := "从 " + p.Origin + " 克隆 · " + p.ID
+		pl, err = d.Playlists.CreatePlaylist(r.Context(), library.PlaylistInput{Name: &name, Comment: &comment, TrackIDs: ids})
+	}
 	if err != nil {
 		d.plErr(w, err)
 		return
 	}
 	d.Hub.Publish("playlist.updated", map[string]string{"id": pl.ID})
-	writeJSON(w, http.StatusCreated, map[string]any{"playlist": pl, "tracks": len(ids), "linked_local": linked, "skipped": skipped})
+	writeJSON(w, status, map[string]any{"playlist": pl, "tracks": len(ids), "linked_local": linked, "skipped": skipped, "unavailable": unavailable})
 }
 
 // cloudFavorites returns the platform "liked songs" playlist of each logged-in account.

@@ -268,7 +268,8 @@ export async function detail(main, origin, kind, native) {
     c.unavailable ? h("span", { class: "badge err" }, `${c.unavailable} 首不可播放`) : null,
     c.local ? h("span", { class: "badge src" }, `${c.local} 首本地已有`) : null);
   const actions = [h("button", { class: "play-circle", "aria-label": "播放", onclick: () => playOnline(tracks) }, icon("play"))];
-  if (kind === "playlist") actions.push(h("button", { class: "btn", onclick: () => clone(origin, native, x) }, icon("plus"), "克隆为本地歌单"));
+  if (kind === "playlist") actions.push(h("button", { class: "btn", onclick: () => clone(origin, native, x) }, icon("plus"), "克隆为本地歌单"),
+    h("button", { class: "btn", onclick: () => importInto(origin, native) }, icon("list"), "导入到已有歌单"));
   main.replaceChildren(
     h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: img ? `url("${sized(img, 300)}")` : "none" } }),
       h("div", { class: "hero-row" }, cover(img ? sized(img, 600) : "", title, kind === "artist" ? "round" : ""),
@@ -285,6 +286,23 @@ async function clone(origin, native, pl) {
     const r = await post(`/online/${origin}/playlists/${encodeURIComponent(native)}/clone`, { name: pl.name, prefer_local: true, skip_unavailable: false });
     toast(`已克隆 ${r.tracks} 首${r.linked_local ? `（${r.linked_local} 首使用本地文件）` : ""}`);
     nav(`#/playlist/${r.playlist.id}`);
+  } catch (e) { errToast(e); }
+}
+
+// Merge a platform playlist into one of the caller's 译梦 playlists (D51).
+async function importInto(origin, native) {
+  try {
+    const r = await get(`/playlists${qs({ limit: 200 })}`);
+    const mine = (r.items || []).filter((p) => !p.smart && !String(p.id).includes(":"));
+    if (!mine.length) return toast("还没有可导入的歌单，请先新建或克隆", "err");
+    const d = dialog({ title: "导入到已有歌单", body: h("div", { class: "stack" }, mine.map((p) => h("button", { class: "li", style: { cursor: "pointer", textAlign: "left" }, onclick: async () => {
+      d.close();
+      try {
+        const x = await post(`/online/${origin}/playlists/${encodeURIComponent(native)}/clone`, { into: p.id, prefer_local: true });
+        toast(`已导入 ${x.tracks} 首${x.unavailable ? `（${x.unavailable} 首当前不可播放，播放时将尝试自动切换音源）` : ""}`);
+        nav(`#/playlist/${p.id}`);
+      } catch (e) { errToast(e); }
+    } }, icon("list"), h("div", { class: "grow" }, h("div", { class: "t ellipsis" }, p.name), h("div", { class: "s" }, `${p.track_count ?? 0} 首`))))) });
   } catch (e) { errToast(e); }
 }
 

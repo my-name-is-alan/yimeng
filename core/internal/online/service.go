@@ -150,6 +150,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int, only []string
 
 // rememberTracks caches track DTOs so later materialization needs no fetch.
 func (s *Service) rememberTracks(ctx context.Context, ts []Track) {
+	s.recordStatus(ctx, ts)
 	for _, t := range ts {
 		o, n, err := split(t.ID)
 		if err == nil {
@@ -248,6 +249,7 @@ func (s *Service) Materialize(ctx context.Context, ids []string) error {
 	if err := s.Lib.UpsertExternal(ctx, items); err != nil {
 		return err
 	}
+	s.recordStatus(ctx, ts)
 	s.annotate(ctx, ts)
 	return nil
 }
@@ -534,6 +536,12 @@ func (s *Service) resolve(ctx context.Context, id string, q Quality) (Resolution
 	}
 	base := Resolution{TrackID: id, PlayID: id, Origin: o}
 	st, err := s.resolveOne(ctx, id, q)
+	switch {
+	case err == nil:
+		s.setStatus(ctx, map[string]string{id: string(st.Entitlement)})
+	case errors.Is(err, ErrUnavailable):
+		s.setStatus(ctx, map[string]string{id: string(EntUnavailable)})
+	}
 	if err == nil && st.Entitlement == EntFull {
 		base.Stream = st
 		return base, nil
@@ -705,4 +713,25 @@ func (s *Service) FMFeedback(ctx context.Context, origin, trackID, action string
 	err = rd.FMFeedback(ctx, n, action)
 	s.after(ctx, origin, err)
 	return err
+}
+
+type statusSink interface {
+	SetExternalStatus(ctx context.Context, st map[string]string) error
+}
+
+func (s *Service) setStatus(ctx context.Context, st map[string]string) {
+	if sink, ok := s.Lib.(statusSink); ok && len(st) > 0 {
+		_ = sink.SetExternalStatus(ctx, st)
+	}
+}
+
+// recordStatus stores listing entitlement hints for stored tracks (D51).
+func (s *Service) recordStatus(ctx context.Context, ts []Track) {
+	st := map[string]string{}
+	for _, t := range ts {
+		if t.Playable != "" {
+			st[t.ID] = string(t.Playable)
+		}
+	}
+	s.setStatus(ctx, st)
 }
