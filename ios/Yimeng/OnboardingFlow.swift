@@ -867,6 +867,9 @@ struct SourceConnectView: View {
     @State private var draft: SourceConfig
     @State private var showSecret = false
     @State private var busy = false
+    @State private var embyMode: LibraryStore.EmbyMode = LibraryStore.embyMode
+    @State private var embyPick: String?
+    @ObservedObject private var lib = LibraryStore.shared
 
     init(kind: SourceKind, onClose: @escaping () -> Void) {
         self.kind = kind
@@ -923,6 +926,22 @@ struct SourceConnectView: View {
                             draft.host = h
                             draft.username = u
                             draft.secret = pw
+                            draft.connected = LibraryStore.shared.connected
+                            draft.statusNote = LibraryStore.shared.status
+                            store.upsert(draft)
+                        } else if kind == .emby {
+                            // Emby / Jellyfin: password (may be empty) or API key. Secrets → Keychain only.
+                            let u = draft.username.trimmingCharacters(in: .whitespaces)
+                            var c = draft; c.username = u; c.secret = ""; store.upsert(c)
+                            LibraryStore.embyMode = embyMode
+                            if store.active != .emby {
+                                // Activate first (switch source), then log in with what was typed.
+                                await store.activate(.emby)
+                            }
+                            await LibraryStore.shared.connectEmby(host: draft.host, mode: embyMode, username: u, secret: draft.secret, userId: embyPick)
+                            let typed = draft.secret
+                            draft = store.config(for: .emby)
+                            if !LibraryStore.shared.embyUsers.isEmpty { draft.secret = typed }   // keep the key while picking a user
                             draft.connected = LibraryStore.shared.connected
                             draft.statusNote = LibraryStore.shared.status
                             store.upsert(draft)
@@ -998,16 +1017,40 @@ struct SourceConnectView: View {
 
     @ViewBuilder private var formBody: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if kind == .emby {
+                Picker("登录方式", selection: $embyMode) {
+                    Text("账号密码").tag(LibraryStore.EmbyMode.password)
+                    Text("API Key").tag(LibraryStore.EmbyMode.apiKey)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: embyMode) { _, _ in draft.secret = ""; embyPick = nil; lib.embyUsers = [] }
+            }
             field("服务器地址", text: $draft.host, prompt: kind.hostPlaceholder)
             if kind.usesUserPass {
-                field("用户名", text: $draft.username, prompt: "用户名")
+                field(kind == .emby && embyMode == .apiKey ? "用户名（可选）" : "用户名", text: $draft.username,
+                      prompt: kind == .emby && embyMode == .apiKey ? "留空则从列表中选择" : "用户名")
             }
             HStack {
-                field(kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key",
+                field(kind == .emby ? (embyMode == .apiKey ? "API Key" : "密码（可留空）")
+                      : (kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key"),
                       text: $draft.secret, secure: !showSecret)
                 Button { showSecret.toggle() } label: {
                     Image(systemName: showSecret ? "eye" : "eye.slash").opacity(0.6)
                 }.padding(.trailing, 8)
+            }
+            if kind == .emby, !lib.embyUsers.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("选择用户").font(.system(size: 13)).opacity(0.6)
+                    ForEach(lib.embyUsers, id: \.id) { u in
+                        Button { embyPick = u.id } label: {
+                            HStack {
+                                Image(systemName: embyPick == u.id ? "largecircle.fill.circle" : "circle")
+                                Text(u.name); if u.isAdmin { Text("管理员").font(.system(size: 11)).opacity(0.55) }
+                                Spacer()
+                            }.padding(.vertical, 6).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                    }
+                }
             }
             Toggle(isOn: $draft.allowSelfSigned) {
                 Text("允许自签名证书").font(.system(size: 16))

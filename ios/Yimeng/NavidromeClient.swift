@@ -16,6 +16,8 @@ actor NavidromeClient {
     static let shared = NavidromeClient()
     /// Active source is 飞牛音乐 → library calls are served by FnosClient (same ND models), so views stay source-agnostic.
     nonisolated static var fnos: Bool { MusicSources.activeId == SourceKind.fnos.rawValue }
+    nonisolated static var emby: Bool { MusicSources.activeId == SourceKind.emby.rawValue }
+    nonisolated static var backend: (any LibraryBackend)? { fnos ? FnosClient.shared : (emby ? EmbyClient.shared : nil) }
     private let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.httpAdditionalHeaders = [
@@ -71,14 +73,14 @@ actor NavidromeClient {
     }
 
     func newestAlbums(size: Int = 24) async throws -> [NDAlbum] {
-        if Self.fnos { return try await FnosClient.shared.albums(offset: 0, size: size) }
+        if let B = Self.backend { return try await B.albumList(type: "newest", offset: 0, size: size) }
         let obj = try await rest("getAlbumList2.view", query: ["type": "newest", "size": "\(size)"])
         let list = ((obj["albumList2"] as? [String: Any])?["album"]) as? [[String: Any]] ?? []
         return list.compactMap(Self.parseAlbum)
     }
 
     func album(id: String) async throws -> (NDAlbum, [NDSong]) {
-        if Self.fnos { return try await FnosClient.shared.album(id: id) }
+        if let B = Self.backend { return try await B.album(id: id) }
         let obj = try await rest("getAlbum.view", query: ["id": id])
         guard let a = obj["album"] as? [String: Any], let album = Self.parseAlbum(a) else {
             throw NavidromeError.decode
@@ -93,7 +95,7 @@ actor NavidromeClient {
     }
 
     func search(query: String, count: Int = 20) async throws -> (albums: [NDAlbum], artists: [NDArtist], songs: [NDSong]) {
-        if Self.fnos { return try await FnosClient.shared.search(query, count: count) }
+        if let B = Self.backend { return try await B.search(query, count: count) }
         let obj = try await rest("search3.view", query: [
             "query": query.isEmpty ? "a" : query,
             "albumCount": "\(count)",
@@ -114,7 +116,7 @@ actor NavidromeClient {
     private var artistsTask: Task<[NDArtist], Error>?
     private var artistsAt = Date.distantPast
     func artists() async throws -> [NDArtist] {
-        if Self.fnos { return try await FnosClient.shared.artists() }
+        if let B = Self.backend { return try await B.artists() }
         if let t = artistsTask, Date().timeIntervalSince(artistsAt) < 600 {
             do { return try await t.value } catch { artistsTask = nil; throw error }
         }
@@ -139,14 +141,14 @@ actor NavidromeClient {
     }
 
     func songExists(id: String) async throws -> Bool {
-        if Self.fnos { return true }
+        if let B = Self.backend { return true }
         do { let o = try await rest("getSong.view", query: ["id": id]); return o["song"] != nil }
         catch NavidromeError.api { return false }
     }
 
     /// All songs via search3 with empty query (Navidrome lists everything), paged.
     func songs(offset: Int, count: Int = 50) async throws -> [NDSong] {
-        if Self.fnos { return try await FnosClient.shared.songs(offset: offset, count: count) }
+        if let B = Self.backend { return try await B.songs(offset: offset, count: count) }
         let obj = try await rest("search3.view", query: [
             "query": "", "songCount": "\(count)", "songOffset": "\(offset)",
             "albumCount": "0", "artistCount": "0",
@@ -156,14 +158,14 @@ actor NavidromeClient {
     }
 
     func albumList(type: String, offset: Int, size: Int = 40) async throws -> [NDAlbum] {
-        if Self.fnos { return try await FnosClient.shared.albums(offset: offset, size: size) }
+        if let B = Self.backend { return try await B.albumList(type: type, offset: offset, size: size) }
         let obj = try await rest("getAlbumList2.view", query: ["type": type, "size": "\(size)", "offset": "\(offset)"])
         let list = ((obj["albumList2"] as? [String: Any])?["album"]) as? [[String: Any]] ?? []
         return list.compactMap(Self.parseAlbum)
     }
 
     func artistAlbums(id: String) async throws -> [NDAlbum] {
-        if Self.fnos { return try await FnosClient.shared.artistAlbums(id) }
+        if let B = Self.backend { return try await B.artistAlbums(id) }
         let obj = try await rest("getArtist.view", query: ["id": id])
         let a = (obj["artist"] as? [String: Any])?["album"]
         let arr = (a as? [[String: Any]]) ?? ((a as? [String: Any]).map { [$0] } ?? [])
@@ -171,14 +173,14 @@ actor NavidromeClient {
     }
 
     func starredAlbums() async throws -> [NDAlbum] {
-        if Self.fnos { return [] }
+        if let B = Self.backend { return try await B.favorites().albums }
         let obj = try await rest("getStarred2.view", query: [:])
         let r = obj["starred2"] as? [String: Any] ?? [:]
         return ((r["album"] as? [[String: Any]]) ?? []).compactMap(Self.parseAlbum)
     }
 
     func genres() async throws -> [NDGenre] {
-        if Self.fnos { return try await FnosClient.shared.genres() }
+        if let B = Self.backend { return try await B.genres() }
         let obj = try await rest("getGenres.view", query: [:])
         let g = ((obj["genres"] as? [String: Any])?["genre"]) as? [[String: Any]] ?? []
         return g.compactMap { x in
@@ -188,14 +190,14 @@ actor NavidromeClient {
     }
 
     func albumsByGenre(_ genre: String, offset: Int, size: Int = 40) async throws -> [NDAlbum] {
-        if Self.fnos { return [] }
+        if let B = Self.backend { return try await B.albumsByGenre(genre, offset: offset, size: size) }
         let obj = try await rest("getAlbumList2.view", query: ["type": "byGenre", "genre": genre, "size": "\(size)", "offset": "\(offset)"])
         let list = ((obj["albumList2"] as? [String: Any])?["album"]) as? [[String: Any]] ?? []
         return list.compactMap(Self.parseAlbum)
     }
 
     func songsByGenre(_ genre: String, count: Int = 50, offset: Int = 0) async throws -> [NDSong] {
-        if Self.fnos { return try await FnosClient.shared.songsByGenre(genre, offset: offset, count: count) }
+        if let B = Self.backend { return try await B.songsByGenre(genre, offset: offset, count: count) }
         let obj = try await rest("getSongsByGenre.view", query: ["genre": genre, "count": "\(count)", "offset": "\(offset)"])
         let s = ((obj["songsByGenre"] as? [String: Any])?["song"]) as? [[String: Any]] ?? []
         return s.compactMap(Self.parseSong)
@@ -203,14 +205,14 @@ actor NavidromeClient {
 
     /// Total songs indexed (getScanStatus.count), if the server reports it.
     func scanCount() async throws -> Int? {
-        if Self.fnos { return await FnosClient.shared.songTotal() }
+        if let B = Self.backend { return await B.songTotal() }
         let obj = try await rest("getScanStatus.view", query: [:])
         return (obj["scanStatus"] as? [String: Any])?["count"] as? Int
     }
 
     /// First `pages` × 200 albums (A–Z) — the library is far too large to load whole.
     func albumPages(_ pages: Int, type: String = "alphabeticalByName") async throws -> [NDAlbum] {
-        if Self.fnos { return try await FnosClient.shared.albums(offset: 0, size: 40 * pages) }
+        if let B = Self.backend { return try await B.albumList(type: type, offset: 0, size: 40 * pages) }
         var out: [NDAlbum] = []
         for _ in 0..<pages {
             let page = try await albumList(type: type, offset: out.count, size: 200)
@@ -222,7 +224,7 @@ actor NavidromeClient {
 
     struct Starred { var albums: [NDAlbum]; var songs: [NDSong]; var artists: [NDArtist] }
     func starred() async throws -> Starred {
-        if Self.fnos { return Starred(albums: [], songs: try await FnosClient.shared.favoriteSongs(), artists: []) }
+        if let B = Self.backend { let f = try await B.favorites(); return Starred(albums: f.albums, songs: f.songs, artists: f.artists) }
         let obj = try await rest("getStarred2.view", query: [:])
         let r = obj["starred2"] as? [String: Any] ?? [:]
         return Starred(albums: ((r["album"] as? [[String: Any]]) ?? []).compactMap(Self.parseAlbum),
@@ -232,13 +234,13 @@ actor NavidromeClient {
 
     enum StarKind: String { case song = "id", album = "albumId", artist = "artistId" }
     func setStar(_ on: Bool, id: String, kind: StarKind) async throws {
-        if Self.fnos { guard kind == .song else { throw NavidromeError.api("飞牛音乐只支持收藏歌曲") }; try await FnosClient.shared.setFavorite(on, song: id); return }
+        if let B = Self.backend { try await B.setFavorite(on, id: id, kind: kind); return }
         _ = try await rest(on ? "star.view" : "unstar.view", query: [kind.rawValue: id])
     }
 
     struct ArtistDetail { var artist: NDArtist; var albums: [NDAlbum]; var bio: String; var image: String?; var similar: [NDArtist]; var top: [NDSong] }
     func artistDetail(_ a: NDArtist) async throws -> ArtistDetail {
-        if Self.fnos { async let al = FnosClient.shared.artistAlbums(a.id); async let tr = FnosClient.shared.artistTracks(a.id, size: 10); return ArtistDetail(artist: a, albums: try await al, bio: "", image: nil, similar: [], top: try await tr) }
+        if let B = Self.backend { async let al = B.artistAlbums(a.id); async let tr = B.artistTracks(a.id, size: 10); return ArtistDetail(artist: a, albums: try await al, bio: "", image: nil, similar: [], top: try await tr) }
         async let det = rest("getArtist.view", query: ["id": a.id])
         async let inf = rest("getArtistInfo2.view", query: ["id": a.id, "count": "12"])
         async let top = rest("getTopSongs.view", query: ["artist": a.name, "count": "10"])
@@ -261,7 +263,7 @@ actor NavidromeClient {
     }
 
     func playlists() async throws -> [NDPlaylist] {
-        if Self.fnos { return try await FnosClient.shared.playlists() }
+        if let B = Self.backend { return try await B.playlists() }
         let obj = try await rest("getPlaylists.view", query: [:])
         let list = ((obj["playlists"] as? [String: Any])?["playlist"]) as? [[String: Any]] ?? []
         return list.compactMap(Self.parsePlaylist)
@@ -269,19 +271,19 @@ actor NavidromeClient {
 
     @discardableResult
     func createPlaylist(name: String, songIds: [String]) async throws -> NDPlaylist? {
-        if Self.fnos { throw NavidromeError.api("飞牛音乐暂不支持在译梦里编辑歌单") }
+        if let B = Self.backend { return try await B.createPlaylist(name: name, songIds: songIds) }
         let obj = try await rest("createPlaylist.view", query: ["name": name], multi: songIds.map { ("songId", $0) })
         return (obj["playlist"] as? [String: Any]).flatMap(Self.parsePlaylist)
     }
 
     /// Replace a playlist's song list in the given order (createPlaylist with playlistId overwrites).
     func setPlaylistSongs(_ playlistId: String, songIds: [String]) async throws {
-        if Self.fnos { throw NavidromeError.api("飞牛音乐暂不支持在译梦里编辑歌单") }
+        if let B = Self.backend { try await B.setPlaylistSongs(playlistId, songIds: songIds); return }
         _ = try await rest("createPlaylist.view", query: ["playlistId": playlistId], multi: songIds.map { ("songId", $0) })
     }
 
     func updatePlaylist(_ id: String, name: String? = nil, comment: String? = nil, isPublic: Bool? = nil, removeIndexes: [Int] = []) async throws {
-        if Self.fnos { throw NavidromeError.api("飞牛音乐暂不支持在译梦里编辑歌单") }
+        if let B = Self.backend { if name != nil || comment != nil || isPublic != nil { throw BackendError.unsupported("修改歌单信息") }; try await B.removeFromPlaylist(id, indexes: removeIndexes); return }
         var q = ["playlistId": id]
         if let name { q["name"] = name }
         if let comment { q["comment"] = comment }
@@ -290,12 +292,12 @@ actor NavidromeClient {
     }
 
     func deletePlaylist(_ id: String) async throws {
-        if Self.fnos { throw NavidromeError.api("飞牛音乐暂不支持在译梦里编辑歌单") }
+        if let B = Self.backend { try await B.deletePlaylist(id); return }
         _ = try await rest("deletePlaylist.view", query: ["id": id])
     }
 
     func playlistDetail(id: String) async throws -> (NDPlaylist, [NDSong]) {
-        if Self.fnos { let s = try await FnosClient.shared.playlistTracks(id); let p = try await FnosClient.shared.playlists().first { $0.id == id } ?? NDPlaylist(id: id, name: "", songCount: s.count, coverId: nil); return (p, s) }
+        if let B = Self.backend { let s = try await B.playlistTracks(id); let p = try await B.playlists().first { $0.id == id } ?? NDPlaylist(id: id, name: "", songCount: s.count, coverId: nil); return (p, s) }
         let obj = try await rest("getPlaylist.view", query: ["id": id])
         let p = obj["playlist"] as? [String: Any] ?? [:]
         let e = p["entry"]
@@ -312,12 +314,12 @@ actor NavidromeClient {
     }
 
     func addToPlaylist(_ playlistId: String, songIds: [String]) async throws {
-        if Self.fnos { throw NavidromeError.api("飞牛音乐暂不支持在译梦里编辑歌单") }
+        if let B = Self.backend { try await B.addToPlaylist(playlistId, songIds: songIds); return }
         for s in songIds { _ = try await rest("updatePlaylist.view", query: ["playlistId": playlistId, "songIdToAdd": s]) }
     }
 
     func playlist(id: String) async throws -> [NDSong] {
-        if Self.fnos { return try await FnosClient.shared.playlistTracks(id) }
+        if let B = Self.backend { return try await B.playlistTracks(id) }
         let obj = try await rest("getPlaylist.view", query: ["id": id])
         let e = (obj["playlist"] as? [String: Any])?["entry"]
         let arr = (e as? [[String: Any]]) ?? ((e as? [String: Any]).map { [$0] } ?? [])
@@ -325,7 +327,7 @@ actor NavidromeClient {
     }
 
     func starredSongs() async throws -> [NDSong] {
-        if Self.fnos { return try await FnosClient.shared.favoriteSongs() }
+        if let B = Self.backend { return try await B.favorites().songs }
         let obj = try await rest("getStarred2.view", query: [:])
         let r = obj["starred2"] as? [String: Any] ?? [:]
         return ((r["song"] as? [[String: Any]]) ?? []).compactMap(Self.parseSong)

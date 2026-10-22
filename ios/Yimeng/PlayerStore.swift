@@ -91,6 +91,7 @@ final class PlayerStore: ObservableObject {
         guard let player else { return }
         if isPlaying { player.pause(); isPlaying = false; save() }
         else { player.defaultRate = rate; player.play(); isPlaying = true }
+        if let l = embyLive { embyReport(.progress, id: l.id, pos: elapsed, paused: !isPlaying) }
         syncApp()
         pushNowPlaying()
     }
@@ -353,6 +354,10 @@ final class PlayerStore: ObservableObject {
                     self.fade(to: 0, over: left)
                 }
                 let now = Date().timeIntervalSinceReferenceDate
+                if let l = self.embyLive {
+                    self.embyLive = (l.id, self.elapsed)
+                    if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false) }
+                }
                 if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
             }
         }
@@ -364,6 +369,8 @@ final class PlayerStore: ObservableObject {
         }
         p.defaultRate = rate
         record(s)
+        embyLive = (s.id, elapsed); embyLastProgress = Date().timeIntervalSinceReferenceDate
+        embyReport(.start, id: s.id, pos: elapsed, paused: !autoplay)
         if autoplay {
             p.play(); isPlaying = true
             if AudioPrefs.crossfade > 0 { fade(to: vol, over: min(AudioPrefs.crossfade, 4)) }
@@ -392,7 +399,18 @@ final class PlayerStore: ObservableObject {
         attachFX(item, s)
     }
 
+    // Emby/Jellyfin: report start / progress / stop so play counts, 最近播放 and resume work server-side.
+    private var embyLive: (id: String, pos: TimeInterval)?
+    private var embyLastProgress: TimeInterval = 0
+    private func embyReport(_ e: EmbyClient.PlayEvent, id: String, pos: TimeInterval, paused: Bool) {
+        guard NavidromeClient.emby else { return }
+        let ps = LibraryStore.shared.playSession(for: id)
+        let tr = UserDefaults.standard.integer(forKey: "ym.maxBitRate") > 0
+        Task { await EmbyClient.shared.report(e, id: id, position: pos, paused: paused, playSessionId: ps, transcoding: tr) }
+    }
+
     private func tearDownPlayer() {
+        if let l = embyLive { embyReport(.stopped, id: l.id, pos: l.pos, paused: true); embyLive = nil }
         if let timeObs, let player { player.removeTimeObserver(timeObs) }
         timeObs = nil
         if let endObs { NotificationCenter.default.removeObserver(endObs) }

@@ -1,0 +1,7 @@
+{"Items":[
+ {"Name":"爱在西元前","Id":"s1","RunTimeTicks":2345600000,"IndexNumber":2,"ParentIndexNumber":1,"Type":"Audio",
+  "Artists":["周杰伦"],"ArtistItems":[{"Name":"周杰伦","Id":"ar1"}],"Album":"范特西","AlbumId":"al1","AlbumPrimaryImageTag":"tag1","AlbumArtist":"周杰伦",
+  "ImageTags":{},"UserData":{"IsFavorite":false,"PlayCount":12},
+  "MediaSources":[{"Id":"s1","Container":"flac","Bitrate":1048000,"MediaStreams":[{"Type":"Audio","Codec":"flac","BitRate":1048000,"SampleRate":44100,"BitDepth":16,"Channels":2}]}]},
+ {"Name":"Feat","Id":"s2","RunTimeTicks":1800000000,"Type":"Audio","Artists":["A","B"],"Album":"X","AlbumId":"alx","ImageTags":{"Primary":"t2"}}
+],"TotalRecordCount":2}

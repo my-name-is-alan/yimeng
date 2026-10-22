@@ -123,7 +123,7 @@ final class LibraryStore: ObservableObject {
 
     /// Source switched away: drop session + in-memory library.
     func reset() {
-        connected = false; liveMode = false; loading = false; fnosRoot = nil; fnosToken = ""
+        connected = false; liveMode = false; loading = false; fnosRoot = nil; fnosToken = ""; embyBase = nil; embyToken = ""; embyUserId = ""; embyUsers = []
         Task { await FnosClient.shared.logout() }
         albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
         status = ""; user = ""; host = ""
@@ -209,6 +209,83 @@ final class LibraryStore: ObservableObject {
         }
     }
 
+    // MARK: Emby / Jellyfin
+    enum EmbyMode: String { case password, apiKey }
+    @Published var embyBase: URL?
+    @Published var embyToken = ""
+    @Published var embyUserId = ""
+    @Published var embyProduct = "Emby"
+    /// API key without a chosen user → list to pick from (form shows a picker).
+    @Published var embyUsers: [EmbyClient.User] = []
+    private var playSessions: [String: String] = [:]
+    static var embyMode: EmbyMode {
+        get { EmbyMode(rawValue: UserDefaults.standard.string(forKey: "ym.emby.mode") ?? "") ?? .password }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "ym.emby.mode") }
+    }
+    func playSession(for songId: String) -> String {
+        if let s = playSessions[songId] { return s }
+        let s = UUID().uuidString.replacingOccurrences(of: "-", with: ""); playSessions[songId] = s; return s
+    }
+    func bootstrapEmby() async {
+        let cfg = SourceStore.shared.config(for: .emby)
+        let svc = SourceKind.emby.keychainService
+        let uid = UserDefaults.standard.string(forKey: "ym.emby.userId") ?? ""
+        guard !cfg.host.isEmpty, let tok = Keychain.get(service: svc, account: "token"), !tok.isEmpty, !uid.isEmpty else {
+            status = "待连接 Emby"; return
+        }
+        liveMode = true
+        await connectEmby(host: cfg.host, mode: Self.embyMode, username: cfg.username, secret: nil, savedToken: tok, userId: uid)
+    }
+    /// secret = password (may be empty) or API key. savedToken → reuse a stored session instead of logging in.
+    func connectEmby(host: String, mode: EmbyMode, username: String, secret: String?, savedToken: String? = nil, userId pick: String? = nil) async {
+        loading = true; status = "连接中…"
+        defer { loading = false }
+        let e = EmbyClient.shared, svc = SourceKind.emby.keychainService
+        do {
+            try await e.configure(host: host)
+            let info: EmbyClient.ServerInfo
+            do { info = try await e.serverInfo() } catch { throw NavidromeError.api("连不上服务器：\(error.localizedDescription)") }
+            embyProduct = info.product
+            if let savedToken, let pick {
+                await e.restore(token: savedToken, userId: pick)
+            } else if mode == .password {
+                try await e.login(username: username, password: secret ?? "")
+            } else {
+                let users = try await e.useAPIKey(secret ?? "")
+                let chosen = pick.flatMap { id in users.first { $0.id == id } }
+                    ?? users.first { !username.isEmpty && $0.name.caseInsensitiveCompare(username) == .orderedSame }
+                    ?? (users.count == 1 ? users.first : nil)
+                guard let u = chosen else {
+                    embyUsers = users
+                    status = users.isEmpty ? "这个 API Key 看不到任何用户" : "请选择要使用的 \(info.product) 用户"
+                    return
+                }
+                await e.select(userId: u.id)
+            }
+            try await e.validate()
+            embyUsers = []
+            let snap = await e.snapshot()
+            embyBase = snap.base; embyToken = snap.token; embyUserId = snap.userId
+            Keychain.set(snap.token, service: svc, account: "token")
+            if mode == .apiKey, let k = secret, !k.isEmpty { Keychain.set(k, service: svc, account: "apikey") }
+            UserDefaults.standard.set(snap.userId, forKey: "ym.emby.userId")
+            Self.embyMode = mode
+            albums = try await e.albumList(type: "newest", offset: 0, size: 30)
+            artists = Array(try await e.artists().prefix(40))
+            connected = true; liveMode = true
+            user = username; self.host = snap.base?.absoluteString ?? host
+            songTotal = await e.songTotal()
+            status = (["\(info.product)\(info.name.isEmpty ? "" : " · " + info.name)", songTotal.map { "\($0) 首歌曲" } ?? ""].filter { !$0.isEmpty }).joined(separator: " · ")
+            var cfg = SourceStore.shared.config(for: .emby)
+            cfg.host = self.host; cfg.username = username; cfg.connected = true; cfg.statusNote = status
+            SourceStore.shared.upsert(cfg)
+        } catch {
+            connected = false
+            if savedToken != nil { liveMode = false }
+            status = error.localizedDescription
+        }
+    }
+
     func connect(host: String, username: String, password: String) async {
         loading = true
         status = "连接中…"
@@ -280,6 +357,10 @@ final class LibraryStore: ObservableObject {
 
     func coverArtURL(id: String?, size: Int = 300) -> URL? {
         guard let id else { return nil }
+        if NavidromeClient.emby {
+            guard let b = embyBase else { return nil }
+            return EmbyClient.imageURL(base: b, id: id.hasPrefix("ar-") ? String(id.dropFirst(3)) : id, size: size)
+        }
         if NavidromeClient.fnos {
             guard let r = fnosRoot else { return nil }
             return id.hasPrefix("ar-") ? nil : FnosClient.coverURL(root: r, coverId: id, size: size)
@@ -297,6 +378,11 @@ final class LibraryStore: ObservableObject {
 
     /// Subsonic stream.view — AVPlayer uses this URL (u+t+s auth).
     func streamURL(for songId: String) -> URL? {
+        if NavidromeClient.emby {
+            guard let b = embyBase, !embyToken.isEmpty else { return nil }
+            return EmbyClient.streamURL(base: b, id: songId, token: embyToken, userId: embyUserId,
+                                        maxKbps: UserDefaults.standard.integer(forKey: "ym.maxBitRate"), playSessionId: playSession(for: songId))
+        }
         if NavidromeClient.fnos { return fnosRoot.flatMap { FnosClient.streamURL(root: $0, guid: songId) } }
         guard let base = coverBase, !coverToken.isEmpty else { return nil }
         return NavidromeClient.authedURL(base: base, method: "stream.view",

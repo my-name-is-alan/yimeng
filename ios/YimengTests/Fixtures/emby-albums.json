@@ -1,0 +1,5 @@
+{"Items":[
+ {"Name":"范特西","ServerId":"srv1","Id":"al1","ProductionYear":2001,"ChildCount":10,"IsFolder":true,"Type":"MusicAlbum",
+  "AlbumArtist":"周杰伦","AlbumArtists":[{"Name":"周杰伦","Id":"ar1"}],"ImageTags":{"Primary":"tag1"},"UserData":{"IsFavorite":true,"PlayCount":3}},
+ {"Name":"No Art","Id":"al2","Type":"MusicAlbum","AlbumArtists":[],"ImageTags":{}}
+],"TotalRecordCount":2}

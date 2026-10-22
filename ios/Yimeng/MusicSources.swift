@@ -37,12 +37,12 @@ enum SourceKind: String, CaseIterable, Identifiable, Codable {
         case .core: "https://core.yimeng.lan:8443"
         case .fnos: "http://192.168.1.10:5666/music"
         case .navidrome: "https://music.example.com"
-        case .emby: "https://emby.home.lan:8096"
+        case .emby: "http://192.168.1.10:8096"
         case .local: ""
         }
     }
-    var usesUserPass: Bool { self == .navidrome || self == .fnos || self == .core }
-    var usesToken: Bool { self == .emby || self == .core }
+    var usesUserPass: Bool { self == .navidrome || self == .fnos || self == .core || self == .emby }
+    var usesToken: Bool { self == .core }
     var isLocal: Bool { self == .local }
     /// Keychain service for this source's secret (one item per source + account).
     var keychainService: String { "yimeng.\(rawValue)" }
@@ -68,6 +68,7 @@ enum MusicSources {
         switch k {
         case .navidrome: NavidromeSource()
         case .fnos: FnosSource()
+        case .emby: EmbySource()
         default: ComingSoonSource(kind: k)
         }
     }
@@ -90,6 +91,16 @@ enum MusicSources {
     let isImplemented = true
     func activate() async {
         await LibraryStore.shared.bootstrapFnos()
+        await PlayerStore.shared.restore()
+    }
+    func deactivate() { LibraryStore.shared.reset() }
+}
+
+@MainActor struct EmbySource: MusicSource {
+    let kind = SourceKind.emby
+    let isImplemented = true
+    func activate() async {
+        await LibraryStore.shared.bootstrapEmby()
         await PlayerStore.shared.restore()
     }
     func deactivate() { LibraryStore.shared.reset() }

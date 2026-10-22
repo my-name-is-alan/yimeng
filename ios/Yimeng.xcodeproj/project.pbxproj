@@ -10,6 +10,8 @@
 		0C467222F0AF212833502E34 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */; };
 		0D9231157F1515B2203FAF61 /* fnos-track-list.json in Resources */ = {isa = PBXBuildFile; fileRef = 5178F9895770BE93EE018F18 /* fnos-track-list.json */; };
 		1019C65652F5758BB605EAAC /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
+		112DC50DEE50F63DAFB146ED /* EmbyClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3318DA59414862B1885E2720 /* EmbyClientTests.swift */; };
+		17FCA2C64AA0229648AC071D /* emby-audio.json in Resources */ = {isa = PBXBuildFile; fileRef = 9A3C163344750D61165021CE /* emby-audio.json */; };
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
@@ -21,25 +23,32 @@
 		410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
 		44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		44B2579B22172C9943151E90 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */; };
+		4D4C1224C5989668EDCD4B6B /* emby-sysinfo.json in Resources */ = {isa = PBXBuildFile; fileRef = 15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */; };
 		562E8815E35C3538997E3EA0 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10344A37F4E7381B0AA3FBD7 /* Glass.swift */; };
 		58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624D971C2C9BF41CC02A1560 /* LibraryView.swift */; };
+		5A06248C1CEC2FFBC760206D /* emby-users.json in Resources */ = {isa = PBXBuildFile; fileRef = 3019C28A157BEF762348D292 /* emby-users.json */; };
 		5D4319F763707E67840F42FE /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03744E138A2E6A2C16E3F4C2 /* MockData.swift */; };
 		5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 221E80FC912CC7CB64F2505A /* MusicSources.swift */; };
 		5F7DC5897731B0F4227472A9 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA6146350902AD251CEEB2 /* Common.swift */; };
 		6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */; };
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
+		6FE10BBA8C1BEFD2A0C2F8DF /* emby-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = 54114807AFE972B4C5E9DE7D /* emby-auth.json */; };
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
 		76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BD4E0C93F027C9E0B46E7 /* Stores.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		95004421BB25025814B1211C /* fnos-expired.json in Resources */ = {isa = PBXBuildFile; fileRef = 56439C44803E5E2178CD3157 /* fnos-expired.json */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
+		AEC9E4D81F3A2346A3D5FDE0 /* jellyfin-lyrics.json in Resources */ = {isa = PBXBuildFile; fileRef = 91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */; };
+		AF55DCEB6EFC3DF6C895856C /* emby-albums.json in Resources */ = {isa = PBXBuildFile; fileRef = FDB91791440EEB3F6CDCA091 /* emby-albums.json */; };
 		B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9712EB28EE125918AEB1DEF /* DebugSnap.swift */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
 		C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14B0D85AF014834401939FD /* FnosClient.swift */; };
+		C5884E9066B97C410971BA40 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA085F7CB3FF5489991F9B5 /* Backend.swift */; };
 		C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EAA934AB97BEE0902D11F2 /* MeView.swift */; };
+		D021E580BFCCD8AF9134F3B7 /* jellyfin-sysinfo.json in Resources */ = {isa = PBXBuildFile; fileRef = A0104A99592D847BABB23CC9 /* jellyfin-sysinfo.json */; };
 		D2BF61DEDC447CB142074774 /* NowPlayingMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35378CC4779ABA225F390237 /* NowPlayingMore.swift */; };
 		D5339D65B2F278E0D24B78FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A06AAC57F015AE8C264DD /* LibraryStore.swift */; };
@@ -51,6 +60,7 @@
 		E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B459A03FE9FB71837E459E /* Motion.swift */; };
 		E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7AA12279A810579DDAD711 /* GenreView.swift */; };
 		EBB1A10BDC92B222F4152ED5 /* Banner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C66FE3A48511F18C8FF2DEF /* Banner.swift */; };
+		EF1FC146616E6E61611329A2 /* EmbyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED964AE3DE286A79F131CBA /* EmbyClient.swift */; };
 		F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */; };
 		F56243364D38BE09D937684A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3855754257202630A564173A /* App.swift */; };
 		F962E90B44855B5B757C1431 /* NavidromeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */; };
@@ -95,7 +105,9 @@
 		08E1C7C7E078182DCBB5B668 /* YimengWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengWidgets.swift; sourceTree = "<group>"; };
 		0962E95E6B55BCB808D64B49 /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
 		0E250285D45C295C91932A00 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		0ED964AE3DE286A79F131CBA /* EmbyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyClient.swift; sourceTree = "<group>"; };
 		10344A37F4E7381B0AA3FBD7 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-sysinfo.json"; sourceTree = "<group>"; };
 		16EAA934AB97BEE0902D11F2 /* MeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeView.swift; sourceTree = "<group>"; };
 		184013605DC0F6EEC27F5170 /* YimengWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YimengWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		197A06AAC57F015AE8C264DD /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
@@ -104,6 +116,9 @@
 		2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImage.swift; sourceTree = "<group>"; };
 		256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistDetailView.swift; sourceTree = "<group>"; };
 		26134EFA3C10B18CD7770A97 /* LibraryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCache.swift; sourceTree = "<group>"; };
+		2FA085F7CB3FF5489991F9B5 /* Backend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backend.swift; sourceTree = "<group>"; };
+		3019C28A157BEF762348D292 /* emby-users.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-users.json"; sourceTree = "<group>"; };
+		3318DA59414862B1885E2720 /* EmbyClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyClientTests.swift; sourceTree = "<group>"; };
 		35378CC4779ABA225F390237 /* NowPlayingMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingMore.swift; sourceTree = "<group>"; };
 		3855754257202630A564173A /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		3DA1C686614CB8D6930D4D49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -113,6 +128,7 @@
 		4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionView.swift; sourceTree = "<group>"; };
 		4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevatorIndex.swift; sourceTree = "<group>"; };
 		5178F9895770BE93EE018F18 /* fnos-track-list.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-track-list.json"; sourceTree = "<group>"; };
+		54114807AFE972B4C5E9DE7D /* emby-auth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-auth.json"; sourceTree = "<group>"; };
 		56439C44803E5E2178CD3157 /* fnos-expired.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-expired.json"; sourceTree = "<group>"; };
 		575967C96AA037C6933C8F7B /* Yimeng.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yimeng.entitlements; sourceTree = "<group>"; };
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
@@ -125,8 +141,11 @@
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
 		8D351EB4C609FA891763BACE /* EmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStates.swift; sourceTree = "<group>"; };
+		91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jellyfin-lyrics.json"; sourceTree = "<group>"; };
 		9743CD154042418ED809DFA6 /* YimengTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YimengTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		98436E751CC570C4F8472C05 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
+		9A3C163344750D61165021CE /* emby-audio.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-audio.json"; sourceTree = "<group>"; };
+		A0104A99592D847BABB23CC9 /* jellyfin-sysinfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jellyfin-sysinfo.json"; sourceTree = "<group>"; };
 		A14B0D85AF014834401939FD /* FnosClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClient.swift; sourceTree = "<group>"; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -141,6 +160,7 @@
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
 		F1B679B920A57BE24DC98F91 /* Yimeng.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yimeng.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengActivityAttributes.swift; sourceTree = "<group>"; };
+		FDB91791440EEB3F6CDCA091 /* emby-albums.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-albums.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -155,9 +175,16 @@
 		6F61438FCEA08D7E70B67C51 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
+				FDB91791440EEB3F6CDCA091 /* emby-albums.json */,
+				9A3C163344750D61165021CE /* emby-audio.json */,
+				54114807AFE972B4C5E9DE7D /* emby-auth.json */,
+				15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */,
+				3019C28A157BEF762348D292 /* emby-users.json */,
 				56439C44803E5E2178CD3157 /* fnos-expired.json */,
 				80FCD065D95D1B20100769C5 /* fnos-login.json */,
 				5178F9895770BE93EE018F18 /* fnos-track-list.json */,
+				91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */,
+				A0104A99592D847BABB23CC9 /* jellyfin-sysinfo.json */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -176,6 +203,7 @@
 		7F632480824F1FEF77789F46 /* YimengTests */ = {
 			isa = PBXGroup;
 			children = (
+				3318DA59414862B1885E2720 /* EmbyClientTests.swift */,
 				AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */,
 				6F61438FCEA08D7E70B67C51 /* Fixtures */,
 			);
@@ -200,6 +228,7 @@
 				256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */,
 				6672A08DBE481114D1F34B50 /* Assets.xcassets */,
 				B727C7B6B00ECD4C014811FE /* Audio.swift */,
+				2FA085F7CB3FF5489991F9B5 /* Backend.swift */,
 				6C66FE3A48511F18C8FF2DEF /* Banner.swift */,
 				4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */,
 				3DCA6146350902AD251CEEB2 /* Common.swift */,
@@ -210,6 +239,7 @@
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
 				ADFCEC6EA2D41604DD20F029 /* Effects.swift */,
 				4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */,
+				0ED964AE3DE286A79F131CBA /* EmbyClient.swift */,
 				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
 				A14B0D85AF014834401939FD /* FnosClient.swift */,
 				CB7AA12279A810579DDAD711 /* GenreView.swift */,
@@ -362,9 +392,16 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AF55DCEB6EFC3DF6C895856C /* emby-albums.json in Resources */,
+				17FCA2C64AA0229648AC071D /* emby-audio.json in Resources */,
+				6FE10BBA8C1BEFD2A0C2F8DF /* emby-auth.json in Resources */,
+				4D4C1224C5989668EDCD4B6B /* emby-sysinfo.json in Resources */,
+				5A06248C1CEC2FFBC760206D /* emby-users.json in Resources */,
 				95004421BB25025814B1211C /* fnos-expired.json in Resources */,
 				37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */,
 				0D9231157F1515B2203FAF61 /* fnos-track-list.json in Resources */,
+				AEC9E4D81F3A2346A3D5FDE0 /* jellyfin-lyrics.json in Resources */,
+				D021E580BFCCD8AF9134F3B7 /* jellyfin-sysinfo.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -375,6 +412,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				112DC50DEE50F63DAFB146ED /* EmbyClientTests.swift in Sources */,
 				3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -387,6 +425,7 @@
 				F56243364D38BE09D937684A /* App.swift in Sources */,
 				BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */,
 				D82AFDF7F83C3413E1E231B4 /* Audio.swift in Sources */,
+				C5884E9066B97C410971BA40 /* Backend.swift in Sources */,
 				EBB1A10BDC92B222F4152ED5 /* Banner.swift in Sources */,
 				B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */,
 				5F7DC5897731B0F4227472A9 /* Common.swift in Sources */,
@@ -397,6 +436,7 @@
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,
 				3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */,
 				F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */,
+				EF1FC146616E6E61611329A2 /* EmbyClient.swift in Sources */,
 				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
 				C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */,
 				E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */,

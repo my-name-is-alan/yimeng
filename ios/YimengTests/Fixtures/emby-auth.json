@@ -1,0 +1,3 @@
+{"User":{"Name":"lan","ServerId":"srv1","Id":"u-123","HasPassword":false,"Policy":{"IsAdministrator":true}},
+ "SessionInfo":{"Id":"sess1","UserId":"u-123","Client":"译梦","DeviceName":"iPhone"},
+ "AccessToken":"tok-abc","ServerId":"srv1"}
