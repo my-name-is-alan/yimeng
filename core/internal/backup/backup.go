@@ -65,7 +65,10 @@ type Service struct {
 	Keep        int    // scheduled/auto backups retained; <=0 = 7
 	CoreVersion string
 	Log         *slog.Logger
+	OnAuto      func() // called after each automatic backup
 	mu          sync.Mutex
+	pmu         sync.Mutex
+	disabled    bool
 }
 
 func (s *Service) log() *slog.Logger {
@@ -177,8 +180,11 @@ func (s *Service) Create(ctx context.Context, reason string) (Info, error) {
 	if err := os.Rename(f.Name(), final); err != nil {
 		return Info{}, err
 	}
-	s.rotate()
-	st, _ := os.Stat(final)
+	st, err := os.Stat(final)
+	if err != nil {
+		return Info{}, err
+	}
+	s.rotate(name)
 	s.log().Info("backup created", "name", name, "size", st.Size())
 	return Info{Name: name, Size: st.Size(), CreatedAt: st.ModTime().UTC(), Reason: sanitizeReason(reason)}, nil
 }
@@ -231,34 +237,125 @@ func (s *Service) Delete(name string) error {
 	return os.Remove(p)
 }
 
-func (s *Service) rotate() {
-	keep := s.Keep
-	if keep <= 0 {
-		keep = 7
-	}
+// autoReasons are the backups rotated by Keep; manual, pre-migration and
+// pre-restore backups are never deleted automatically.
+func autoReason(r string) bool { return r == "scheduled" || r == "auto" }
+
+func (s *Service) rotate(fresh string) {
+	keep := s.KeepN()
 	list, _ := s.List()
-	for i, b := range list {
-		if i >= keep {
+	// newest first; the backup just written always counts as the newest
+	slices.SortStableFunc(list, func(a, b Info) int {
+		if (a.Name == fresh) != (b.Name == fresh) {
+			if a.Name == fresh {
+				return -1
+			}
+			return 1
+		}
+		return b.CreatedAt.Compare(a.CreatedAt)
+	})
+	n := 0
+	for _, b := range list {
+		if !autoReason(b.Reason) {
+			continue
+		}
+		if n++; n > keep {
 			os.Remove(filepath.Join(s.Dir, b.Name))
 		}
 	}
 }
 
-// Run creates a backup every interval until ctx ends (interval<=0: disabled).
+// Policy is the automatic backup schedule (D54), changeable at runtime.
+type Policy struct {
+	Enabled bool `json:"enabled"`
+	Keep    int  `json:"keep"` // automatic backups retained (1..60)
+}
+
+// SetPolicy updates the schedule; Keep<=0 keeps the current value.
+func (s *Service) SetPolicy(p Policy) {
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	s.disabled = !p.Enabled
+	if p.Keep > 0 {
+		s.Keep = min(p.Keep, 60)
+	}
+}
+
+func (s *Service) Policy() Policy {
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	return Policy{Enabled: !s.disabled, Keep: s.keepLocked()}
+}
+
+func (s *Service) keepLocked() int {
+	if s.Keep <= 0 {
+		return 7
+	}
+	return s.Keep
+}
+
+// KeepN is the number of automatic backups retained.
+func (s *Service) KeepN() int {
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	return s.keepLocked()
+}
+
+// LastAuto is the time of the newest automatic backup (zero if none).
+func (s *Service) LastAuto() time.Time {
+	list, _ := s.List()
+	for _, b := range list {
+		if autoReason(b.Reason) {
+			return b.CreatedAt
+		}
+	}
+	return time.Time{}
+}
+
+// Due reports whether an automatic backup should run now.
+func (s *Service) Due(now time.Time, interval time.Duration) bool {
+	if interval <= 0 || !s.Policy().Enabled {
+		return false
+	}
+	last := s.LastAuto()
+	return last.IsZero() || now.Sub(last) >= interval
+}
+
+// StageFile stages one of the stored backups for restore (D54).
+func (s *Service) StageFile(ctx context.Context, name string, maxBytes int64, maxSchema int) (Manifest, error) {
+	p, err := s.Path(name)
+	if err != nil {
+		return Manifest{}, err
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return Manifest{}, err
+	}
+	defer f.Close()
+	return s.Stage(ctx, f, maxBytes, maxSchema)
+}
+
+// Run keeps an automatic backup at most interval old: it checks every few
+// minutes (so restarts don't postpone it) and creates one when due.
 func (s *Service) Run(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		return
 	}
-	t := time.NewTicker(interval)
+	check := min(10*time.Minute, interval)
+	t := time.NewTicker(check)
 	defer t.Stop()
 	for {
+		if s.Due(time.Now(), interval) {
+			if _, err := s.Create(ctx, "auto"); err != nil {
+				s.log().Warn("automatic backup", "err", err)
+			} else if s.OnAuto != nil {
+				s.OnAuto()
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			if _, err := s.Create(ctx, "scheduled"); err != nil {
-				s.log().Warn("scheduled backup", "err", err)
-			}
 		}
 	}
 }
@@ -375,4 +472,27 @@ func ApplyPending(dbPath string) (bool, error) {
 		os.Remove(dbPath + sfx)
 	}
 	return true, os.Rename(p, dbPath)
+}
+
+const policyKey = "backup.policy"
+
+// LoadPolicy applies the stored policy (if any) over the configured one.
+func (s *Service) LoadPolicy(ctx context.Context) {
+	var raw string
+	if err := s.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, policyKey).Scan(&raw); err != nil {
+		return
+	}
+	var p Policy
+	if json.Unmarshal([]byte(raw), &p) == nil {
+		s.SetPolicy(p)
+	}
+}
+
+// SavePolicy applies and persists the policy.
+func (s *Service) SavePolicy(ctx context.Context, p Policy) (Policy, error) {
+	s.SetPolicy(p)
+	cur := s.Policy()
+	b, _ := json.Marshal(cur)
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, policyKey, string(b))
+	return cur, err
 }

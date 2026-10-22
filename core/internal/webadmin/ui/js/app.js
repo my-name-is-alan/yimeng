@@ -162,6 +162,7 @@ async function boot() {
   onEvent("plugin.updated", async () => { await onl.loadMode(); shell(); });
   if (!booted) { booted = true; mountNowBar(navigate); document.querySelector("#nowbar .nb-right")?.prepend(sleepButton()); player.restore(); initSleep(); loadPlaybackPrefs(); }
   connectWS();
+  onEvent("security.alert", (a) => { const k = { device_paired: "新设备已配对", new_ip_login: "新 IP 登录", login_failed: "多次登录失败", lockout: "登录已被锁定" }[a.kind] || a.kind; toast(`安全提醒：${k}${a.ip ? `（${a.ip}）` : ""}`, a.severity === "info" ? "ok" : "err", 6000); });
   onEvent("library.cover", () => {}); // reserved for future live refresh
   route();
 }

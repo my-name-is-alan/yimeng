@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"io"
 	"log/slog"
 	"net/http"
@@ -93,11 +94,13 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	}
 	deps := Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
-		Backup:    &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
-		UserData:  &userdata.Store{DB: d},
-		Playlists: sc,
-		Admin:     sc,
-		Covers:    &covers.Cache{Dir: filepath.Join(tmp, "thumbs")},
+		Backup:         &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
+		UserData:       &userdata.Store{DB: d},
+		Alerts:         &secalert.Store{DB: d, Hub: hub},
+		BackupInterval: 24 * time.Hour,
+		Playlists:      sc,
+		Admin:          sc,
+		Covers:         &covers.Cache{Dir: filepath.Join(tmp, "thumbs")},
 		System: &system.Collector{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Roots: sc.Roots,
 			CacheMaxBytes: 1 << 30, Transcoder: tc, Backup: &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 			LatestScan: sc.Latest, Version: "test", SchemaVersion: db.Latest(migrations.FS), Started: time.Now(),

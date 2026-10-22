@@ -7,11 +7,13 @@ import (
 	"errors"
 	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
+	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
@@ -79,6 +81,8 @@ type Deps struct {
 	// LyricsFetcher is an optional remote lyrics provider chain.
 	LyricsFetcher  library.LyricsFetcher
 	UserData       *userdata.Store
+	Alerts         *secalert.Store // security alerts (D54), optional
+	BackupInterval time.Duration   // automatic backup interval (0 = off)
 	Playlists      PlaylistUseCases
 	System         *system.Collector
 	Presence       *Presence
@@ -196,6 +200,10 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/players", d.listPlayers)
 	mux.HandleFunc("GET /api/sessions", d.listSessions)
+	if d.Alerts != nil {
+		mux.HandleFunc("GET /api/security/alerts", d.listAlerts)
+		mux.HandleFunc("POST /api/security/alerts/read", d.readAlerts)
+	}
 	mux.HandleFunc("GET /api/rooms", d.listRooms)
 	mux.HandleFunc("POST /api/rooms", d.createRoom)
 	mux.HandleFunc("GET /api/rooms/{id}", d.getRoom)
@@ -287,6 +295,9 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("DELETE /api/system/backups/{name}", d.adminOnly(d.deleteBackup))
 		mux.HandleFunc("GET /api/system/export", d.adminOnly(d.exportBackup))
 		mux.HandleFunc("POST /api/system/restore", d.adminOnly(d.restoreBackup))
+		mux.HandleFunc("POST /api/system/backups/{name}/restore", d.adminOnly(d.restoreStored))
+		mux.HandleFunc("GET /api/system/backups/policy", d.adminOnly(d.getBackupPolicy))
+		mux.HandleFunc("PUT /api/system/backups/policy", d.adminOnly(d.putBackupPolicy))
 	}
 
 	h := securityHeaders(d.requireAuth(mux))

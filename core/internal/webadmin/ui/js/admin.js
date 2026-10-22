@@ -16,14 +16,14 @@ const SCAN_STATUS = { running: "扫描中", completed: "已完成", failed: "失
 // ── dashboard ──
 export async function dashboard(main, { cleanup }) {
   const scanBox = h("div"), sysBox = h("div"), statsBox = h("div", { class: "stats" }), playersBox = h("div"), logBox = h("div", { class: "logs", style: { maxHeight: "260px" } });
-  const healthBox = h("div"), jobsBox = h("div"), rootsBox = h("div"), diagBox = h("div");
+  const alertBox = h("div"), healthBox = h("div"), jobsBox = h("div"), rootsBox = h("div"), diagBox = h("div");
   const live = h("span", { class: "ws-ind muted" });
   main.replaceChildren(head("仪表盘", h("span", null, "Core 运行状态与后台任务 · ", live),
       h("button", { class: "btn", onclick: () => startScan(false) }, icon("refresh"), "增量扫描"),
       h("button", { class: "btn primary", onclick: () => startScan(true) }, icon("disc"), "完整重扫")),
     adminGate() || "", statsBox,
     h("div", { class: "grid-cards section", style: { marginTop: "18px" } }, card("媒体库扫描", "disc", scanBox), card("后台任务", "pulse", jobsBox), card("系统", "settings", sysBox),
-      card("音乐目录", "folder", rootsBox), card("曲库健康", "check", healthBox), card("播放器", "speaker", playersBox)),
+      card("安全提醒", "shield", alertBox), card("音乐目录", "folder", rootsBox), card("曲库健康", "check", healthBox), card("播放器", "speaker", playersBox)),
     h("div", { class: "section" }, diagBox),
     h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "最近日志"), h("a", { class: "btn sm", href: "#/logs" }, "全部日志")), logBox));
   const setLive = () => live.replaceChildren(h("span", { class: `dot ${wsState.connected ? "ok" : "err"}` }), wsState.connected ? "实时连接" : "轮询中");
@@ -88,8 +88,22 @@ export async function dashboard(main, { cleanup }) {
   let devices = {};
   get("/devices").then((r) => { r.items.forEach((d) => (devices[d.id] = d.name)); }).catch(() => {});
   const deviceName = (id) => devices[id] || id.slice(0, 12);
+  const ALERT = { device_paired: "新设备配对", new_ip_login: "新 IP 登录", login_failed: "多次登录失败", lockout: "账号/IP 已锁定" };
+  async function loadAlerts() {
+    try {
+      const r = await get("/security/alerts?limit=8");
+      alertBox.replaceChildren(h("div", { class: "row", style: { marginBottom: "8px" } }, h("span", { class: `badge ${r.unread ? "warn" : "ok"}` }, r.unread ? `${r.unread} 条未读` : "无未读"), h("span", { class: "spacer" }),
+        r.unread ? h("button", { class: "btn sm", onclick: async () => { try { await post("/security/alerts/read", {}); loadAlerts(); } catch (e) { errToast(e); } } }, icon("check"), "全部已读") : null),
+        ...(r.items.length ? r.items.map((a) => h("div", { class: "li", style: { opacity: a.read ? 0.6 : 1 } },
+          h("span", { class: `dot ${a.severity === "critical" ? "err" : a.severity === "warn" ? "warn" : "ok"}` }),
+          h("div", { class: "grow" }, h("div", { class: "t ellipsis" }, ALERT[a.kind] || a.kind, a.detail?.username ? ` · ${a.detail.username}` : a.detail?.name ? ` · ${a.detail.name}` : ""),
+            h("div", { class: "s ellipsis" }, `${fmtAgo(a.at)}${a.ip ? ` · ${a.ip}` : ""}${a.detail?.failures ? ` · ${a.detail.failures} 次` : ""}`))))
+          : [h("p", { class: "muted" }, "暂无安全提醒")]));
+    } catch (e) { if (e.status !== 401) alertBox.replaceChildren(h("p", { class: "muted" }, "无法加载")); }
+  }
+  loadAlerts();
   await refresh();
-  const offs = [onEvent("scan.progress", (j) => { renderScan(j); if (j.status !== "running") setTimeout(refresh, 400); }), onEvent("library.loudness", () => refresh()),
+  const offs = [onEvent("security.alert", loadAlerts), onEvent("scan.progress", (j) => { renderScan(j); if (j.status !== "running") setTimeout(refresh, 400); }), onEvent("library.loudness", () => refresh()),
     onEvent("player.state", () => refresh()), onEvent("ws.status", setLive)];
   const timer = setInterval(() => { if (!document.hidden) refresh(); }, wsState.connected ? 10000 : 3000);
   cleanup(() => { offs.forEach((f) => f()); clearInterval(timer); });
@@ -292,6 +306,10 @@ export async function settings(main) {
   const bkList = h("div");
   const renderBk = (items) => bkList.replaceChildren(...(items.length ? items.map((b) => h("div", { class: "li" }, icon("disc"),
     h("div", { class: "grow" }, h("div", { class: "t ellipsis mono" }, b.name), h("div", { class: "s" }, `${fmtTime(b.created_at)} · ${fmtBytes(b.size)}${b.reason ? ` · ${b.reason}` : ""}`)),
+    h("button", { class: "btn icon sm", "aria-label": "恢复到此备份", title: "恢复到此备份", disabled: !admin, onclick: async () => {
+      if (!(await confirmDlg("恢复到此备份", `将把数据库恢复为「${b.name}」（${fmtTime(b.created_at)}）。此后的播放记录、歌单等改动都会丢失。恢复在 Core 重启后生效，当前数据库会保留一份 *.pre-restore 副本。`, "暂存恢复", true))) return;
+      try { const r = await post(`/system/backups/${encodeURIComponent(b.name)}/restore`, { confirm: b.name }); toast("已暂存恢复，重启 Core 后生效", "ok", 6000); } catch (e) { errToast(e); }
+    } }, icon("restore")),
     h("button", { class: "btn icon sm", "aria-label": "下载", onclick: () => download(`/system/backups/${encodeURIComponent(b.name)}`, b.name) }, icon("download")),
     h("button", { class: "btn icon sm danger", "aria-label": "删除", onclick: async () => { if (await confirmDlg("删除备份", b.name, "删除", true)) { try { await del(`/system/backups/${encodeURIComponent(b.name)}`); reload(); } catch (e) { errToast(e); } } } }, icon("trash"))))
     : [h("p", { class: "muted" }, "还没有备份")]));
@@ -301,7 +319,20 @@ export async function settings(main) {
     if (!(await confirmDlg("从备份恢复", `将使用「${f.name}」恢复数据库。恢复会在 Core 下次重启时生效，当前数据库会保留一份 *.pre-restore 副本。`, "暂存恢复", true))) return;
     try { const r = await post("/system/restore", f); toast(r.message || "已暂存，重启 Core 后生效", "ok", 6000); } catch (e) { errToast(e); }
   } });
-  const bkSec = sec("备份与恢复", `自动备份间隔 ${rt.backup_interval || "—"}，保留 ${rt.backup_keep ?? "—"} 份 · 目录 ${rt.backup_dir || "—"}。备份包含数据库与密钥（Vault 凭据仍为加密状态）。`, bkList,
+  let pol = admin ? await get("/system/backups/policy").catch(() => null) : null;
+  const polBox = h("div");
+  const renderPol = () => {
+    if (!pol) return polBox.replaceChildren();
+    const savePol = async (patch) => { try { pol = await put("/system/backups/policy", patch); renderPol(); toast("已保存"); } catch (e) { errToast(e); renderPol(); } };
+    const sw = h("input", { type: "checkbox", class: "switch", checked: pol.enabled, "aria-label": "自动备份", onchange: () => savePol({ enabled: sw.checked }) });
+    const step = (d) => h("button", { class: "btn icon sm", "aria-label": d > 0 ? "多保留一份" : "少保留一份", disabled: (d < 0 && pol.keep <= 1) || (d > 0 && pol.keep >= 60), onclick: () => savePol({ keep: pol.keep + d }) }, d > 0 ? "+" : "−");
+    polBox.replaceChildren(h("div", { class: "li" }, h("div", { class: "grow" }, h("div", { class: "t" }, "每日自动备份"),
+      h("div", { class: "s" }, `间隔 ${pol.interval} · ${pol.last_auto ? `上次 ${fmtAgo(pol.last_auto)}` : "尚未自动备份"}`)), sw),
+      h("div", { class: "li" }, h("div", { class: "grow" }, h("div", { class: "t" }, "保留自动备份份数"), h("div", { class: "s" }, "只轮换自动备份；手动与迁移前备份不会被删除")),
+        step(-1), h("b", { style: { minWidth: "2.5em", textAlign: "center" } }, pol.keep), step(1)));
+  };
+  renderPol();
+  const bkSec = sec("备份与恢复", `目录 ${rt.backup_dir || "—"}。备份包含数据库与 Vault 凭据（加密状态）；master.key 不在备份内，请另行妥善保存。`, polBox, bkList,
     h("div", { class: "row wrap", style: { marginTop: "12px" } },
       h("button", { class: "btn sm primary", disabled: !admin, onclick: async () => { try { await post("/system/backups", {}); toast("备份已创建"); reload(); } catch (e) { errToast(e); } } }, icon("plus"), "立即备份"),
       h("button", { class: "btn sm", disabled: !admin, onclick: () => download("/system/export", `yimeng-export-${Date.now()}.ymbak`) }, icon("download"), "导出"),

@@ -116,11 +116,17 @@ func (d Deps) authLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, auth.ErrBadCredentials) || errors.Is(err, auth.ErrRateLimited) {
 			d.Log.Warn("web login failed", "ip", clientIP(r), "reason", err.Error())
+			if d.Alerts != nil {
+				d.Alerts.LoginFailed(r.Context(), b.Username, clientIP(r), errors.Is(err, auth.ErrRateLimited))
+			}
 		}
 		d.acctErr(w, "login", err)
 		return
 	}
 	d.Log.Info("web login", "user", u.Username, "device", dev.ID)
+	if d.Alerts != nil {
+		d.Alerts.LoginOK(r.Context(), u.ID, u.Username, dev.ID, clientIP(r))
+	}
 	d.sessionReply(w, http.StatusOK, dev, u, tok)
 }
 

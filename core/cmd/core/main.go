@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"log/slog"
 	"net"
 	"net/http"
@@ -403,6 +404,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	reload := config.NewReloader(cfg, log)
 	reload.NotifySIGHUP()
 	_ = reload
+	bk.LoadPolicy(ctx)
+	bk.OnAuto = func() { hub.Publish("system.backup", map[string]string{"reason": "auto"}) }
 	go bk.Run(ctx, cfg.Backup.Interval)
 	go func() {
 		if err := discovery.Run(ctx, discovery.Options{Enabled: cfg.MDNS, Bind: cfg.Bind, Version: version, Name: os.Getenv("YIMENG_SERVER_NAME"), Log: log}); err != nil {
@@ -457,6 +460,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Log:      log,
 
 			Backup:         bk,
+			BackupInterval: cfg.Backup.Interval,
+			Alerts:         &secalert.Store{DB: database, Hub: hub},
 			UserData:       ud,
 			Playlists:      scanner,
 			Admin:          scanner,

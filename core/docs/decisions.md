@@ -428,3 +428,12 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - Two audio elements. When ≤20 s of the current track remain, the next track preloads into the spare element; on `ended` the spare is swapped in and plays immediately. If the next track isn't ready yet, it falls back to a normal load.
   - Gain is applied through element volume. That can only attenuate, so positive gains are capped at unity.
   - Volume = user volume × ReplayGain × sleep fade.
+
+## D54 — Security alerts + automatic backups
+- **Alerts** (`security_events`, migration 0024) are raised for: a new device pairing (info), a sign-in from an IP the account hasn't used before (warn; the first-ever sign-in only records the IP), the 3rd failed sign-in within 15 min for one username+IP (warn, once per window), and a lockout (critical, once per window).
+  - `GET /security/alerts` → `{items, unread}`. Admins see all; users see only their account's. `POST /security/alerts/read {ids?}` marks read (no ids = all visible).
+  - Live as the `security.alert` event (WS + SSE), delivered only to admins and the affected account. Failed sign-ins for unknown usernames go to admins only.
+  - Client IP is the TCP peer address; X-Forwarded-For is not trusted. The table is bounded at 5000 rows.
+- **Automatic backups:** policy `{enabled, keep 1..60}` in settings (`GET/PUT /system/backups/policy`, admin). A backup is taken when the last automatic one is older than the interval (default 24h, checked every ≤10 min). Only automatic backups rotate; manual and pre-migration backups are never deleted by rotation.
+  - Backups contain library.db including the encrypted Vault entries. `master.key` is never included.
+- **Restore from the admin UI:** `POST /system/backups/{name}/restore {confirm: name}` (admin; the confirm field must repeat the name). The backup is validated and staged → 202 `restart_required`; it is applied at the next Core start, keeping the current DB as `.pre-restore-*`.

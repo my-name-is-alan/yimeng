@@ -71,6 +71,9 @@ func (d Deps) pair(w http.ResponseWriter, r *http.Request) {
 		d.internal(w, "pair", err)
 	default:
 		d.Log.Info("device paired", "device", dev.ID, "name", dev.Name)
+		if d.Alerts != nil {
+			d.Alerts.DevicePaired(r.Context(), dev.UserID, dev.ID, dev.Name, b.DeviceType, clientIP(r))
+		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusCreated, map[string]any{"device": dev, "token": tok})
 	}

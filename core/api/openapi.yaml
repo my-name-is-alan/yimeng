@@ -845,6 +845,56 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/system/backups/policy:
+    get:
+      tags: [system]
+      summary: Automatic backup policy (admin, D54)
+      responses:
+        "200": { description: Policy, content: { application/json: { schema: { $ref: "#/components/schemas/BackupPolicy" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [system]
+      summary: Update the automatic backup policy (admin). Only automatic backups rotate; manual and pre-migration backups are kept.
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { enabled: { type: boolean }, keep: { type: integer, minimum: 1, maximum: 60 } } } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/BackupPolicy" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/system/backups/{name}/restore:
+    parameters: [{ name: name, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [system]
+      summary: Stage a stored backup for restore (admin). Applied at the next Core restart; the current DB is kept as .pre-restore-*.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [confirm], properties: { confirm: { type: string, description: Must equal the backup name } } } } }
+      responses:
+        "202": { description: Staged, content: { application/json: { schema: { type: object, properties: { restart_required: { type: boolean }, manifest: { type: object }, message: { type: string } } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/security/alerts:
+    get:
+      tags: [security]
+      summary: Security alerts (D54). Admins see all; users see their own account's. Live as the `security.alert` event.
+      parameters: [{ name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }]
+      responses:
+        "200": { description: Alerts, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/SecurityAlert" } }, unread: { type: integer } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/security/alerts/read:
+    post:
+      tags: [security]
+      summary: Mark alerts read (ids omitted = all visible to the caller)
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { ids: { type: array, maxItems: 500, items: { type: integer } } } } } }
+      responses:
+        "204": { description: Marked }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/system/export:
     get:
       tags: [system]
@@ -2552,6 +2602,26 @@ components:
         lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
         text: { type: string }
         meta: { type: object, additionalProperties: { type: string } }
+    BackupPolicy:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        keep: { type: integer, minimum: 1, maximum: 60 }
+        interval: { type: string, example: 24h0m0s }
+        last_auto: { type: string, format: date-time, nullable: true }
+        includes_key: { type: boolean, description: Always false; master.key is never in backups }
+    SecurityAlert:
+      type: object
+      properties:
+        id: { type: integer }
+        at: { type: string, format: date-time }
+        kind: { type: string, enum: [device_paired, new_ip_login, login_failed, lockout] }
+        severity: { type: string, enum: [info, warn, critical] }
+        user_id: { type: string }
+        device_id: { type: string }
+        ip: { type: string }
+        detail: { type: object }
+        read: { type: boolean }
     PlaybackPrefs:
       type: object
       properties:

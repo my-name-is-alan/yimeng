@@ -26,4 +26,3 @@ func TestPlaybackPrefs(t *testing.T) {
 		t.Fatalf("per account: alice %s bob %s", a, o)
 	}
 }
-

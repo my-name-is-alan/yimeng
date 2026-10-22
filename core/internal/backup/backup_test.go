@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/db"
 	"github.com/my-name-is-alan/yimeng/core/migrations"
@@ -34,13 +35,19 @@ func setup(t *testing.T) (*Service, *sql.DB) {
 func TestCreateListRotate(t *testing.T) {
 	s, _ := setup(t)
 	ctx := context.Background()
-	for _, r := range []string{"a", "b", "pre-migrate"} {
+	s.SetPolicy(Policy{Enabled: true, Keep: 1})
+	for _, r := range []string{"scheduled", "auto", "pre-migrate", "manual"} {
 		if _, err := s.Create(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 	}
+	// only automatic backups rotate; manual / pre-migrate are kept (D54)
 	list, _ := s.List()
-	if len(list) > 2 {
+	reasons := map[string]bool{}
+	for _, b := range list {
+		reasons[b.Reason] = true
+	}
+	if len(list) != 3 || !reasons["pre-migrate"] || !reasons["manual"] {
 		t.Fatalf("rotation: %v", list)
 	}
 	if _, err := s.Path("../lib.db"); !errors.Is(err, ErrNotFound) {
@@ -94,5 +101,39 @@ func TestStageAndApply(t *testing.T) {
 	}
 	if ok, _ := ApplyPending(s.DBPath); ok {
 		t.Fatal("applied twice")
+	}
+}
+
+func TestAutoPolicyAndStageFile(t *testing.T) {
+	s, _ := setup(t)
+	ctx := context.Background()
+	now := time.Now()
+	if !s.Due(now, 24*time.Hour) {
+		t.Fatal("no backup yet: due")
+	}
+	s.SetPolicy(Policy{Enabled: false})
+	if s.Due(now, 24*time.Hour) || s.Policy().Enabled {
+		t.Fatal("disabled policy still due")
+	}
+	s.SetPolicy(Policy{Enabled: true, Keep: 99})
+	if s.Policy().Keep != 60 {
+		t.Fatalf("keep cap %d", s.Policy().Keep)
+	}
+	b, err := s.Create(ctx, "auto")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Due(now, 24*time.Hour) || !s.Due(now.Add(25*time.Hour), 24*time.Hour) {
+		t.Fatal("due after fresh auto backup")
+	}
+	m, err := s.StageFile(ctx, b.Name, 1<<30, 1000)
+	if err != nil || m.Reason != "auto" {
+		t.Fatal(m, err)
+	}
+	if _, err := os.Stat(PendingPath(s.DBPath)); err != nil {
+		t.Fatal("not staged")
+	}
+	if _, err := s.StageFile(ctx, "../lib.db", 1<<30, 1000); !errors.Is(err, ErrNotFound) {
+		t.Fatal("traversal staged")
 	}
 }

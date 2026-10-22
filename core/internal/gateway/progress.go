@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"net/http"
 	"strings"
 	"time"
@@ -84,6 +85,12 @@ type scopedEvent struct {
 
 // eventFor unwraps a user-scoped event for dev; ok=false hides it.
 func eventFor(dev auth.Device, data any) (any, bool) {
+	if ae, ok := data.(secalert.Event); ok { // admins + the affected account
+		if dev.Admin || (ae.UserID != "" && ae.UserID == dev.UserID) {
+			return ae.Alert, true
+		}
+		return nil, false
+	}
 	se, ok := data.(scopedEvent)
 	if !ok {
 		return data, true
