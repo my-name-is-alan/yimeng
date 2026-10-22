@@ -602,9 +602,18 @@ func (d Deps) onlineItem(w http.ResponseWriter, r *http.Request) {
 	case "tracks":
 		v, err = d.Online.Track(ctx, id)
 	case "albums":
-		v, err = d.Online.Album(ctx, id)
+		var a online.Album
+		a, err = d.Online.Album(ctx, id)
+		a.Cover = d.onlineCover(a.CoverURL)
+		d.decorateOnlineTracks(a.Tracks)
+		v = a
 	case "artists":
-		v, err = d.Online.Artist(ctx, id)
+		var a online.Artist
+		a, err = d.Online.Artist(ctx, id)
+		as := []online.Artist{a}
+		d.decorateOnlineArtists(as)
+		d.decorateOnlineTracks(as[0].TopTracks)
+		v = as[0]
 	case "playlists":
 		var p online.Playlist
 		p, err = d.Online.Playlist(ctx, id)
@@ -1095,6 +1104,11 @@ func (d Deps) onlineSearch(r *http.Request, q string, limit int) []online.Origin
 	res := d.Online.Search(r.Context(), q, limit, only)
 	if res == nil {
 		res = []online.OriginResult{}
+	}
+	for _, g := range res {
+		if g.Result != nil {
+			d.decorateOnlineResult(g.Result)
+		}
 	}
 	return res
 }

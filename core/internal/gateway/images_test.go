@@ -20,6 +20,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/online"
 )
 
 type imgMatcher struct {
@@ -157,5 +158,24 @@ func TestImageCacheEndpoints(t *testing.T) {
 	// URL records survive: refetched on demand
 	if res, _ := e.do("GET", "/api/v1/images/"+key, "", ""); res.StatusCode != 200 || hits.Load() < 3 {
 		t.Errorf("refetch after clear: %d hits=%d", res.StatusCode, hits.Load())
+	}
+}
+
+func TestDecorateOnlineArtistsAliases(t *testing.T) {
+	c := &covers.Cache{Dir: t.TempDir()}
+	d := Deps{Covers: c}
+	as := []online.Artist{{ID: "netease:6452", PictureURL: "http://p1.music.126.net/x.jpg"}, {ID: "qq:1", PictureURL: "https://evil.example/a.jpg"}}
+	d.decorateOnlineArtists(as)
+	if as[0].Cover == nil || !strings.HasPrefix(as[0].Cover.URL, "/api/v1/images/") || as[0].Cover.SourceURL != "https://p1.music.126.net/x.jpg" {
+		t.Fatalf("cover %+v", as[0].Cover)
+	}
+	if u, ok := c.Aliased("artist:netease:6452"); !ok || u != "https://p1.music.126.net/x.jpg" {
+		t.Fatal("alias not remembered")
+	}
+	if as[1].Cover == nil || strings.HasPrefix(as[1].Cover.URL, "/api/") {
+		t.Fatalf("non-allow-listed host must stay a plain CDN URL: %+v", as[1].Cover)
+	}
+	if _, ok := c.Aliased("artist:qq:1"); ok {
+		t.Fatal("disallowed host aliased")
 	}
 }

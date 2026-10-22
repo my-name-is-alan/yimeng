@@ -22,6 +22,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/online"
 )
 
 func (d Deps) imageByKey(w http.ResponseWriter, r *http.Request) {
@@ -287,4 +288,31 @@ func (d Deps) subsonicAlbumImage(ctx context.Context, id string) (notes, img str
 		img = d.imageURL(p)
 	}
 	return "", img
+}
+
+// decorateOnlineResult routes every online cover / artist picture through the
+// image cache and remembers artist pictures for risk-control fallback.
+func (d Deps) decorateOnlineResult(r *online.SearchResult) {
+	d.decorateOnlineTracks(r.Tracks)
+	d.decorateOnlinePlaylists(r.Playlists)
+	d.decorateOnlineAlbums(r.Albums)
+	d.decorateOnlineArtists(r.Artists)
+}
+
+func (d Deps) decorateOnlineAlbums(as []online.Album) {
+	for i := range as {
+		as[i].Cover = d.onlineCover(as[i].CoverURL)
+	}
+}
+
+func (d Deps) decorateOnlineArtists(as []online.Artist) {
+	for i := range as {
+		if as[i].PictureURL == "" {
+			continue
+		}
+		if d.Covers != nil && as[i].ID != "" {
+			d.Covers.Alias("artist:"+as[i].ID, as[i].PictureURL)
+		}
+		as[i].Cover = d.onlineCover(as[i].PictureURL)
+	}
 }

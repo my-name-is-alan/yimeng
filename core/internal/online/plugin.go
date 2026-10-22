@@ -162,27 +162,29 @@ type CoverRef struct {
 }
 
 type Album struct {
-	ID          string  `json:"id"`
-	Origin      string  `json:"origin"`
-	Title       string  `json:"title"`
-	Artists     []Ref   `json:"artists"`
-	ArtistName  string  `json:"artist_name"`
-	CoverURL    string  `json:"cover_url,omitempty"`
-	Year        int     `json:"year,omitempty"`
-	TrackCount  int     `json:"track_count"`
-	Description string  `json:"description,omitempty"`
-	Tracks      []Track `json:"tracks,omitempty"`
+	ID          string    `json:"id"`
+	Origin      string    `json:"origin"`
+	Title       string    `json:"title"`
+	Artists     []Ref     `json:"artists"`
+	ArtistName  string    `json:"artist_name"`
+	CoverURL    string    `json:"cover_url,omitempty"`
+	Year        int       `json:"year,omitempty"`
+	TrackCount  int       `json:"track_count"`
+	Description string    `json:"description,omitempty"`
+	Tracks      []Track   `json:"tracks,omitempty"`
+	Cover       *CoverRef `json:"cover,omitempty"` // set by the gateway (D60)
 }
 
 type Artist struct {
-	ID          string  `json:"id"`
-	Origin      string  `json:"origin"`
-	Name        string  `json:"name"`
-	PictureURL  string  `json:"picture_url,omitempty"`
-	Description string  `json:"description,omitempty"`
-	AlbumCount  int     `json:"album_count,omitempty"`
-	TrackCount  int     `json:"track_count,omitempty"`
-	TopTracks   []Track `json:"top_tracks,omitempty"`
+	ID          string    `json:"id"`
+	Origin      string    `json:"origin"`
+	Name        string    `json:"name"`
+	PictureURL  string    `json:"picture_url,omitempty"`
+	Description string    `json:"description,omitempty"`
+	AlbumCount  int       `json:"album_count,omitempty"`
+	TrackCount  int       `json:"track_count,omitempty"`
+	TopTracks   []Track   `json:"top_tracks,omitempty"`
+	Cover       *CoverRef `json:"cover,omitempty"` // picture via Core's image cache, set by the gateway (D60)
 }
 
 type Playlist struct {
