@@ -54,6 +54,9 @@ func redundant(p transcode.Profile, s library.StreamInfo) bool {
 // transcode is streamed progressively (chunked, Accept-Ranges: none) while it
 // is being written to the cache.
 func (d Deps) stream(w http.ResponseWriter, r *http.Request) {
+	if d.streamExternal(w, r, r.PathValue("id")) {
+		return
+	}
 	f, err := d.Library.TrackFile(r.Context(), r.PathValue("id"))
 	if errors.Is(err, library.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "file not found")

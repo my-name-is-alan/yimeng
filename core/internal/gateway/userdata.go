@@ -89,6 +89,10 @@ func (d Deps) favorites(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) setFavorite(fav bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := d.ensureExternal(r); err != nil {
+			d.onlineErr(w, "favorite", err)
+			return
+		}
 		if err := d.UserData.SetFavorite(r.Context(), r.PathValue("type"), r.PathValue("id"), fav); err != nil {
 			d.userErr(w, r.PathValue("type"), err)
 			return
@@ -104,6 +108,10 @@ func (d Deps) setRating(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeBody(r, &b); err != nil || b.Rating == nil {
 		writeErr(w, http.StatusBadRequest, "invalid_body", "rating (0-5) required")
+		return
+	}
+	if err := d.ensureExternal(r); err != nil {
+		d.onlineErr(w, "rating", err)
 		return
 	}
 	if err := d.UserData.SetRating(r.Context(), r.PathValue("type"), r.PathValue("id"), *b.Rating); err != nil {

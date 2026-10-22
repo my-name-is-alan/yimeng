@@ -297,3 +297,20 @@ func (s *Scanner) LocalTrackCount(ctx context.Context) (int, error) {
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM tracks WHERE origin='local'`).Scan(&n)
 	return n, err
 }
+
+// Setting reads a value from the settings key/value table ("" when unset).
+func (s *Scanner) Setting(ctx context.Context, key string) (string, error) {
+	var v sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v.String, err
+}
+
+// SetSetting upserts a value in the settings key/value table.
+func (s *Scanner) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES (?,?)
+		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+	return err
+}

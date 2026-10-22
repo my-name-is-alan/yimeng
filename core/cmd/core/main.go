@@ -29,6 +29,8 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/loudness"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/online"
+	"github.com/my-name-is-alan/yimeng/core/internal/online/netease"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback/sources"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
@@ -114,7 +116,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	clear(key)
 	streamReg := playback.NewStreamRegistry()
-	for _, id := range []string{"netease", "qq", "apple"} {
+	// NetEase (and later QQ/Kugou) are online plugins (internal/online); only
+	// the Apple Music placeholder remains on the legacy StreamSource SPI.
+	for _, id := range []string{"apple"} {
 		srcID := id
 		methods := []vault.LoginMethod{vault.LoginCookie, vault.LoginQRCode}
 		if srcID == "apple" {
@@ -210,6 +214,29 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err := scanner.LoadSettings(ctx); err != nil {
 		return err
 	}
+	plugins := online.NewRegistry(database, vlt, log, nil)
+	if err := plugins.Register(netease.New(netease.Options{})); err != nil {
+		return err
+	}
+	if err := plugins.Load(ctx); err != nil {
+		return err
+	}
+	onlineCache := online.NewCache(database)
+	onlineSvc := online.NewService(plugins, scanner, onlineCache, log)
+	scanner.SetExternalResolver(onlineSvc.Materialize)
+	go func() {
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				onlineCache.Prune(ctx)
+			}
+		}
+	}()
+	log.Info("online plugins registered", "ids", plugins.IDs(), "enabled", plugins.EnabledIDs())
 	if err := scanner.RecoverInterrupted(ctx); err != nil {
 		return err
 	}
@@ -296,6 +323,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			RateLimits:     rl,
 			Subsonic:       sub,
 			Sources:        streamReg,
+			Online:         onlineSvc,
+			OnlineLib:      scanner,
 			Vault:          vlt,
 			UserEdits:      scanner,
 			LyricsSearch:   lrclibSearch.Search,

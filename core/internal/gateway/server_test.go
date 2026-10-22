@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -58,7 +59,10 @@ func (e *env) do(method, path, body, tok string, hdr ...string) (*http.Response,
 	return res, b
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, nil) }
+
+// newEnvWith lets a test add optional dependencies before the router is built.
+func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, "music")
 	os.MkdirAll(filepath.Join(root, "A"), 0o755)
@@ -87,7 +91,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(NewRouter(Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
+	deps := Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
 		Backup:    &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 		UserData:  &userdata.Store{DB: d},
@@ -100,7 +104,11 @@ func newEnv(t *testing.T) *env {
 			Features: map[string]bool{"backup": true, "lyrics": true, "history": true, "playlists": true}},
 		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS),
 		UserEdits: sc, Logs: testRing, LyricsSearch: testLyricsSearch, Matcher: fakeMatcher{},
-		Runtime: map[string]any{"watch_mode": "auto"}}))
+		Runtime: map[string]any{"watch_mode": "auto"}}
+	if mut != nil {
+		mut(&deps, d, sc)
+	}
+	srv := httptest.NewServer(NewRouter(deps))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}
 	code, _, _ := a.NewCode()

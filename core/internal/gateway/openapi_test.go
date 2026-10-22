@@ -13,6 +13,8 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	src, _ := os.ReadFile("server.go")
+	more, _ := os.ReadFile("online.go")
+	src = append(src, more...)
 	for _, line := range strings.Split(string(src), "\n") {
 		i := strings.Index(line, `mux.HandleFunc("`)
 		if i < 0 {

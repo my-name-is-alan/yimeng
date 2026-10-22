@@ -12,6 +12,7 @@ import (
 
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/online"
 )
 
 func listParams(r *http.Request) (library.ListParams, error) {
@@ -149,6 +150,8 @@ type SearchResult struct {
 	Artists []library.Artist `json:"artists"`
 	Albums  []library.Album  `json:"albums"`
 	Tracks  []library.Track  `json:"tracks"`
+	// Online is present only with ?online=1: one group per enabled plugin.
+	Online []online.OriginResult `json:"online,omitempty"`
 }
 
 func (d Deps) search(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +178,7 @@ func (d Deps) search(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return nil, err
 		}
-		return SearchResult{Artists: ar.Items, Albums: al.Items, Tracks: tr.Items}, nil
+		return SearchResult{Artists: ar.Items, Albums: al.Items, Tracks: tr.Items, Online: d.onlineSearch(r, p.Q, p.Limit)}, nil
 	})
 }
 
@@ -190,6 +193,12 @@ func (d Deps) trackCover(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) serveCover(w http.ResponseWriter, r *http.Request, path string, err error) {
+	if err == nil && (strings.HasPrefix(path, "https://") || strings.HasPrefix(path, "http://")) {
+		// online covers live on the platform CDN
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		http.Redirect(w, r, strings.Replace(path, "http://", "https://", 1), http.StatusFound)
+		return
+	}
 	if err != nil || path == "" || d.Covers == nil {
 		d.serveFile(w, r, path, err, "", "private, max-age=86400")
 		return
@@ -269,6 +278,9 @@ func (d Deps) enrich(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) trackLyrics(w http.ResponseWriter, r *http.Request) {
+	if d.externalLyrics(w, r, r.PathValue("id")) {
+		return
+	}
 	l, err := d.Library.Lyrics(r.Context(), r.PathValue("id"), d.LyricsFetcher)
 	switch {
 	case errors.Is(err, library.ErrNotFound):

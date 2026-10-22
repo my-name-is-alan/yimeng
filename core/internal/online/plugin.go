@@ -24,6 +24,7 @@ var (
 	ErrDisabled     = errors.New("online: plugin disabled")
 	ErrUnknown      = errors.New("online: unknown plugin")
 	ErrUpstream     = errors.New("online: upstream error")
+	ErrBadInput     = errors.New("online: bad input")
 )
 
 // Capability is advertised in the manifest and drives which UI surfaces appear.

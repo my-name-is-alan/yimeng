@@ -45,6 +45,9 @@ func (d Deps) plDone(w http.ResponseWriter, code int, p library.Playlist, err er
 }
 
 func (d Deps) listPlaylists(w http.ResponseWriter, r *http.Request) {
+	if d.listPlaylistScope(w, r, r.URL.Query().Get("scope")) {
+		return
+	}
 	l, err := d.Playlists.ListPlaylists(r.Context())
 	if err != nil {
 		d.plErr(w, err)

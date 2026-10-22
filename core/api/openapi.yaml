@@ -411,6 +411,8 @@ paths:
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, maxLength: 200 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - { name: online, in: query, schema: { type: string, enum: ["1"] }, description: "Also search enabled online plugins in parallel; adds an `online` array grouped by platform" }
+        - { name: origins, in: query, schema: { type: string }, description: "Comma-separated plugin ids to restrict the online search" }
       responses:
         "200":
           description: Results
@@ -887,7 +889,10 @@ paths:
   /api/playlists:
     get:
       tags: [playlists]
-      summary: All playlists (static and smart) with counts
+      summary: All playlists (static and smart) with counts. With ?scope=mine|recommend|discover|charts returns external playlists grouped by platform ({scope, groups})
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [local, mine, recommend, discover, charts] } }
+        - { name: origin, in: query, schema: { type: string } }
       responses:
         "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1407,6 +1412,146 @@ paths:
         - { name: day, in: query, schema: { type: integer, minimum: 1, maximum: 31 } }
       responses:
         "200": { description: OnThisDay }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/settings/mode:
+    get:
+      tags: [settings]
+      summary: First-run mode (local | online | both), local track count and enabled plugins
+      responses:
+        "200": { description: Mode, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [settings]
+      summary: Set the app mode (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Mode, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins:
+    get:
+      tags: [online]
+      summary: List online source plugins (manifest, config schema, enabled, login status; never credentials). ?check=1 revalidates sessions
+      responses:
+        "200": { description: Plugins, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/plugins/{id}:
+    get:
+      tags: [online]
+      summary: One plugin status
+      responses:
+        "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [online]
+      summary: Enable/disable and configure a plugin (admin). Body {enabled?, config?}; config validated against the manifest schema
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/login:
+    post:
+      tags: [online]
+      summary: Log in with cookie ({method:"cookie",cookie}) or account+password ({method:"password",username,password}) (admin). Session stored in the Vault only
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/login/qr:
+    post:
+      tags: [online]
+      summary: Start a QR login (admin); returns {key, content, image (PNG data URL), expires_at}
+      responses:
+        "200": { description: QR challenge, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/login/qr/{key}:
+    get:
+      tags: [online]
+      summary: "Poll a QR login (admin): waiting | scanned | confirmed | expired"
+      responses:
+        "200": { description: QR poll, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/refresh:
+    post:
+      tags: [online]
+      summary: Refresh the platform session (admin)
+      responses:
+        "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/session:
+    delete:
+      tags: [online]
+      summary: "Log out: forget the stored session (admin)"
+      responses:
+        "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/home:
+    get:
+      tags: [online]
+      summary: Home sections per enabled plugin (daily recommendations, my playlists, recommended playlists, charts). Failing sections carry an error code
+      responses:
+        "200": { description: Sections, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/charts:
+    get:
+      tags: [online]
+      summary: Charts grouped by platform; ?origin= limits to one plugin
+      responses:
+        "200": { description: Chart groups, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/online/resolve/{id}:
+    get:
+      tags: [online]
+      summary: "What /api/stream/{id} will play for an online track: entitlement (full | preview | unavailable), preview window, fallback (local or another logged-in account). Never the upstream URL. ?quality=, ?fresh=1"
+      responses:
+        "200": { description: Resolution, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/online/favorites:
+    get:
+      tags: [online]
+      summary: Cloud "liked songs" of each logged-in account (?origin=)
+      responses:
+        "200": { description: Liked playlists, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/online/{origin}/{kind}/{id}:
+    get:
+      tags: [online]
+      summary: External item detail; kind = tracks | albums | artists | playlists. Playlists include per-track playable status, local links and counts
+      responses:
+        "200": { description: Item, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/online/{origin}/playlists/{id}/clone:
+    post:
+      tags: [online]
+      summary: Clone an external playlist into a local playlist. Body {name?, prefer_local? (default true), skip_unavailable?}
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
 components:

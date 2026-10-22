@@ -18,6 +18,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/logging"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/online"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
@@ -91,6 +92,10 @@ type Deps struct {
 	Matcher      metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
 	Logs         *logging.Ring
 	Runtime      map[string]any // non-secret effective config snapshot
+
+	// Online source plugins (optional).
+	Online    *online.Service
+	OnlineLib OnlineLibrary
 }
 
 type contextT = context.Context
@@ -105,6 +110,9 @@ func NewRouter(d Deps) http.Handler {
 	mux := http.NewServeMux()
 	d.mountWebUI(mux)
 	d.mountWebAdminAPI(mux)
+	d.mountOnline(mux)
+	mux.HandleFunc("GET /api/settings/mode", d.getMode)
+	mux.HandleFunc("PUT /api/settings/mode", d.adminOnly(d.putMode))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "yimeng-core"})
 	})
