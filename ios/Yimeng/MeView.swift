@@ -19,7 +19,6 @@ struct SettingsView: View {
     @State private var showReplay = false
     @State private var showFonts = false
     @State private var showLicenses = false
-    @AppStorage(YueqianStore.autoKey) private var yueqianAuto = true
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -68,8 +67,6 @@ struct SettingsView: View {
                     }
                     divider
                     toggleRow("dot.radiowaves.left.and.right", "灵动岛 / 实时活动", $liveActivity)
-                    divider
-                    toggleRow("ticket", "每天首次打开显示今日乐签", $yueqianAuto)
                     divider
                     Button { showFonts = true } label: { row("textformat", "歌词字体", LyricFontStore.options.first { $0.id == LyricFontStore.shared.selected }?.name ?? "系统字体", chevron: true) }.buttonStyle(.plain)
                     divider

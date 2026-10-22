@@ -13,10 +13,7 @@ final class YueqianStore: ObservableObject {
     }
     @Published private(set) var card: Card?
     @Published var cover: UIImage?
-    @Published var showSheet = false
-
-    static let autoKey = "ym.yueqian.autoShow"
-    static var autoShow: Bool { UserDefaults.standard.object(forKey: autoKey) as? Bool ?? true }
+    @Published private(set) var palette = PaperPalette.fallback
     static func dayKey(_ d: Date = Date()) -> String { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
 
     /// Local open log: which days this month the card was opened.
@@ -47,6 +44,7 @@ final class YueqianStore: ObservableObject {
         let url = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 600)
         card = Card(song: s, quote: quote, date: Date(), origin: origin, coverURL: url)
         if let url { cover = try? await CoverCache.shared.fetch(url) }
+        palette = PaperPalette.make(hex: s.colors ?? CoreState.colors(for: url), image: cover)
     }
     /// Seeded by the date → same song all day, different tomorrow.
     static func dayPick() async -> NDSong? {
@@ -66,14 +64,6 @@ final class YueqianStore: ObservableObject {
         return c[c.count / 2]
     }
 
-    /// First open of the day → sheet once (if enabled).
-    func maybeAutoShow() async {
-        guard Self.autoShow, UserDefaults.standard.string(forKey: "ym.yueqian.shown") != Self.dayKey() else { return }
-        await load()
-        guard card != nil else { return }
-        UserDefaults.standard.set(Self.dayKey(), forKey: "ym.yueqian.shown")
-        showSheet = true
-    }
 }
 
 extension String {
@@ -84,12 +74,13 @@ extension String {
 struct YueqianCardView: View {
     let card: YueqianStore.Card
     let cover: UIImage?
+    var palette: PaperPalette = .fallback
     var interactive = true
     @ObservedObject private var stars = StarStore.shared
     var body: some View {
         let cal = Calendar.current
         let m = cal.component(.month, from: card.date), d = cal.component(.day, from: card.date)
-        let ink = Color(white: 0.08)
+        let ink = palette.ink
         VStack(spacing: 0) {
             ZStack {
                 Group {
@@ -111,10 +102,10 @@ struct YueqianCardView: View {
                 }
             }.buttonStyle(.plain).padding(.horizontal, 24).padding(.top, 18)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(String(format: "%02d", m)).font(.system(size: 54, weight: .black, design: .rounded))
-                Crayon(shape: Path { p in p.move(to: CGPoint(x: 26, y: 0)); p.addLine(to: CGPoint(x: 0, y: 46)) }, color: Color(hex: 0x7a1cff))
+                Text(String(format: "%02d", m)).font(.system(size: 54, weight: .black, design: .rounded)).foregroundStyle(palette.accent)
+                Crayon(shape: Path { p in p.move(to: CGPoint(x: 26, y: 0)); p.addLine(to: CGPoint(x: 0, y: 46)) }, color: palette.accent)
                     .frame(width: 26, height: 46).offset(y: 6)
-                Text(String(format: "%02d", d)).font(.system(size: 54, weight: .black, design: .rounded))
+                Text(String(format: "%02d", d)).font(.system(size: 54, weight: .black, design: .rounded)).foregroundStyle(palette.accent)
                 Spacer()
                 Text(Self.weekday(card.date)).font(.system(size: 13)).opacity(0.55)
             }.padding(.horizontal, 24).padding(.top, 6)
@@ -129,7 +120,7 @@ struct YueqianCardView: View {
         }
         .foregroundStyle(ink)
         .frame(width: 330)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(hex: 0xf6f1e8)))
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(palette.paper))
     }
     static func weekday(_ d: Date) -> String { let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN"); f.dateFormat = "EEEE"; return f.string(from: d) }
 }
@@ -145,75 +136,13 @@ struct TicketDivider: Shape {
     }
 }
 
-struct YueqianSheet: View {
-    @ObservedObject private var store = YueqianStore.shared
-    @Environment(\.dismiss) private var dismiss
-    @State private var rendered: UIImage?
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Color(white: 0.1).ignoresSafeArea()
-            ScrollView {
-                VStack(spacing: 18) {
-                    if let c = store.card {
-                        YueqianCardView(card: c, cover: store.cover).padding(.top, 50)
-                        HStack(spacing: 14) {
-                            Button { save() } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
-                            if let img = rendered {
-                                ShareLink(item: Image(uiImage: img), preview: SharePreview("今日乐签", image: Image(uiImage: img))) { Label("分享", systemImage: "square.and.arrow.up") }
-                            }
-                        }
-                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white).buttonStyle(.plain)
-                    } else { DoodleLoader().padding(.top, 120) }
-                }.frame(maxWidth: .infinity)
-            }
-            Button { dismiss() } label: { CircleIconButton(icon: "xmark", dark: true) }.padding(16)
-        }
-        .task {
-            store.markOpened()
-            if store.card == nil { await store.load() }
-            render()
-        }
-        .onChange(of: store.cover) { _, _ in render() }
-    }
-    private func render() {
-        guard let c = store.card else { return }
-        let r = ImageRenderer(content: YueqianCardView(card: c, cover: store.cover, interactive: false).padding(20).background(Color(hex: 0x1a1028)))
-        r.scale = 3
-        rendered = r.uiImage
-    }
-    private func save() {
-        render()
-        guard let img = rendered else { return }
+extension YueqianStore {
+    static func saveToPhotos(_ img: UIImage) {
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
             guard s == .authorized || s == .limited else { Task { @MainActor in SheetCenter.shared.say("没有相册权限") }; return }
             PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAsset(from: img) } completionHandler: { ok, _ in
                 Task { @MainActor in SheetCenter.shared.say(ok ? "已保存到相册" : "保存失败") }
             }
-        }
-    }
-}
-
-/// Home entry: a small card.
-struct YueqianHomeCard: View {
-    @ObservedObject private var store = YueqianStore.shared
-    var body: some View {
-        if let c = store.card {
-            Button { store.showSheet = true } label: {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RemoteCover(url: c.coverURL, size: 64, corner: 10)
-                        WobblyFrame(seed: 3, inset: -3).stroke(.primary.opacity(0.6), lineWidth: 1.2).frame(width: 64, height: 64)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("今日乐签 · \(Calendar.current.component(.month, from: c.date))/\(Calendar.current.component(.day, from: c.date))").font(.system(size: 13, weight: .semibold))
-                        Text("「\(c.quote)」").font(.system(size: 14)).lineLimit(1).truncationMode(.middle).opacity(0.75)
-                        Text("\(c.song.title) — \(c.song.artist)").font(.system(size: 12)).lineLimit(1).truncationMode(.middle).opacity(0.55)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(14)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial))
-            }.buttonStyle(.plain)
         }
     }
 }

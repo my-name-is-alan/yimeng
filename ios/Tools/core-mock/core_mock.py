@@ -103,7 +103,7 @@ def lyric_lines():
 PLATFORMS = [{"origin": "netease", "enabled": True, "logged_in": True, "nickname": "云村村民", "capabilities": ["daily", "fm", "recommend_playlists", "user_playlists", "charts", "lyrics"]},
              {"origin": "qq", "enabled": True, "logged_in": True, "nickname": "Q 友", "capabilities": ["daily", "recommend_playlists", "user_playlists", "charts"]},
              {"origin": "kugou", "enabled": True, "logged_in": False, "capabilities": ["charts"]}]
-CHARTS = {o: [{"id": f"chart_{o}_{k}", "name": n, "origin": o, "cover": cover(f"chart_{o}_{k}", k + 2), "update_frequency": "每天更新",
+CHARTS = {o: [{"id": f"chart_{o}_{k}", "name": n, "origin": o, "cover": cover(f"chart_{o}_{k}", k + 2), "update_frequency": "每天更新", "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 3600 * (k + 1))) + "Z",
                "preview": [dict(TRACKS[(k * 3 + j) % 40], origin=o) for j in range(3)]}
               for k, n in enumerate(["飙升榜", "新歌榜", "热歌榜", "原创榜"])] for o in ["netease", "qq", "kugou"]}
 PROGRESS = {}

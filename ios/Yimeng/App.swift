@@ -3,7 +3,7 @@ import SwiftUI
 enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
-enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), ndPlaylist(NDPlaylist), artist, genre(NDGenre), genres, charts }
+enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), ndPlaylist(NDPlaylist), artist, genre(NDGenre), genres, charts, yueqian, trackList(TrackListSpec) }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -168,18 +168,16 @@ struct Shell: View {
             else if !library.hasSource && !library.loading { NoSourceView() }
             else { tabs }
         }
-        .sheet(isPresented: $yueqian.showSheet) { YueqianSheet().presentationCornerRadius(28) }
+
         .task {
             await SourceStore.shared.activeSource.activate()
             booted = true
-            Task { await YueqianStore.shared.maybeAutoShow() }
             async let h: Void = HomeStore.shared.refresh()
             async let s: Void = StarStore.shared.load()
             _ = await (h, s)
         }
     }
     @State private var booted = false
-    @ObservedObject private var yueqian = YueqianStore.shared
 
     @ObservedObject private var library = LibraryStore.shared
 
@@ -262,6 +260,8 @@ struct Shell: View {
             case .genre(let g): GenreView(genre: g)
             case .genres: GenreListView()
             case .charts: ChartsView()
+            case .yueqian: YueqianPage()
+            case .trackList(let s): TrackListPage(spec: s)
             }
         }.toolbar(.hidden, for: .navigationBar)
     }

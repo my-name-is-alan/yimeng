@@ -47,7 +47,7 @@ struct HomeLive: View {
                         FirstRunDoodle().padding(.top, 40)
                     }
 
-                    YueqianHomeCard().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                    YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
                     if NavidromeClient.core {
                         PlatformHomeSections()
                         if !CoreState.platforms(can: "charts").isEmpty {
@@ -148,7 +148,8 @@ struct HomeLive: View {
                 if args[i + 1] == "genres" { state.path.append(.genres) }
                 if args[i + 1] == "genre", let g = home.data.genres.first { state.path.append(.genre(g)) }
                 if args[i + 1] == "charts" { state.path.append(.charts) }
-                if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); YueqianStore.shared.showSheet = true }
+                if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); state.path.append(.yueqian) }
+                if args[i + 1] == "daily", let d = PlatformStore.shared.dailies.first { state.path.append(.trackList(DailyMixCard.spec(d.origin, d.tracks))) }
             }
             if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {

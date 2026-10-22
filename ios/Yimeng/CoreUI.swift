@@ -84,16 +84,17 @@ struct ChartsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("排行").font(.system(size: 28, weight: .bold)).padding(.horizontal, Theme.margin).padding(.top, 8)
-                Picker("平台", selection: $origin) {
-                    ForEach(origins, id: \.self) { Text(CoreOrigin.label($0)).tag($0) }
-                }
-                .pickerStyle(.segmented).padding(.horizontal, Theme.margin).padding(.top, 14)
+                HStack {
+                    Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
+                    Spacer()
+                }.padding(.horizontal, Theme.margin).padding(.top, 8)
+                Text("排行").font(.system(size: 28, weight: .bold)).padding(.horizontal, Theme.margin).padding(.top, 6)
+                DoodleTabs(items: origins, selected: $origin).padding(.horizontal, Theme.margin).padding(.top, 14)
                 if loading && charts.isEmpty { DoodleLoader().padding(.top, 40) }
                 else if charts.isEmpty { EmptyState(kind: failed ? .network : .playlists).padding(.top, 30) }
                 LazyVStack(spacing: 14) {
                     ForEach(charts, id: \.id) { c in
-                        Button { state.path.append(.ndPlaylist(NDPlaylist(id: c.id, name: c.name, songCount: nil, coverId: c.cover?.url))) } label: { row(c) }
+                        Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(c.id), title: c.name, subtitle: c.updateFrequency ?? "", origin: c.origin ?? origin, cover: c.cover?.url.flatMap(URL.init(string:))))) } label: { row(c) }
                             .buttonStyle(.plain)
                     }
                 }.padding(.horizontal, Theme.margin).padding(.top, 18)
@@ -119,22 +120,37 @@ struct ChartsView: View {
         } catch { charts = []; failed = true }
     }
     private func row(_ c: CoreChart) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            RemoteCover(url: c.cover?.url.flatMap(URL.init(string:)), size: 96, corner: 12)
-            VStack(alignment: .leading, spacing: 4) {
+        let top = Array((c.preview ?? []).prefix(3))
+        let urls: [URL?] = top.isEmpty ? [c.cover?.url.flatMap(URL.init(string:))] : top.map { $0.cover?.url.flatMap(URL.init(string:)) }
+        return HStack(alignment: .center, spacing: 16) {
+            ChartCollage(urls: urls)
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Text(c.name).font(.system(size: 16, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                    Text(c.name).font(.system(size: 17, weight: .bold)).lineLimit(1).truncationMode(.middle)
                     SourceBadge(origin: c.origin ?? origin)
                 }
-                if let f = c.updateFrequency { Text(f).font(.system(size: 11)).foregroundStyle(Theme.secondary(scheme)) }
-                ForEach(Array((c.preview ?? []).prefix(3).enumerated()), id: \.offset) { i, t in
-                    Text("\(i + 1). \(t.title ?? t.name ?? "") — \(t.artists?.first?.name ?? t.artist?.name ?? "")")
-                        .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1).truncationMode(.middle)
+                ForEach(Array(top.enumerated()), id: \.offset) { i, t in
+                    HStack(spacing: 8) {
+                        RankBadge(rank: i + 1)
+                        Text("\(t.title ?? t.name ?? "") — \(t.artists?.first?.name ?? t.artist?.name ?? "")")
+                            .font(.system(size: 13)).foregroundStyle(Theme.fg(scheme).opacity(0.75)).lineLimit(1).truncationMode(.middle)
+                    }
                 }
+                Text(Self.updated(c)).font(.system(size: 11)).foregroundStyle(Theme.secondary(scheme))
             }
             Spacer(minLength: 0)
         }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.fill(scheme)))
         .contentShape(Rectangle())
+    }
+    static func updated(_ c: CoreChart) -> String {
+        var parts: [String] = []
+        if let s = c.updatedAt, let d = ISO8601DateFormatter().date(from: s) {
+            let f = DateFormatter(); f.dateFormat = Calendar.current.isDateInToday(d) ? "今天 HH:mm" : "M月d日"; parts.append("更新于 " + f.string(from: d))
+        }
+        if let f = c.updateFrequency { parts.append(f) }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -253,7 +269,7 @@ struct PlatformHomeSections: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(r.lists) { p in
-                        Button { state.path.append(.ndPlaylist(p)) } label: {
+                        Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: r.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 300), size: 140)
                                 Text(p.name).font(.system(size: 13, weight: .medium)).lineLimit(2).frame(width: 140, alignment: .leading)
@@ -268,41 +284,47 @@ struct PlatformHomeSections: View {
 
 struct DailyMixCard: View {
     let origin: String; let songs: [NDSong]
+    @EnvironmentObject var state: AppState
+    static func spec(_ origin: String, _ songs: [NDSong]) -> TrackListSpec {
+        TrackListSpec(kind: .daily, title: "\(CoreOrigin.label(origin)) · 每日推荐", subtitle: "\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号", origin: origin, songs: songs)
+    }
     var body: some View {
-        let day = Calendar.current.component(.day, from: Date())
-        Button { PlayerStore.shared.play(songs: songs.filter { !$0.isUnplayable }, startAt: 0) } label: {
+        // Body opens the list; only the explicit play button plays.
+        HStack(spacing: 16) {
+            Button { state.path.append(.trackList(Self.spec(origin, songs))) } label: {
             HStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(hex: 0x7a1cff).opacity(0.85))
-                    WobblyFrame(seed: UInt64(day)).stroke(.white.opacity(0.8), lineWidth: 1.6)
-                    Text("\(day)").font(.system(size: 40, weight: .black, design: .rounded)).foregroundStyle(.white)
-                }.frame(width: 92, height: 92)
+                DateTile()
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号").font(.system(size: 13)).opacity(0.65)
                     ForEach(songs.prefix(2)) { s in Text("\(s.title) — \(s.artist)").font(.system(size: 14)).lineLimit(1).truncationMode(.middle) }
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "play.circle.fill").font(.system(size: 30))
             }.contentShape(Rectangle())
-        }.buttonStyle(.plain)
+            }.buttonStyle(.plain)
+            Button { PlayerStore.shared.play(songs: songs.filter { !$0.isUnplayable }, startAt: 0) } label: {
+                Image(systemName: "play.circle.fill").font(.system(size: 30))
+            }.buttonStyle(.plain)
+        }
     }
 }
 
 struct FMCard: View {
     let origin: String
     var body: some View {
-        Button { Task { await FMStore.shared.start(origin) } } label: {
-            ZStack(alignment: .leading) {
+        ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(LinearGradient(colors: [Color(hex: 0xff3d8b), Color(hex: 0x7a1cff)], startPoint: .topLeading, endPoint: .bottomTrailing))
                 Crayon(shape: WaveShape(), color: .white.opacity(0.5)).frame(width: 180, height: 16).offset(x: 150, y: 30)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("私人 FM").font(.system(size: 26, weight: .bold))
                     Text("\(CoreOrigin.label(origin)) 按你的口味一直放下去").font(.system(size: 13)).opacity(0.8)
-                    Image(systemName: "play.fill").font(.system(size: 18)).padding(.top, 6)
+                    // Only this button starts FM; the card body does nothing on tap.
+                    Button { Task { await FMStore.shared.start(origin) } } label: {
+                        Image(systemName: "play.fill").font(.system(size: 18)).frame(width: 44, height: 44)
+                            .background(Circle().fill(.white.opacity(0.22)))
+                    }.buttonStyle(.plain).padding(.top, 4)
                 }.padding(20).foregroundStyle(.white)
-            }.frame(height: 150)
-        }.buttonStyle(.plain)
+            }.frame(height: 160)
     }
 }
 
@@ -319,7 +341,7 @@ struct PlatformPlaylistGroups: View {
                     if !lists.isEmpty {
                         Text(title).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).padding(.top, 4)
                         ForEach(lists) { p in
-                            Button { state.path.append(.ndPlaylist(p)) } label: {
+                            Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(p.id), title: p.name, subtitle: p.songCount.map { "\($0) 首" } ?? "", origin: g.origin, cover: LibraryStore.shared.coverArtURL(id: p.coverId, size: 600)))) } label: {
                                 HStack(spacing: 12) {
                                     RemoteCover(url: LibraryStore.shared.coverArtURL(id: p.coverId, size: 120), size: 48, corner: 8)
                                     VStack(alignment: .leading, spacing: 2) {

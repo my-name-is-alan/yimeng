@@ -281,7 +281,6 @@ final class LibraryStore: ObservableObject {
             SourceStore.shared.upsert(cfg)
             CoreEvents.shared.start()
             await PlatformStore.shared.refresh()
-            Task { await YueqianStore.shared.maybeAutoShow() }
         } catch { connected = false; status = error.localizedDescription }
     }
 

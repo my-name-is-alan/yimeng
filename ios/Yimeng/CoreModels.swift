@@ -157,6 +157,7 @@ struct CoreChart: Codable, Hashable, Sendable {
     var origin: String?
     var cover: CoreCover?
     var updateFrequency: String?
+    var updatedAt: String?
     var preview: [CoreTrack]?      // top few tracks for the card
 }
 struct CoreCharts: Codable, Sendable { var origins: [String]?; var charts: [CoreChart] }

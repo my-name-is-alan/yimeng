@@ -66,6 +66,7 @@
 		D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A06AAC57F015AE8C264DD /* LibraryStore.swift */; };
 		D82AFDF7F83C3413E1E231B4 /* Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = B727C7B6B00ECD4C014811FE /* Audio.swift */; };
 		D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E250285D45C295C91932A00 /* HomeView.swift */; };
+		DC1B124F0048EB2638F0DC50 /* CoreV25.swift in Sources */ = {isa = PBXBuildFile; fileRef = 544698022D347A02756EACDB /* CoreV25.swift */; };
 		DCE0689AC11FAB46F17DBF51 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98436E751CC570C4F8472C05 /* AlbumView.swift */; };
 		DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */; };
 		DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
@@ -149,6 +150,7 @@
 		4FF4BC6C0C352F47778E6963 /* ZCOOLKuaiLe-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "ZCOOLKuaiLe-Regular.ttf"; sourceTree = "<group>"; };
 		5178F9895770BE93EE018F18 /* fnos-track-list.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-track-list.json"; sourceTree = "<group>"; };
 		54114807AFE972B4C5E9DE7D /* emby-auth.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-auth.json"; sourceTree = "<group>"; };
+		544698022D347A02756EACDB /* CoreV25.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV25.swift; sourceTree = "<group>"; };
 		56439C44803E5E2178CD3157 /* fnos-expired.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-expired.json"; sourceTree = "<group>"; };
 		575967C96AA037C6933C8F7B /* Yimeng.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yimeng.entitlements; sourceTree = "<group>"; };
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
@@ -272,6 +274,7 @@
 				D481EB1947F216689FAC4AF5 /* CoreEvents.swift */,
 				BF11FEF0B55F7446317FCA11 /* CoreModels.swift */,
 				3AE81EDA4F41B8F0C14A4393 /* CoreUI.swift */,
+				544698022D347A02756EACDB /* CoreV25.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
@@ -499,6 +502,7 @@
 				E3831141F414E0FC94D37566 /* CoreEvents.swift in Sources */,
 				C39A8C9E18A03049A2A06D4E /* CoreModels.swift in Sources */,
 				AC913D8D096240B2BA9F5FD5 /* CoreUI.swift in Sources */,
+				DC1B124F0048EB2638F0DC50 /* CoreV25.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
