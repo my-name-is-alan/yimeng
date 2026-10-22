@@ -44,7 +44,8 @@ actor EmbyClient {
         return c.url
     }
     nonisolated static func authHeader(userId: String?, token: String?) -> String {
-        var parts = ["Client=\"译梦\"", "Device=\"iPhone\"", "DeviceId=\"\(deviceId)\"", "Version=\"\(appVersion)\""]
+        // ASCII only: URLSession mangles non-ASCII header bytes and Emby then 400s ("Value cannot be null. (Parameter 'appName')").
+        var parts = ["Client=\"Yimeng\"", "Device=\"iPhone\"", "DeviceId=\"\(deviceId)\"", "Version=\"\(appVersion)\""]
         if let userId, !userId.isEmpty { parts.insert("UserId=\"\(userId)\"", at: 0) }
         if let token, !token.isEmpty { parts.append("Token=\"\(token)\"") }
         return parts.joined(separator: ", ")
@@ -134,31 +135,46 @@ actor EmbyClient {
 
     nonisolated static func num(_ v: Any?) -> Int? { (v as? Int) ?? (v as? Double).map { Int($0) } ?? (v as? String).flatMap { Int($0) } }
     nonisolated static func hasPrimary(_ o: [String: Any]) -> Bool { ((o["ImageTags"] as? [String: Any])?["Primary"]) != nil }
+    /// Own Primary image, else the item Emby says carries it (`PrimaryImageItemId`, common for albums whose art is on the tracks).
+    nonisolated static func coverId(_ o: [String: Any]) -> String? {
+        if hasPrimary(o) { return o["Id"] as? String }
+        if o["PrimaryImageTag"] != nil, let p = o["PrimaryImageItemId"] as? String { return p }
+        if o["AlbumPrimaryImageTag"] != nil { return o["AlbumId"] as? String }
+        return nil
+    }
+    /// Item id → MediaSource id. Some Emby setups (strm / cloud libraries, e.g. `mediasource_123`) don't use the item id;
+    /// without `MediaSourceId` they redirect static streams to a placeholder clip.
+    private final class SourceMap: @unchecked Sendable { let lock = NSLock(); var m: [String: String] = [:] }
+    nonisolated private static let sources = SourceMap()
+    nonisolated static func remember(item: String, source: String) { sources.lock.lock(); sources.m[item] = source; sources.lock.unlock() }
+    nonisolated static func mediaSourceId(_ item: String) -> String { sources.lock.lock(); defer { sources.lock.unlock() }; return sources.m[item] ?? item }
     nonisolated static func parseAlbum(_ o: [String: Any]) -> NDAlbum? {
         guard let id = o["Id"] as? String, let name = o["Name"] as? String else { return nil }
         let aa = (o["AlbumArtists"] as? [[String: Any]])?.first
         return NDAlbum(id: id, name: name, artist: (o["AlbumArtist"] as? String) ?? (aa?["Name"] as? String) ?? "",
-                       artistId: aa?["Id"] as? String, coverId: hasPrimary(o) ? id : nil,
+                       artistId: aa?["Id"] as? String, coverId: coverId(o),
                        year: num(o["ProductionYear"]), songCount: num(o["SongCount"]) ?? num(o["ChildCount"]))
     }
     nonisolated static func parseArtist(_ o: [String: Any]) -> NDArtist? {
         guard let id = o["Id"] as? String, let name = o["Name"] as? String else { return nil }
-        return NDArtist(id: id, name: name, albumCount: num(o["AlbumCount"]) ?? num(o["ChildCount"]), coverId: hasPrimary(o) ? id : nil)
+        return NDArtist(id: id, name: name, albumCount: num(o["AlbumCount"]) ?? num(o["ChildCount"]), coverId: coverId(o))
     }
     nonisolated static func parsePlaylist(_ o: [String: Any]) -> NDPlaylist? {
         guard let id = o["Id"] as? String, let name = o["Name"] as? String else { return nil }
-        var p = NDPlaylist(id: id, name: name, songCount: num(o["ChildCount"]) ?? num(o["SongCount"]), coverId: hasPrimary(o) ? id : nil)
+        var p = NDPlaylist(id: id, name: name, songCount: num(o["ChildCount"]) ?? num(o["SongCount"]), coverId: coverId(o))
         p.duration = num(o["RunTimeTicks"]).map { Int(Double($0) / ticksPerSecond) }
         return p
     }
     nonisolated static func parseSong(_ o: [String: Any]) -> NDSong? {
         guard let id = o["Id"] as? String, let name = o["Name"] as? String else { return nil }
+        if name.hasSuffix("_animated_artwork") { return nil }   // Apple Music motion-art sidecars indexed as Audio
         let artists = ((o["Artists"] as? [String]) ?? []).joined(separator: " / ")
-        let cover: String? = hasPrimary(o) ? id : (o["AlbumPrimaryImageTag"] != nil ? (o["AlbumId"] as? String) : nil)
+        let cover = coverId(o)
         var s = NDSong(id: id, title: name, artist: artists.isEmpty ? ((o["AlbumArtist"] as? String) ?? "") : artists,
                        album: o["Album"] as? String, albumId: o["AlbumId"] as? String, coverId: cover,
                        duration: num(o["RunTimeTicks"]).map { Int(Double($0) / ticksPerSecond) }, track: num(o["IndexNumber"]))
         let src = (o["MediaSources"] as? [[String: Any]])?.first
+        if let sid = src?["Id"] as? String, sid != id { remember(item: id, source: sid) }
         let audio = ((src?["MediaStreams"] as? [[String: Any]]) ?? []).first { ($0["Type"] as? String) == "Audio" }
         s.suffix = ((src?["Container"] as? String) ?? (o["Container"] as? String))?.lowercased()
         s.bitRate = (num(audio?["BitRate"]) ?? num(src?["Bitrate"])).map { $0 / 1000 }
@@ -185,10 +201,10 @@ actor EmbyClient {
         var c: URLComponents?
         if maxKbps <= 0 {
             c = URLComponents(url: base.appendingPathComponent("/Audio/\(id)/stream"), resolvingAgainstBaseURL: false)
-            c?.queryItems = [.init(name: "static", value: "true"), .init(name: "DeviceId", value: deviceId), .init(name: "PlaySessionId", value: playSessionId), .init(name: "api_key", value: token)]
+            c?.queryItems = [.init(name: "static", value: "true"), .init(name: "MediaSourceId", value: mediaSourceId(id)), .init(name: "DeviceId", value: deviceId), .init(name: "PlaySessionId", value: playSessionId), .init(name: "api_key", value: token)]
         } else {
             c = URLComponents(url: base.appendingPathComponent("/Audio/\(id)/universal"), resolvingAgainstBaseURL: false)
-            c?.queryItems = [.init(name: "UserId", value: userId), .init(name: "DeviceId", value: deviceId),
+            c?.queryItems = [.init(name: "UserId", value: userId), .init(name: "MediaSourceId", value: mediaSourceId(id)), .init(name: "DeviceId", value: deviceId),
                              .init(name: "MaxStreamingBitrate", value: "\(maxKbps * 1000)"), .init(name: "Container", value: "mp3,aac,m4a"),
                              .init(name: "TranscodingContainer", value: "mp3"), .init(name: "TranscodingProtocol", value: "http"),
                              .init(name: "AudioCodec", value: "mp3"), .init(name: "PlaySessionId", value: playSessionId), .init(name: "api_key", value: token)]
@@ -201,7 +217,7 @@ actor EmbyClient {
     enum PlayEvent: String { case start = "/Sessions/Playing", progress = "/Sessions/Playing/Progress", stopped = "/Sessions/Playing/Stopped" }
     nonisolated static func playBody(id: String, position: TimeInterval, paused: Bool, playSessionId: String, transcoding: Bool) -> [String: Any] {
         ["ItemId": id, "PlaySessionId": playSessionId, "PositionTicks": Int64(position * ticksPerSecond), "IsPaused": paused,
-         "CanSeek": !transcoding, "PlayMethod": transcoding ? "Transcode" : "DirectStream", "MediaSourceId": id]
+         "CanSeek": !transcoding, "PlayMethod": transcoding ? "Transcode" : "DirectStream", "MediaSourceId": mediaSourceId(id)]
     }
     func report(_ e: PlayEvent, id: String, position: TimeInterval, paused: Bool, playSessionId: String, transcoding: Bool) async {
         guard !token.isEmpty else { return }

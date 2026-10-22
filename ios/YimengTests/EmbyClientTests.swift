@@ -21,8 +21,11 @@ final class EmbyClientTests: XCTestCase {
     }
     func testAuthHeaderHasNoSecretsUnlessGiven() {
         let h = EmbyClient.authHeader(userId: nil, token: nil)
-        XCTAssertTrue(h.contains("Client=\"译梦\"")); XCTAssertTrue(h.contains("DeviceId=")); XCTAssertFalse(h.contains("Token="))
+        XCTAssertTrue(h.contains("Client=\"Yimeng\"")); XCTAssertTrue(h.contains("DeviceId=")); XCTAssertFalse(h.contains("Token="))
         XCTAssertTrue(EmbyClient.authHeader(userId: "u", token: "t").contains("Token=\"t\""))
+    }
+    func testAuthHeaderIsASCII() {
+        XCTAssertTrue(EmbyClient.authHeader(userId: "u", token: "t").allSatisfy { $0.isASCII })
     }
     func testUsers() throws {
         let u = ((try obj("emby-users") as? [[String: Any]]) ?? []).compactMap(EmbyClient.parseUser)
@@ -50,6 +53,19 @@ final class EmbyClientTests: XCTestCase {
         XCTAssertTrue(tc.contains("/Audio/s1/universal")); XCTAssertTrue(tc.contains("MaxStreamingBitrate=320000")); XCTAssertTrue(tc.contains("AudioCodec=mp3"))
         XCTAssertEqual(EmbyClient.imageURL(base: URL(string: "https://e.x/emby")!, id: "al1", size: 300)?.absoluteString,
                        "https://e.x/emby/Items/al1/Images/Primary?maxWidth=300&quality=90")
+    }
+    func testRealServerShapes() throws {
+        // Sanitized from a live Emby 4.10 (strm/cloud library): album art via PrimaryImageItemId, mediasource_ ids.
+        let al = EmbyClient.parseAlbum(["Id": "1001", "Name": "X", "Type": "MusicAlbum", "ImageTags": [String: Any](),
+                                        "PrimaryImageItemId": "2002", "PrimaryImageTag": "t", "AlbumArtist": "A"])
+        XCTAssertEqual(al?.coverId, "2002")
+        XCTAssertNil(EmbyClient.parseSong(["Id": "9", "Name": "_1-1_animated_artwork"]))
+        let s = EmbyClient.parseSong(["Id": "3003", "Name": "T", "ImageTags": ["Primary": "t"],
+                                      "MediaSources": [["Id": "mediasource_3003", "Container": "flac"]]])
+        XCTAssertEqual(s?.suffix, "flac")
+        let u = EmbyClient.streamURL(base: URL(string: "http://h:8091")!, id: "3003", token: "TK", userId: "u", maxKbps: 0, playSessionId: "p")!.absoluteString
+        XCTAssertTrue(u.contains("MediaSourceId=mediasource_3003"))
+        XCTAssertEqual(EmbyClient.playBody(id: "3003", position: 0, paused: false, playSessionId: "p", transcoding: false)["MediaSourceId"] as? String, "mediasource_3003")
     }
     func testPlayBody() {
         let b = EmbyClient.playBody(id: "s1", position: 12.5, paused: false, playSessionId: "p", transcoding: false)

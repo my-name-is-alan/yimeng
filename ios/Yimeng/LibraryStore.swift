@@ -231,6 +231,14 @@ final class LibraryStore: ObservableObject {
         let svc = SourceKind.emby.keychainService
         let uid = UserDefaults.standard.string(forKey: "ym.emby.userId") ?? ""
         guard !cfg.host.isEmpty, let tok = Keychain.get(service: svc, account: "token"), !tok.isEmpty, !uid.isEmpty else {
+            #if DEBUG
+            // Sim/dev only: YIMENG_EMBY_URL / _USER / _PASSWORD from the launch env (never logged); token then lands in Keychain.
+            let env = ProcessInfo.processInfo.environment
+            if let u = env["YIMENG_EMBY_URL"], let n = env["YIMENG_EMBY_USER"], let p = env["YIMENG_EMBY_PASSWORD"], !u.isEmpty, !n.isEmpty {
+                liveMode = true
+                await connectEmby(host: u, mode: .password, username: n, secret: p); return
+            }
+            #endif
             status = "待连接 Emby"; return
         }
         liveMode = true
