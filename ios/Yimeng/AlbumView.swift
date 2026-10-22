@@ -229,7 +229,8 @@ struct LibrarySearchView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("搜索").font(.system(size: 28, weight: .bold))
+                    Text("搜索")
+                        .task { if ProcessInfo.processInfo.arguments.contains("-recognizeFile") { try? await Task.sleep(for: .seconds(2)); recognizing = true } }.font(.system(size: 28, weight: .bold))
                     Spacer()
                     if NavidromeClient.core {
                         Button { recognizing = true } label: {

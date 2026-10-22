@@ -73,7 +73,16 @@ final class AppState: ObservableObject {
     func applyDream(_ id: String, _ d: CoreDream) {
         guard track.id == id else { return }
         var t = track
-        let st = DreamStyle.decide(id: id, tags: d.tags ?? [], bpm: d.bpm, measured: Self.measured[id])
+        // Tags win (and lock); otherwise a locked style is never touched; else provisional until measured.
+        let st: (energy: Double, genre: String)
+        if DreamStyle.genreClass(d.tags ?? []) != nil {
+            st = DreamStyle.decide(id: id, tags: d.tags ?? [], bpm: d.bpm.map(DreamStyle.octave), measured: DreamStyle.cached(id)?.energy)
+            DreamStyle.lock(id, .init(energy: st.energy, genre: st.genre, fromTags: true))
+        } else if let c = DreamStyle.cached(id) {
+            st = (c.energy, c.genre)
+        } else {
+            st = DreamStyle.decide(id: id, tags: [], bpm: d.bpm.map(DreamStyle.octave), measured: nil)
+        }
         Self.decided[id] = st
         t = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: (d.colors?.count ?? 0) >= 2 ? Self.blobs(d.colors) : t.blobs,
                        bpm: d.bpm.map { Int($0) } ?? t.bpm, energy: st.energy, genre: st.genre, duration: t.duration, lyrics: t.lyrics)
@@ -93,8 +102,8 @@ final class AppState: ObservableObject {
             base: Color(hex: 0x1a1028),
             blobs: Self.blobs(s.colors),
             bpm: 100,
-            energy: (Self.decided[s.id] ?? DreamStyle.decide(id: s.id, tags: [], bpm: nil, measured: Self.measured[s.id])).energy,
-            genre: (Self.decided[s.id] ?? DreamStyle.decide(id: s.id, tags: [], bpm: nil, measured: Self.measured[s.id])).genre,
+            energy: Self.style(s.id).energy,
+            genre: Self.style(s.id).genre,
             duration: max(dur, 1),
             lyrics: []
         )
@@ -102,23 +111,33 @@ final class AppState: ObservableObject {
         trackStart = Date()
         scheduleMeasure(s.id)
     }
-    /// Per-track style memory (stable within a session; on-device energy measured once per track).
+    /// Per-track style: persistent lock first, then this session's provisional decision.
     static var decided: [String: (energy: Double, genre: String)] = [:]
-    static var measured: [String: Double] = [:]
+    static func style(_ id: String) -> (energy: Double, genre: String) {
+        if let c = DreamStyle.cached(id) { return (c.energy, c.genre) }
+        return decided[id] ?? DreamStyle.decide(id: id, tags: [], bpm: nil, measured: nil)
+    }
     private var measureTask: Task<Void, Never>?
+    /// Decide once: sample the on-device beat tracker for ~20 s, median + octave-corrected tempo, then lock by track id.
     private func scheduleMeasure(_ id: String) {
-        guard Self.measured[id] == nil else { return }
         measureTask?.cancel()
+        guard DreamStyle.cached(id) == nil else { return }
         measureTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(9))
-            guard !Task.isCancelled, let self, self.track.id == id else { return }
-            let r = BeatStore.read()
-            guard r.live else { return }
-            Self.measured[id] = r.energy
+            var bpms: [Double] = [], energies: [Double] = []
+            for _ in 0..<22 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, self.track.id == id else { return }
+                let r = BeatStore.read()
+                if r.live { energies.append(r.energy); if r.bpm > 0 { bpms.append(r.bpm) } }
+            }
+            guard let self, self.track.id == id, DreamStyle.cached(id) == nil, energies.count >= 8 else { return }
             let t = self.track
-            let st = DreamStyle.decide(id: id, tags: t.tags, bpm: t.serverBPM ?? (r.bpm > 0 ? r.bpm : nil), measured: r.energy)
+            let tempo = t.serverBPM.map(DreamStyle.octave) ?? DreamStyle.stableTempo(bpms)
+            let e = DreamStyle.median(energies)
+            let st = DreamStyle.decide(id: id, tags: t.tags, bpm: tempo, measured: e)
+            DreamStyle.lock(id, .init(energy: st.energy, genre: st.genre, fromTags: DreamStyle.genreClass(t.tags) != nil))
             Self.decided[id] = st
-            NSLog("[ym] DREAMSTYLE id=%@ e=%.2f bpm=%.0f tags=%@ → energy=%.2f genre=%@", id, r.energy, r.bpm, t.tags.joined(separator: ","), st.energy, st.genre)
+            NSLog("[ym] DREAMSTYLE lock id=%@ n=%d tempo=%.0f e=%.2f tags=%@ → energy=%.2f genre=%@", id, bpms.count, tempo ?? 0, e ?? 0, t.tags.joined(separator: ","), st.energy, st.genre)
             guard abs(st.energy - t.energy) > 0.01 || st.genre != t.genre else { return }
             var n = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: t.blobs, bpm: t.bpm, energy: st.energy, genre: st.genre, duration: t.duration, lyrics: t.lyrics)
             n.serverBPM = t.serverBPM; n.tags = t.tags

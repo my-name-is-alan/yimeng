@@ -87,7 +87,7 @@ extension Shell {
     var padLayout: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             PadSidebar()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 236, max: 260)
+                .navigationSplitViewColumnWidth(min: 200, ideal: Self.padWide ? 200 : 236, max: 260)
                 .toolbar(removing: .sidebarToggle)
                 .toolbar(.hidden, for: .navigationBar)
         } content: {
@@ -101,15 +101,24 @@ extension Shell {
             }
             .toolbar(.hidden, for: .navigationBar)
             .background(YMBackdrop())
-            .navigationSplitViewColumnWidth(min: 360, ideal: 560)
+            .navigationSplitViewColumnWidth(min: 360, ideal: Self.padWide ? 760 : 560, max: Self.padWide ? 900 : 700)
         } detail: {
             PadPlayerColumn()
+                .navigationSplitViewColumnWidth(min: 280, ideal: Self.padWide ? 300 : 480, max: Self.padWide ? 300 : 620)
         }
         .navigationSplitViewStyle(.balanced)
         // The persistent player column is always dark; the rest follows it unless the user explicitly picked 浅色.
         .environment(\.colorScheme, padAppearance == 1 ? .light : .dark)
     }
 
+    /// Debug `-padWide`: a wider content column, to verify the ≥ 700 pt two-column Home.
+    static var padWide: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-padWide")
+        #else
+        return false
+        #endif
+    }
     var padPortrait: Bool {
         let s = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.size ?? .zero
         return s.height > s.width

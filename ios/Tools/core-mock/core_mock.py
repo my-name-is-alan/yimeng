@@ -191,9 +191,10 @@ class H(BaseHTTPRequestHandler):
             if mode == "too_long" or n > 2 * 1024 * 1024 or (dm and int(dm.group(1)) > 15000): return self.err(413, "too_long", "录音最长 15 秒 / 2 MiB")
             if mode == "not_logged_in" or not any(pl.get("logged_in") for pl in PLATFORMS if pl.get("origin") == "netease"):
                 return self.err(409, "not_logged_in", "服务端未登录网易云账号")
+            if mode == "fingerprint_unsupported": return self.err(503, "fingerprint_unsupported", "网易云识曲指纹格式已变更，服务端暂不支持")
             if mode == "no_match" or n < 2048: return self.err(404, "no_match", "没有识别结果")
             t = TRACKS[sum(raw[-64:]) % len(TRACKS)]
-            ms = [{"title": t["title"], "artist": t["artists"][0]["name"], "album": (t.get("album") or {}).get("name"), "cover": (t.get("cover") or {}).get("url"),
+            ms = [{"title": t["title"], "artist": t["artists"][0]["name"], "album": (t.get("album") or {}).get("name"), "cover": ({"url": (t.get("cover") or {}).get("url")} if (t.get("cover") or {}).get("url") else None),
                    "origin": "netease", "track_id": t["id"], "offset_ms": 42_000}]
             return self.send_json({"matches": ms}, etag=False)
         if p == "/api/v1/home":

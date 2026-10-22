@@ -363,7 +363,7 @@ extension CoreClient {
     /// F: 听歌识曲 draft — multipart `audio` (≤15 s) → {matches:[…]}. Errors: not_logged_in · no_match · too_long.
     func recognize(_ audio: Data, filename: String, mime: String, durationMs: Int) async throws -> CoreRecognizeResult {
         let b = "ym-" + UUID().uuidString
-        let body = Multipart.body(boundary: b, file: audio, filename: filename, mime: mime, fields: [("duration_ms", String(durationMs))])
+        let body = Multipart.body(boundary: b, file: audio, filename: filename, mime: mime, fields: durationMs > 0 ? [("duration_ms", String(durationMs))] : [])
         do {
             let (d, _, _) = try await call("POST", "/api/v1/recognize", body: body, contentType: "multipart/form-data; boundary=\(b)")
             return try Self.decoder.decode(CoreRecognizeResult.self, from: d)

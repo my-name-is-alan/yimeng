@@ -239,7 +239,7 @@ private struct AlbumsGrid: View {
                     }
                 }.padding(.horizontal, Theme.margin)
             }
-            let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
+            let w = YMLayout.tile()
             if (cache.albumBase[key] ?? 0) > 0 {
                 Button { Task { await cache.less(key) } } label: {
                     Label("从第 \(cache.albumBase[key] ?? 0) 张起 · 载入前面", systemImage: "chevron.up")

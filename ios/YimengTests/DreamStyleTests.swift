@@ -21,3 +21,21 @@ final class DreamStyleTests: XCTestCase {
         XCTAssertGreaterThan(DreamStyle.decide(id: "z", tags: [], bpm: 170, measured: 0.95).energy, 0.7)
     }
 }
+
+final class DreamStyleLockTests: XCTestCase {
+    func testOctaveAndMedian() {
+        XCTAssertEqual(DreamStyle.octave(60), 120)
+        XCTAssertEqual(DreamStyle.octave(188), 94)
+        XCTAssertEqual(DreamStyle.octave(121), 121)
+        // half/double-time readings of a ~120 bpm song collapse to ~120
+        XCTAssertEqual(DreamStyle.stableTempo([121, 60, 240, 119, 73, 122])!, 120.5, accuracy: 0.6)
+    }
+    func testLockPersists() {
+        let d = UserDefaults(suiteName: "ym.test.dreamstyle")!; d.removePersistentDomain(forName: "ym.test.dreamstyle")
+        DreamStyle.store = d
+        XCTAssertNil(DreamStyle.cached("t1"))
+        DreamStyle.lock("t1", .init(energy: 0.8, genre: "rock", fromTags: false))
+        XCTAssertEqual(DreamStyle.cached("t1"), .init(energy: 0.8, genre: "rock", fromTags: false))
+        DreamStyle.store = .standard
+    }
+}

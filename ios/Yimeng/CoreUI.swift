@@ -264,22 +264,48 @@ struct PlatformHomeSections: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     var body: some View {
-        if YMLayout.cardColumns > 1 {
-            // iPad: daily picks + FM as a 2–3 column card grid instead of one long iPhone column.
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 20, alignment: .top), count: YMLayout.cardColumns), alignment: .leading, spacing: 4) {
+        if YMLayout.wide {
+            // Wide iPad content column: 乐签 + daily cards side by side, FM next to the first recommendation row.
+            let cols = Array(repeating: GridItem(.flexible(), spacing: 20, alignment: .top), count: YMLayout.cardColumns)
+            LazyVGrid(columns: cols, alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionHeader(title: "今日乐签", more: false).padding(.horizontal, -Theme.margin)
+                    YueqianHomeTicket()
+                }
                 ForEach(store.dailies) { d in
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false).padding(.horizontal, -Theme.margin)
                         DailyMixCard(origin: d.origin, songs: d.tracks)
                     }
                 }
-                ForEach(store.fmOrigins, id: \.self) { o in
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false).padding(.horizontal, -Theme.margin)
-                        FMCard(origin: o)
-                    }.id("fm")
-                }
             }.padding(.horizontal, Theme.margin)
+            Color.clear.frame(height: 0).id("fm")
+            let fm = store.fmOrigins.first
+            let rec = store.recommend.first
+            if fm != nil || rec != nil {
+                HStack(alignment: .top, spacing: 20) {
+                    if let o = fm {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false).padding(.horizontal, -Theme.margin)
+                            FMCard(origin: o)
+                        }.frame(width: (YMLayout.width - Theme.margin * 2 - 20) / 2)
+                    }
+                    if let r = rec {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false).padding(.horizontal, -Theme.margin)
+                            recRow(r, pad: 0)
+                        }
+                    }
+                }.padding(.horizontal, Theme.margin)
+            }
+            ForEach(store.fmOrigins.dropFirst(), id: \.self) { o in
+                SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false)
+                FMCard(origin: o).padding(.horizontal, Theme.margin)
+            }
+            ForEach(store.recommend.dropFirst(), id: \.origin) { r in
+                SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false)
+                recRow(r, pad: Theme.margin)
+            }
         } else {
         ForEach(store.dailies) { d in
             SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false)
@@ -290,9 +316,13 @@ struct PlatformHomeSections: View {
             SectionHeader(title: "\(CoreOrigin.label(o)) · 私人 FM", more: false)
             FMCard(origin: o).padding(.horizontal, Theme.margin)
         }
-        }
         ForEach(store.recommend, id: \.origin) { r in
             SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false)
+            recRow(r, pad: Theme.margin)
+        }
+        }
+    }
+    @ViewBuilder func recRow(_ r: (origin: String, lists: [NDPlaylist]), pad: CGFloat) -> some View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(r.lists) { p in
@@ -303,9 +333,9 @@ struct PlatformHomeSections: View {
                             }
                         }.buttonStyle(.plain)
                     }
-                }.padding(.horizontal, Theme.margin)
+                }.padding(.horizontal, pad)
             }
-        }
+        
     }
 }
 

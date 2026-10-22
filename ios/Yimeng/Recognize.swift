@@ -6,6 +6,22 @@ import AVFoundation
 struct CoreRecognizeMatch: Codable, Hashable, Sendable, Identifiable {
     var title: String; var artist: String?; var album: String?; var cover: String?
     var origin: String?; var trackId: String?; var offsetMs: Int?
+    init(title: String, artist: String? = nil, album: String? = nil, cover: String? = nil, origin: String? = nil, trackId: String? = nil, offsetMs: Int? = nil) {
+        self.title = title; self.artist = artist; self.album = album; self.cover = cover; self.origin = origin; self.trackId = trackId; self.offsetMs = offsetMs
+    }
+    private enum K: String, CodingKey { case title, artist, album, cover, origin, trackId, offsetMs }
+    /// Core sends `cover` as a CoverRef object ({url, source_url}); older drafts / the mock sent a plain string.
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        title = try c.decode(String.self, forKey: .title)
+        artist = try c.decodeIfPresent(String.self, forKey: .artist)
+        album = try c.decodeIfPresent(String.self, forKey: .album)
+        if let s = try? c.decodeIfPresent(String.self, forKey: .cover) { cover = s }
+        else { cover = (try? c.decodeIfPresent(CoreCover.self, forKey: .cover))?.url }
+        origin = try c.decodeIfPresent(String.self, forKey: .origin)
+        trackId = try c.decodeIfPresent(String.self, forKey: .trackId)
+        offsetMs = try c.decodeIfPresent(Int.self, forKey: .offsetMs)
+    }
     var id: String { (trackId ?? "") + "|" + title + "|" + (artist ?? "") }
     /// Playable row when Core resolved it to a track id.
     var song: NDSong? {
@@ -18,7 +34,7 @@ struct CoreRecognizeMatch: Codable, Hashable, Sendable, Identifiable {
 struct CoreRecognizeResult: Codable, Sendable { var matches: [CoreRecognizeMatch] }
 
 enum RecognizeFailure: Equatable {
-    case notLoggedIn, noMatch, tooLong, notSupported, micDenied, other(String)
+    case notLoggedIn, noMatch, tooLong, notSupported, micDenied, fingerprintUnsupported, rateLimited, other(String)
     var text: String {
         switch self {
         case .notLoggedIn: "识曲需要先在译梦服务端登录网易云账号"
@@ -26,6 +42,8 @@ enum RecognizeFailure: Equatable {
         case .tooLong: "录音太长了（最多 15 秒）"
         case .notSupported: "当前服务端还不支持识曲"
         case .micDenied: "需要麦克风权限才能识曲（可在「设置」中开启）"
+        case .fingerprintUnsupported: "识曲暂时用不了：网易云那边换了识别格式，等译梦服务端更新后再试"
+        case .rateLimited: "识得有点快了，歇一分钟再试"
         case .other(let s): s
         }
     }
@@ -36,6 +54,8 @@ enum RecognizeFailure: Equatable {
             case "no_match": return .noMatch
             case "too_long", "payload_too_large": return .tooLong
             case "not_found", "not_supported": return .notSupported
+            case "fingerprint_unsupported": return .fingerprintUnsupported
+            case "rate_limited", "too_many_requests": return .rateLimited
             default: return .other(c.message.isEmpty ? c.code : c.message)
             }
         }
@@ -77,7 +97,26 @@ final class RecognizeStore: ObservableObject {
         // Our own playback would be "heard" — pause it while listening, resume after.
         resumeAfter = PlayerStore.shared.isPlaying
         if resumeAfter { PlayerStore.shared.toggle() }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("ym-recognize.m4a")
+        var url = FileManager.default.temporaryDirectory.appendingPathComponent("ym-recognize.m4a")
+        #if DEBUG
+        // `-recognizeFile <path>`: feed a real song clip instead of the microphone (end-to-end tests on the simulator).
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-recognizeFile"), i + 1 < args.count {
+            url = URL(fileURLWithPath: args[i + 1])
+            for k in 1...10 { phase = .listening(Double(k) / 10); try? await Task.sleep(for: .milliseconds(150)) }
+            restore()
+            phase = .matching
+            do {
+                let data = try Data(contentsOf: url)
+                // Send the clip's real length: Core fingerprints only `duration_ms` worth of audio.
+                let secs = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? Self.clipSeconds
+                let res = try await Self.match(data, filename: url.lastPathComponent, mime: "audio/mp4", durationMs: Int((secs.isFinite ? secs : Self.clipSeconds) * 1000))
+                NSLog("[ym] RECOGNIZE file secs=%.2f bytes=%d matches=%@", secs, data.count, res.matches.map { "\($0.title)|\($0.trackId ?? "-")" }.joined(separator: ","))
+                phase = res.matches.isEmpty ? .failed(.noMatch) : .done(res.matches)
+            } catch { NSLog("[ym] RECOGNIZE file error %@", "\(error)"); phase = .failed(.from(error)) }
+            return
+        }
+        #endif
         try? FileManager.default.removeItem(at: url)
         do {
             let ses = AVAudioSession.sharedInstance()
@@ -97,12 +136,21 @@ final class RecognizeStore: ObservableObject {
             guard !Task.isCancelled else { return }
             phase = .matching
             let data = try Data(contentsOf: url)
-            let res = try await CoreClient.shared.recognize(data, filename: "clip.m4a", mime: "audio/mp4", durationMs: Int(Self.clipSeconds * 1000))
+            let res = try await Self.match(data, filename: "clip.m4a", mime: "audio/mp4", durationMs: Int(Self.clipSeconds * 1000))
             if res.matches.isEmpty { phase = .failed(.noMatch); Haptics.tick() } else { phase = .done(res.matches); Haptics.success() }
         } catch {
             recorder?.stop(); recorder = nil; restore()
             if !Task.isCancelled { phase = .failed(.from(error)) }
         }
+    }
+    /// NetEase's matcher is flaky on identical clips (no_match one call, a hit the next), so one quiet retry on no_match.
+    static func match(_ data: Data, filename: String, mime: String, durationMs: Int) async throws -> CoreRecognizeResult {
+        // Core measures the decoded clip itself; its duration_ms hint overrides that and hurt matching in live tests, so omit it.
+        let durationMs = 0
+        let r = try await CoreClient.shared.recognize(data, filename: filename, mime: mime, durationMs: durationMs)
+        guard r.matches.isEmpty, !Task.isCancelled else { return r }
+        try? await Task.sleep(for: .milliseconds(1200))
+        return try await CoreClient.shared.recognize(data, filename: filename, mime: mime, durationMs: durationMs)
     }
     private func restore() {
         AudioRoute.configureSession()
@@ -119,6 +167,7 @@ struct RecognizeSheet: View {
     var body: some View {
         VStack(spacing: 22) {
             Text("听歌识曲").font(.system(size: 17, weight: .semibold)).padding(.top, 18)
+                .task { if ProcessInfo.processInfo.arguments.contains("-recognizeFile"), store.phase == .idle { store.start() } }
             ZStack {
                 // Doodle ring (decorative): the only thing that animates with the listening progress.
                 Circle().strokeBorder(lime.opacity(0.25), style: StrokeStyle(lineWidth: 2, dash: [4, 6])).frame(width: 168, height: 168)

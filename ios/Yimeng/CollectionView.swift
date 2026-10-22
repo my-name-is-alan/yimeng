@@ -42,7 +42,7 @@ struct CollectionView: View {
                         ForEach(library.albums) { a in
                             Button { state.path.append(.ndAlbum(a)) } label: {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    RemoteCover(url: library.coverURL(a), size: (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2, corner: 12)
+                                    RemoteCover(url: library.coverURL(a), size: YMLayout.tile(), corner: 12)
                                     Text(a.name).font(.system(size: 14, weight: .semibold)).lineLimit(1).foregroundStyle(Theme.fg(scheme))
                                     Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                                 }

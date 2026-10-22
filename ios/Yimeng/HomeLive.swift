@@ -48,7 +48,9 @@ struct HomeLive: View {
                         FirstRunDoodle().padding(.top, 40)
                     }
 
-                    YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                    if !(NavidromeClient.core && YMLayout.wide) {
+                        YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                    }
                     if NavidromeClient.core && library.connected && recent.isEmpty && home.data.frequent.isEmpty && home.data.playlists.isEmpty {
                         NewAccountCard(name: library.user).padding(.horizontal, Theme.margin).padding(.top, 18).motionIn(0.2)
                     }
@@ -130,7 +132,9 @@ struct HomeLive: View {
                     Color.clear.frame(height: 190)
                 }
             }
-            .background(alignment: .top) { RemoteBackdrop(urls: bannerURLs, progress: p).ignoresSafeArea() }
+            // Only the banner carousel paints its own backdrop; without a banner (Core) this opaque layer used to hide
+            // YMBackdrop's cover ambience and left Home near-black.
+            .background(alignment: .top) { if !banner.isEmpty { RemoteBackdrop(urls: bannerURLs, progress: p).ignoresSafeArea() } }
             .sheet(item: Binding(get: { debugClone.map { DebugID(id: $0) } }, set: { debugClone = $0?.id })) { d in
                 CloneSheet(origin: String(d.id.split(separator: ":")[0]), playlistId: d.id, name: "导入测试").presentationDetents([.medium, .large])
             }
@@ -174,8 +178,20 @@ struct HomeLive: View {
                 }
             }
             if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
+            if let i = args.firstIndex(of: "-open"), i + 1 < args.count, ["album", "artist"].contains(args[i + 1]) {
+                // Core has no banner: fall back to any album on Home, then the library.
+                try? await Task.sleep(for: .seconds(1))
+                if args[i + 1] == "album" {
+                    let a = (home.data.banner + home.data.recent + home.data.newest + home.data.frequent + home.data.random).first
+                    if let a { state.path.append(.ndAlbum(a)) }
+                    else if let a = try? await library.debugFirstAlbum() { state.path.append(.ndAlbum(a)) }
+                } else {
+                    let ar = home.data.artists.first
+                    if let ar { state.path.append(.ndArtist(ar)) }
+                    else if let ar = try? await library.debugFirstArtist() { state.path.append(.ndArtist(ar)) }
+                }
+            }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {
-                if args[i + 1] == "album" { state.path.append(.ndAlbum(a)) }
                 if args[i + 1] == "np", let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty {
                     PlayerStore.shared.playAlbum(al, songs: s); state.nowPlaying = true
                 }
@@ -239,3 +255,14 @@ struct FirstRunDoodle: View {
         .onAppear { withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { on = true } }
     }
 }
+
+#if DEBUG
+extension LibraryStore {
+    /// Debug `-open album|artist`: first album / artist straight from the library.
+    func debugFirstAlbum() async throws -> NDAlbum? { try await NavidromeClient.shared.albumList(type: "alphabeticalByName", offset: 0, size: 1).first }
+    func debugFirstArtist() async throws -> NDArtist? {
+        let all = try await NavidromeClient.shared.artists()
+        return all.first { ($0.albumCount ?? 0) > 1 } ?? all.first
+    }
+}
+#endif

@@ -117,6 +117,37 @@ enum DreamStyle {
         let base = parts.isEmpty ? 0.45 : parts.reduce(0, +) / Double(parts.count)
         return max(0, min(1, base + jitter(id)))
     }
+    /// Fold a tempo into 70…180 by octaves (half/double-time detections).
+    static func octave(_ bpm: Double) -> Double {
+        guard bpm > 0 else { return 0 }
+        var b = bpm
+        while b < 70 { b *= 2 }
+        while b > 180 { b /= 2 }
+        return b
+    }
+    static func median(_ xs: [Double]) -> Double? {
+        guard !xs.isEmpty else { return nil }
+        let s = xs.sorted(); let n = s.count
+        return n % 2 == 1 ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2
+    }
+    /// Stable tempo from the first ~20 s of beat readings: octave-correct each, then take the median.
+    static func stableTempo(_ samples: [Double]) -> Double? { median(samples.filter { $0 > 0 }.map(octave)) }
+
+    /// Persistent per-track lock: once decided, the style never changes between launches (tags may still override).
+    struct Locked: Codable, Equatable { var energy: Double; var genre: String; var fromTags: Bool }
+    nonisolated(unsafe) static var store: UserDefaults = .standard
+    static let key = "ym.dreamstyle.v1"
+    static func cached(_ id: String) -> Locked? {
+        guard let d = store.data(forKey: key), let m = try? JSONDecoder().decode([String: Locked].self, from: d) else { return nil }
+        return m[id]
+    }
+    static func lock(_ id: String, _ l: Locked) {
+        var m = (store.data(forKey: key)).flatMap { try? JSONDecoder().decode([String: Locked].self, from: $0) } ?? [:]
+        if m.count > 4000 { m.removeAll() }
+        m[id] = l
+        if let d = try? JSONEncoder().encode(m) { store.set(d, forKey: key) }
+    }
+
     /// Decide (energy, genre) for DreamTrack so `motif` yields zig / ink / cloud for real songs.
     static func decide(id: String, tags: [String], bpm: Double?, measured: Double?) -> (energy: Double, genre: String) {
         let g = genreClass(tags)

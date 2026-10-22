@@ -68,7 +68,7 @@ struct ArtistDetailView: View {
                 }
                 if let albums = detail?.albums, !albums.isEmpty {
                     SectionHeader(title: "专辑", more: false)
-                    let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
+                    let w = YMLayout.tile()
                     LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
                         ForEach(albums) { a in
                             Button { state.path.append(.ndAlbum(a)) } label: {
