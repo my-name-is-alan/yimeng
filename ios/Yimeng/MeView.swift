@@ -11,6 +11,8 @@ struct SettingsView: View {
     @AppStorage("ym.appearance") private var appearance = 0
     @AppStorage("ym.lyricTrans") private var lyricTrans = true
     @AppStorage("ym.liveActivity") private var liveActivity = true
+    @AppStorage("ym.haptics") private var haptics = true
+    @AppStorage("ym.hapticBeat") private var hapticBeat = false
     @State private var showSwitch = false
     @State private var showReport = false
     @State private var showLastfm = false
@@ -76,6 +78,9 @@ struct SettingsView: View {
                               options: [(0, "跟随系统"), (1, "浅色"), (2, "深色")])
                     divider
                     toggleRow("character.bubble", "歌词翻译", $lyricTrans)
+                    divider
+                    toggleRow("hand.tap", "触感反馈", $haptics)
+                    if haptics { divider; toggleRow("waveform.path", "随节拍轻震", $hapticBeat).onChange(of: hapticBeat) { Haptics.syncBeatPulse() } }
                     divider
                     HStack(spacing: 14) {
                         icon("scribble.variable")

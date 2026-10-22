@@ -360,6 +360,15 @@ extension CoreClient {
         let (d, _, _) = try await call("PUT", "/api/v1/me/avatar", body: data, contentType: mime)
         return try Self.decoder.decode(CoreMe.self, from: d)
     }
+    /// F: 听歌识曲 draft — multipart `audio` (≤15 s) → {matches:[…]}. Errors: not_logged_in · no_match · too_long.
+    func recognize(_ audio: Data, filename: String, mime: String, durationMs: Int) async throws -> CoreRecognizeResult {
+        let b = "ym-" + UUID().uuidString
+        let body = Multipart.body(boundary: b, file: audio, filename: filename, mime: mime, fields: [("duration_ms", String(durationMs))])
+        do {
+            let (d, _, _) = try await call("POST", "/api/v1/recognize", body: body, contentType: "multipart/form-data; boundary=\(b)")
+            return try Self.decoder.decode(CoreRecognizeResult.self, from: d)
+        } catch let e as CoreAPIError where e.code == "no_match" { return CoreRecognizeResult(matches: []) }
+    }
     /// Authenticated image bytes for a Core-relative avatar_url (no token in URLs).
     func imageData(_ path: String) async throws -> Data {
         if path.hasPrefix("http"), let u = URL(string: path), let b = base, u.host != b.host {

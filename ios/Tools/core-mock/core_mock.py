@@ -180,6 +180,22 @@ class H(BaseHTTPRequestHandler):
             self.send_header("X-Yimeng-Codec", "pcm_s16le"); self.send_header("X-Yimeng-SampleRate", "22050"); self.send_header("X-Yimeng-BitDepth", "16"); self.send_header("X-Yimeng-Channels", "1")
             self.send_header("Content-Length", str(len(chunk))); self.end_headers(); self.wfile.write(chunk); return
         if not self.authed(): return self.err(401, "unauthorized", "unauthorized")
+        if p == "/api/v1/recognize" and m == "POST":
+            # Draft 听歌识曲: multipart `audio` (≤15 s / ≤2 MiB) [+ duration_ms]. Mock decides by ?mock= or the clip size.
+            ct = self.headers.get("Content-Type", ""); n = int(self.headers.get("Content-Length", 0) or 0)
+            if "multipart/form-data" not in ct or "boundary=" not in ct: return self.err(400, "invalid_body", "multipart/form-data with an `audio` part is required")
+            raw = self.rfile.read(n) if n else b""
+            if b'name="audio"' not in raw: return self.err(400, "invalid_body", "missing `audio` part")
+            mode = q.get("mock", [""])[0]
+            dm = __import__("re").search(rb'name="duration_ms"\r\n\r\n(\d+)', raw)
+            if mode == "too_long" or n > 2 * 1024 * 1024 or (dm and int(dm.group(1)) > 15000): return self.err(413, "too_long", "录音最长 15 秒 / 2 MiB")
+            if mode == "not_logged_in" or not any(pl.get("logged_in") for pl in PLATFORMS if pl.get("origin") == "netease"):
+                return self.err(409, "not_logged_in", "服务端未登录网易云账号")
+            if mode == "no_match" or n < 2048: return self.err(404, "no_match", "没有识别结果")
+            t = TRACKS[sum(raw[-64:]) % len(TRACKS)]
+            ms = [{"title": t["title"], "artist": t["artists"][0]["name"], "album": (t.get("album") or {}).get("name"), "cover": (t.get("cover") or {}).get("url"),
+                   "origin": "netease", "track_id": t["id"], "offset_ms": 42_000}]
+            return self.send_json({"matches": ms}, etag=False)
         if p == "/api/v1/home":
             return self.send_json({"banner": ALBUMS[:5], "recently_added": ALBUMS[::-1], "recently_played": ALBUMS[2:7], "frequent": ALBUMS[1:6],
                                    "random": random.Random(time.strftime("%Y%m%d")).sample(ALBUMS, 6), "top_artists": [{"id": a, "name": n, "sort_letter": l, "cover": cover(a, i)} for i, (a, n, l) in enumerate(ARTISTS)],

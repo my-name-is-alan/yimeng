@@ -248,8 +248,8 @@ struct FMControls: View {
     var body: some View {
         if fm.active, let s = player.song {
             HStack(spacing: 34) {
-                Button { fm.like() } label: { Image(systemName: stars.isStarred(song: s.id) ? "heart.fill" : "heart") }
-                Button { fm.trash() } label: { Image(systemName: "trash") }
+                Button { fm.like(); Haptics.success() } label: { Image(systemName: stars.isStarred(song: s.id) ? "heart.fill" : "heart") }
+                Button { fm.trash(); Haptics.tick() } label: { Image(systemName: "trash") }
                 Button { player.skip(1) } label: { Image(systemName: "forward.end") }
                 if let o = fm.origin { Text("\(CoreOrigin.label(o)) · 私人 FM").font(.system(size: 12)).opacity(0.6) }
             }

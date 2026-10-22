@@ -32,7 +32,7 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var song: NDSong?
     @Published private(set) var queue: [NDSong] = []
     @Published private(set) var index: Int = 0
-    @Published var isPlaying = false
+    @Published var isPlaying = false { didSet { if isPlaying != oldValue { Haptics.syncBeatPulse() } } }
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published var coverURL: URL?

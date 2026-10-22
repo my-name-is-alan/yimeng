@@ -18,6 +18,7 @@
 		17FCA2C64AA0229648AC071D /* emby-audio.json in Resources */ = {isa = PBXBuildFile; fileRef = 9A3C163344750D61165021CE /* emby-audio.json */; };
 		1E47D068B47A5E2B7629065F /* IPad.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */; };
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
+		22FC0BB5F887D18045C1F1A0 /* RecognizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8B62B755DBDA5C79962202 /* RecognizeTests.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
 		2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D025F1147743E7047E3D665 /* IPadTests.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
@@ -32,6 +33,7 @@
 		44B2579B22172C9943151E90 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */; };
 		48B39070769FD76DEE1C831A /* LiveLyrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F48F48AC5D21B981D4F21F /* LiveLyrics.swift */; };
 		4D4C1224C5989668EDCD4B6B /* emby-sysinfo.json in Resources */ = {isa = PBXBuildFile; fileRef = 15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */; };
+		51569C2A7545A723CBB9974B /* RecognizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82445EEABCC63CDF9736B076 /* RecognizeTests.swift */; };
 		562E8815E35C3538997E3EA0 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10344A37F4E7381B0AA3FBD7 /* Glass.swift */; };
 		58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624D971C2C9BF41CC02A1560 /* LibraryView.swift */; };
 		5A06248C1CEC2FFBC760206D /* emby-users.json in Resources */ = {isa = PBXBuildFile; fileRef = 3019C28A157BEF762348D292 /* emby-users.json */; };
@@ -40,6 +42,7 @@
 		5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 221E80FC912CC7CB64F2505A /* MusicSources.swift */; };
 		5F7DC5897731B0F4227472A9 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA6146350902AD251CEEB2 /* Common.swift */; };
 		624EB59700198E03AE55FA70 /* OfflineCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17C29D0678533A1D4D8D128 /* OfflineCacheTests.swift */; };
+		6782CC163A5C14ACFC92037D /* Recognize.swift in Sources */ = {isa = PBXBuildFile; fileRef = D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */; };
 		6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */; };
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
 		6FE10BBA8C1BEFD2A0C2F8DF /* emby-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = 54114807AFE972B4C5E9DE7D /* emby-auth.json */; };
@@ -197,8 +200,10 @@
 		77F48F48AC5D21B981D4F21F /* LiveLyrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLyrics.swift; sourceTree = "<group>"; };
 		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
 		81F7B82EDBCFF2E3A3BB65FE /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
+		82445EEABCC63CDF9736B076 /* RecognizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeTests.swift; sourceTree = "<group>"; };
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
+		8C8B62B755DBDA5C79962202 /* RecognizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeTests.swift; sourceTree = "<group>"; };
 		8D025F1147743E7047E3D665 /* IPadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadTests.swift; sourceTree = "<group>"; };
 		8D351EB4C609FA891763BACE /* EmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStates.swift; sourceTree = "<group>"; };
 		912E4AF5EC42BFE248E5DC92 /* WidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTests.swift; sourceTree = "<group>"; };
@@ -223,6 +228,7 @@
 		BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPad.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
 		CB7AA12279A810579DDAD711 /* GenreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreView.swift; sourceTree = "<group>"; };
+		D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recognize.swift; sourceTree = "<group>"; };
 		D481EB1947F216689FAC4AF5 /* CoreEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEvents.swift; sourceTree = "<group>"; };
 		DF74DDA417906B01BE2E7748 /* Blurhash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Blurhash.swift; sourceTree = "<group>"; };
 		E6C097B69274838BB315DE62 /* WidgetsIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetsIntents.swift; sourceTree = "<group>"; };
@@ -245,6 +251,7 @@
 				065726152CF03E6FD2BF5A3A /* GestureTests.swift */,
 				8D025F1147743E7047E3D665 /* IPadTests.swift */,
 				81F7B82EDBCFF2E3A3BB65FE /* OfflineTests.swift */,
+				82445EEABCC63CDF9736B076 /* RecognizeTests.swift */,
 				912E4AF5EC42BFE248E5DC92 /* WidgetTests.swift */,
 			);
 			path = YimengUITests;
@@ -295,6 +302,7 @@
 				3318DA59414862B1885E2720 /* EmbyClientTests.swift */,
 				AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */,
 				B17C29D0678533A1D4D8D128 /* OfflineCacheTests.swift */,
+				8C8B62B755DBDA5C79962202 /* RecognizeTests.swift */,
 				6F61438FCEA08D7E70B67C51 /* Fixtures */,
 			);
 			path = YimengTests;
@@ -370,6 +378,7 @@
 				0962E95E6B55BCB808D64B49 /* Palette.swift */,
 				1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */,
 				467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */,
+				D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */,
 				E96BD4E0C93F027C9E0B46E7 /* Stores.swift */,
 				3DA1C686614CB8D6930D4D49 /* Theme.swift */,
 				E6C097B69274838BB315DE62 /* WidgetsIntents.swift */,
@@ -569,6 +578,7 @@
 				4174A2343A33535F95EDA60D /* GestureTests.swift in Sources */,
 				2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */,
 				B781CFE1FD4E6D240B2F5822 /* OfflineTests.swift in Sources */,
+				51569C2A7545A723CBB9974B /* RecognizeTests.swift in Sources */,
 				E23168831EC9FF6906280B66 /* WidgetTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -581,6 +591,7 @@
 				112DC50DEE50F63DAFB146ED /* EmbyClientTests.swift in Sources */,
 				3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */,
 				624EB59700198E03AE55FA70 /* OfflineCacheTests.swift in Sources */,
+				22FC0BB5F887D18045C1F1A0 /* RecognizeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -643,6 +654,7 @@
 				6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */,
 				6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */,
 				44B2579B22172C9943151E90 /* PlaylistDetailView.swift in Sources */,
+				6782CC163A5C14ACFC92037D /* Recognize.swift in Sources */,
 				76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */,
 				C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */,
 				D333CE70C2E9BFB4686D2D5B /* WidgetShared.swift in Sources */,
@@ -795,6 +807,7 @@
 				INFOPLIST_FILE = "Config/Yimeng-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网里的飞牛 NAS / 音乐服务器";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "听歌识曲时录制约 10 秒环境声音，发送到你的译梦服务端识别。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "把今日乐签保存到相册";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
@@ -915,6 +928,7 @@
 				INFOPLIST_FILE = "Config/Yimeng-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网里的飞牛 NAS / 音乐服务器";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "听歌识曲时录制约 10 秒环境声音，发送到你的译梦服务端识别。";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "把今日乐签保存到相册";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;

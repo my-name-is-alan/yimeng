@@ -134,6 +134,22 @@ enum Haptics {
     static func tick() { guard enabled else { return }; sel.selectionChanged() }
     static func success() { guard enabled else { return }; note.notificationOccurred(.success) }
     static func pulse(_ strength: Double) { guard enabled, beatPulse else { return }; soft.impactOccurred(intensity: max(0.2, min(1, strength))) }
+
+    /// Optional beat pulse: polls the on-device beat detector at 30 Hz while playing and taps once per detected onset.
+    private static var beatTimer: Timer?
+    private static var lastPulse = 0.0
+    static func syncBeatPulse() {
+        let want = enabled && beatPulse && PlayerStore.shared.isPlaying
+        if !want { beatTimer?.invalidate(); beatTimer = nil; return }
+        guard beatTimer == nil else { return }
+        beatTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                let r = BeatStore.read()
+                if r.live, r.pulse > 0.85, lastPulse <= 0.85 { pulse(0.35 + r.energy * 0.6) }
+                lastPulse = r.pulse
+            }
+        }
+    }
 }
 
 // MARK: - Player swipes

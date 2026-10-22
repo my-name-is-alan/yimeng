@@ -220,6 +220,7 @@ struct LibrarySearchView: View {
     @State private var artists: [NDArtist] = []
     @State private var songs: [NDSong] = []
     @State private var searching = false
+    @State private var recognizing = false
     let cats: [(String, Color)] = [("周杰伦", Color(red: 0.48, green: 0.36, blue: 1)), ("独立摇滚", Color(red: 0.91, green: 0.36, blue: 1)),
                                    ("古风", Color(red: 0.23, green: 0.51, blue: 0.96)), ("电子", Color(red: 0.08, green: 0.72, blue: 0.65))]
     private var liveOnly: Bool { library.useLiveOnly }
@@ -227,7 +228,17 @@ struct LibrarySearchView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("搜索").font(.system(size: 28, weight: .bold)).padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
+                HStack {
+                    Text("搜索").font(.system(size: 28, weight: .bold))
+                    Spacer()
+                    if NavidromeClient.core {
+                        Button { recognizing = true } label: {
+                            Label("识曲", systemImage: "waveform").font(.system(size: 14, weight: .semibold))
+                                .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(Theme.fill(scheme)))
+                        }.buttonStyle(.plain).accessibilityIdentifier("search.recognize")
+                    }
+                }
+                .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(Theme.secondary(scheme))
                     TextField(liveOnly ? "搜索曲库…" : "艺人、专辑、歌曲", text: $q)
@@ -332,6 +343,7 @@ struct LibrarySearchView: View {
                 Color.clear.frame(height: 170)
             }
         }
+        .sheet(isPresented: $recognizing) { RecognizeSheet().presentationDetents([.medium, .large]).presentationCornerRadius(28) }
         .task {
             guard liveOnly, albums.isEmpty, q.isEmpty else { return }
             albums = Array(library.albums.prefix(16))

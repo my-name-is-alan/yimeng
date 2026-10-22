@@ -139,7 +139,7 @@ struct NowPlayingView: View {
             Text("译梦 · 梦境 \(track.motif.rawValue.uppercased())").font(.system(size: 12)).tracking(2).opacity(0.7)
             Spacer()
             if let s = player.song {
-                Button { StarStore.shared.toggle(s) } label: {
+                Button { StarStore.shared.toggle(s); Haptics.tap() } label: {
                     Image(systemName: StarStore.shared.isStarred(song: s.id) ? "heart.fill" : "heart")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(StarStore.shared.isStarred(song: s.id) ? Color(hex: 0xff5fa8) : .white)
