@@ -16,6 +16,10 @@ final class LibraryCache: ObservableObject {
     @Published private(set) var paging: Set<String> = []
     @Published private(set) var done: Set<String> = []
     @Published private(set) var failed: Set<String> = []
+    /// Album lists may be a window that starts mid-library after an elevator jump (server offset of item 0).
+    @Published private(set) var albumBase: [String: Int] = [:]
+    /// key → server bucket → first offset (alphabeticalByName), found by k-ary search; memoised per session.
+    private var letterOffset: [String: [Int: Int]] = [:]
     /// Per-segment scroll anchor (not published: restoring shouldn't re-render).
     var scrollAnchor: [String: String] = [:]
     private var stamps: [String: Date] = [:]
@@ -67,7 +71,9 @@ final class LibraryCache: ObservableObject {
         case "songs": data = try? enc.encode(Box(items: Array(songs.prefix(200)), savedAt: now))
         case "artists": data = try? enc.encode(Box(items: artists, savedAt: now))
         case "playlists": data = try? enc.encode(Box(items: PlaylistEvents.shared.lists ?? [], savedAt: now))
-        default: data = try? enc.encode(Box(items: Array((albums[key] ?? []).prefix(240)), savedAt: now))
+        default:
+            guard (albumBase[key] ?? 0) == 0 else { return }
+            data = try? enc.encode(Box(items: Array((albums[key] ?? []).prefix(240)), savedAt: now))
         }
         guard let data else { return }
         let url = Self.file(key)
@@ -110,6 +116,8 @@ final class LibraryCache: ObservableObject {
         case "playlists":
             await PlaylistEvents.shared.load(force: true)
         default:
+            if force { albumBase[key] = 0; albums[key] = [] }
+            else if (albumBase[key] ?? 0) > 0 { return }   // jumped window: don't splice page 0 into it
             let sort = String(key.dropFirst("albums:".count))
             let size = sort == "random" ? Self.albumPage : Self.albumPage
             let page = try await c.albumList(type: sort, offset: 0, size: size)
@@ -139,11 +147,86 @@ final class LibraryCache: ObservableObject {
         } else if key.hasPrefix("albums:") {
             let sort = String(key.dropFirst("albums:".count))
             let cur = albums[key] ?? []
-            guard let page = try? await c.albumList(type: sort, offset: cur.count, size: Self.albumPage) else { return }
+            guard let page = try? await c.albumList(type: sort, offset: (albumBase[key] ?? 0) + cur.count, size: Self.albumPage) else { return }
             let ids = Set(cur.map(\.id))
             albums[key] = cur + page.filter { !ids.contains($0.id) }
             if page.count < Self.albumPage { done.insert(key) }
         }
+    }
+
+    /// Load the page before a jumped window (prepends; scroll anchor keeps the view still).
+    func less(_ key: String) async {
+        let base = albumBase[key] ?? 0
+        guard base > 0, !paging.contains(key) else { return }
+        paging.insert(key); defer { paging.remove(key) }
+        let sort = String(key.dropFirst("albums:".count))
+        let off = max(0, base - Self.albumPage)
+        guard let page = try? await NavidromeClient.shared.albumList(type: sort, offset: off, size: base - off) else { return }
+        let cur = albums[key] ?? [], ids = Set(cur.map(\.id))
+        albums[key] = page.filter { !ids.contains($0.id) } + cur
+        albumBase[key] = off
+        if off == 0 { persist(key) }
+    }
+
+    /// Elevator jump for A–Z albums (paged, 70k+). Returns the album id to scroll to.
+    /// 1) boundary already inside the loaded window → no network;
+    /// 2) else find the server offset of the letter with a parallel 8-ary search over size=1 probes
+    ///    (~3 rounds × 7 requests + one ≤500 fetch), memoised;
+    /// 3) offset just past the window (≤300) → extend forward; otherwise replace with a window starting there.
+    func jumpAlbums(_ key: String, letter: String) async -> String? {
+        let target = Initials.bucket(ofLetter: letter)
+        let cur = albums[key] ?? [], base = albumBase[key] ?? 0
+        if let i = cur.firstIndex(where: { Initials.serverBucket($0.name) >= target }), i > 0 || base == 0 { return cur[i].id }
+        if done.contains(key), base == 0, cur.allSatisfy({ Initials.serverBucket($0.name) < target }) { return cur.last?.id }
+        let sort = String(key.dropFirst("albums:".count))
+        let t0 = Date()
+        guard let off = await letterOffset(sort: sort, key: key, target: target) else { return nil }
+        NetLog.logger.info("JUMP albums \(letter, privacy: .public) → offset \(off) in \(Int(Date().timeIntervalSince(t0) * 1000))ms")
+        let c = NavidromeClient.shared
+        let now = albums[key] ?? [], b = albumBase[key] ?? 0, end = b + now.count
+        if off >= b && off < end { return now[off - b].id }
+        if off >= end && off - end <= 300, !done.contains(key) {
+            guard let page = try? await c.albumList(type: sort, offset: end, size: off - end + Self.albumPage) else { return nil }
+            let ids = Set(now.map(\.id))
+            albums[key] = now + page.filter { !ids.contains($0.id) }
+            if page.count < off - end + Self.albumPage { done.insert(key) }
+            let all = albums[key] ?? []
+            return off - b < all.count ? all[off - b].id : all.last?.id
+        }
+        guard let page = try? await c.albumList(type: sort, offset: off, size: Self.albumPage), !page.isEmpty else { return nil }
+        albums[key] = page; albumBase[key] = off
+        if page.count < Self.albumPage { done.insert(key) } else { done.remove(key) }
+        return page.first?.id
+    }
+
+    private func letterOffset(sort: String, key: String, target: Int) async -> Int? {
+        if let o = letterOffset[key]?[target] { return o }
+        let c = NavidromeClient.shared
+        // Invariant: everything before `lo` is < target; item at `hi` (or end) is ≥ target.
+        var lo = 0, hi = (LibraryStore.shared.albumTotal ?? 200_000) + 2000
+        // Tighten with what we already know.
+        for (b, o) in letterOffset[key] ?? [:] { if b < target { lo = max(lo, o) } else { hi = min(hi, o) } }
+        func probe(_ o: Int) async -> Int {
+            guard let a = try? await c.albumList(type: sort, offset: o, size: 1), let f = a.first else { return 99 }
+            return Initials.serverBucket(f.name)
+        }
+        var rounds = 0
+        while hi - lo > 500, rounds < 8 {
+            rounds += 1
+            let pts = (1...7).map { lo + (hi - lo) * $0 / 8 }
+            let res = await withTaskGroup(of: (Int, Int).self) { g -> [Int: Int] in
+                for p in pts { g.addTask { (p, await probe(p)) } }
+                var m: [Int: Int] = [:]; for await (p, r) in g { m[p] = r }; return m
+            }
+            var nlo = lo, nhi = hi
+            for p in pts { if res[p]! < target { nlo = p + 1 } else { nhi = p; break } }
+            lo = nlo; hi = nhi
+        }
+        guard let win = try? await c.albumList(type: sort, offset: lo, size: max(1, min(500, hi - lo + 1))) else { return nil }
+        let i = win.firstIndex { Initials.serverBucket($0.name) >= target } ?? win.count
+        let off = lo + i
+        letterOffset[key, default: [:]][target] = off
+        return off
     }
 
     /// First open of 曲库: visible segment first, then the others' first pages in parallel, quietly.
@@ -159,6 +242,7 @@ final class LibraryCache: ObservableObject {
     }
 
     func clear() {
+        albumBase = [:]; letterOffset = [:]
         songs = []; albums = [:]; artists = []; stamps = [:]; done = []; diskLoaded = []; prefetched = false
         try? FileManager.default.removeItem(at: Self.file("songs").deletingLastPathComponent())
     }

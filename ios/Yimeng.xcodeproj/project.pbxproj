@@ -42,6 +42,7 @@
 		DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
 		E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B459A03FE9FB71837E459E /* Motion.swift */; };
 		EBB1A10BDC92B222F4152ED5 /* Banner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C66FE3A48511F18C8FF2DEF /* Banner.swift */; };
+		F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */; };
 		F56243364D38BE09D937684A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3855754257202630A564173A /* App.swift */; };
 		F962E90B44855B5B757C1431 /* NavidromeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */; };
 		FC7356BF1C281FDDAB7DD2E3 /* YimengWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E1C7C7E078182DCBB5B668 /* YimengWidgets.swift */; };
@@ -93,6 +94,7 @@
 		467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistDetailView.swift; sourceTree = "<group>"; };
 		4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
 		4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionView.swift; sourceTree = "<group>"; };
+		4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevatorIndex.swift; sourceTree = "<group>"; };
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		624D971C2C9BF41CC02A1560 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		6672A08DBE481114D1F34B50 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -157,6 +159,7 @@
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
 				673E45F12B4A88C9F60BEDEF /* DreamData.swift */,
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
+				4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */,
 				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
@@ -299,6 +302,7 @@
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
 				FD6FCBD54D57219F06DE8229 /* DreamData.swift in Sources */,
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,
+				F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */,
 				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,

@@ -1,43 +1,92 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 /// Loads Navidrome cover art with the required User-Agent (AsyncImage is 403'd by the CDN/WAF).
+/// Lazy: the fetch starts when the view appears and is cancelled when it disappears (`.task`).
+/// `points` (optional) rewrites the getCoverArt `size` to ~screen-scale × points, bucketed so caches hit.
 struct CoverImage: View {
     let url: URL?
+    var points: CGFloat? = nil
     var body: some View {
-        if let url { CoverImageInner(url: url).id(CoverCache.key(url)) } else { Color.gray.opacity(0.2) }
+        if let u = url.map({ u in points.map { CoverCache.sized(u, points: $0) } ?? u }) {
+            CoverImageInner(url: u).id(CoverCache.key(u))
+        } else { Color.gray.opacity(0.2) }
     }
 }
 
-/// Starts from the synchronous memory/disk cache so re-created views never flash a placeholder.
+/// Memory hit → first frame shows the image (no flicker on re-appear). Otherwise a smaller/other-size
+/// cached copy is shown as placeholder, disk is read + decoded off main, network last (limited, cancellable).
 private struct CoverImageInner: View {
     let url: URL
     @State private var image: UIImage?
+    @State private var stand: UIImage?
     @State private var failed = false
     init(url: URL) {
         self.url = url
-        _image = State(initialValue: CoverCache.shared.cached(url))
+        let m = CoverCache.shared.memory(url)
+        _image = State(initialValue: m)
+        _stand = State(initialValue: m == nil ? CoverCache.shared.memoryAnySize(url) : nil)
     }
     var body: some View {
         ZStack {
             Color.gray.opacity(failed ? 0.25 : 0.12)
+            if image == nil, let stand { Image(uiImage: stand).resizable().scaledToFill() }
             if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
         }
         .task(id: url.absoluteString) {
-            guard image == nil, url.scheme != CoverCache.offlineScheme else { return }
-            if let img = try? await CoverCache.shared.fetch(url) {
-                withAnimation(.easeOut(duration: 0.25)) { image = img }
-            } else { failed = true }
+            guard image == nil else { return }
+            if let d = await CoverCache.shared.disk(url) { image = d; return }   // local: no fade
+            guard url.scheme != CoverCache.offlineScheme else { return }
+            do {
+                let img = try await CoverCache.shared.fetch(url)
+                withAnimation(.easeOut(duration: 0.22)) { image = img }
+            } catch is CancellationError {
+            } catch { if !Task.isCancelled { failed = true } }
         }
     }
 }
 
+/// Counting semaphore with cancellation; LIFO so the most recently appeared rows load first.
+final class AsyncLimiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var avail: Int
+    private var waiters: [(UUID, CheckedContinuation<Bool, Never>)] = []
+    init(_ n: Int) { avail = n }
+    /// false = cancelled while waiting (no slot held).
+    func acquire() async -> Bool {
+        let id = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+                lock.lock()
+                if Task.isCancelled { lock.unlock(); c.resume(returning: false); return }
+                if avail > 0 { avail -= 1; lock.unlock(); c.resume(returning: true) }
+                else { waiters.append((id, c)); lock.unlock() }
+            }
+        } onCancel: {
+            lock.lock()
+            if let i = waiters.firstIndex(where: { $0.0 == id }) {
+                let c = waiters.remove(at: i).1; lock.unlock(); c.resume(returning: false)
+            } else { lock.unlock() }
+        }
+    }
+    func release() {
+        lock.lock()
+        if !waiters.isEmpty { let c = waiters.removeLast().1; lock.unlock(); c.resume(returning: true) }
+        else { avail += 1; lock.unlock() }
+    }
+}
+
 /// Cover cache keyed by Subsonic id+size (URLs carry a per-login token, so never key by full URL).
-/// Memory (NSCache) + disk (Caches/covers). Thread-safe; sync lookup for first frame.
+/// Memory (NSCache, cost = decoded bytes) + disk (Caches/covers, original bytes). Decode = ImageIO downsample, off main.
 final class CoverCache: @unchecked Sendable {
     static let shared = CoverCache()
     static let offlineScheme = "yimeng-cover"
-    private let mem = NSCache<NSString, UIImage>()
+    static let buckets = [64, 128, 192, 256, 300, 384, 512, 600, 768, 800, 1024]
+    private let mem: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>(); c.totalCostLimit = 96 * 1024 * 1024; return c
+    }()
+    private let limiter = AsyncLimiter(6)
     private let dir: URL = {
         let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("covers", isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
@@ -47,37 +96,98 @@ final class CoverCache: @unchecked Sendable {
         let c = URLSessionConfiguration.default
         c.httpAdditionalHeaders = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "image/*"]
         c.timeoutIntervalForRequest = 30
+        c.httpMaximumConnectionsPerHost = 6
+        c.urlCache = nil   // we keep our own disk cache
         return URLSession(configuration: c)
     }()
 
-    static func key(_ url: URL) -> String {
+    /// Rewrite `size=` to the bucket ≥ points × screen scale (≈3× on iPhone).
+    static func sized(_ url: URL, points: CGFloat) -> URL {
+        let want = Int((points * min(3, UIScreen.main.scale)).rounded(.up))
+        let px = buckets.first { $0 >= want } ?? buckets.last!
+        guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var q = c.queryItems ?? []
+        q.removeAll { $0.name == "size" }; q.append(URLQueryItem(name: "size", value: "\(px)"))
+        c.queryItems = q
+        return c.url ?? url
+    }
+
+    private static func parts(_ url: URL) -> (id: String, size: Int)? {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if let id = q.first(where: { $0.name == "id" })?.value {
-            return id + "_" + (q.first(where: { $0.name == "size" })?.value ?? "0")
-        }
+        guard let id = q.first(where: { $0.name == "id" })?.value else { return nil }
+        return (id, Int(q.first(where: { $0.name == "size" })?.value ?? "0") ?? 0)
+    }
+    static func key(_ url: URL) -> String {
+        if let p = parts(url) { return p.id + "_" + "\(p.size)" }
         return url.absoluteString
     }
     private func file(_ k: String) -> URL {
         dir.appendingPathComponent(k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? k)
     }
+    private func put(_ img: UIImage, _ k: String) {
+        let cost = Int(img.size.width * img.size.height * img.scale * img.scale * 4)
+        mem.setObject(img, forKey: k as NSString, cost: cost)
+    }
 
-    func cached(_ url: URL) -> UIImage? {
-        let k = Self.key(url)
-        if let m = mem.object(forKey: k as NSString) { return m }
-        if let d = try? Data(contentsOf: file(k)), let img = UIImage(data: d) {
-            mem.setObject(img, forKey: k as NSString); return img
+    func memory(_ url: URL) -> UIImage? { mem.object(forKey: Self.key(url) as NSString) }
+
+    /// Any in-memory size of the same cover (largest first) — a no-flicker stand-in while the right size loads.
+    func memoryAnySize(_ url: URL) -> UIImage? {
+        guard let p = Self.parts(url) else { return nil }
+        for s in Self.buckets.reversed() where s != p.size {
+            if let m = mem.object(forKey: "\(p.id)_\(s)" as NSString) { return m }
         }
         return nil
     }
 
-    func fetch(_ url: URL) async throws -> UIImage {
-        if let c = cached(url) { return c }
-        let (data, resp) = try await session.data(from: url)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200, let img = UIImage(data: data) else { throw URLError(.badServerResponse) }
+    /// Sync memory → disk (used by backdrops that need a value during body evaluation).
+    func cached(_ url: URL) -> UIImage? {
         let k = Self.key(url)
-        mem.setObject(img, forKey: k as NSString)
-        try? data.write(to: file(k))
+        if let m = mem.object(forKey: k as NSString) { return m }
+        if let d = try? Data(contentsOf: file(k)), let img = Self.decode(d, maxPixel: Self.parts(url)?.size ?? 0) {
+            put(img, k); return img
+        }
+        return nil
+    }
+
+    /// Async disk read + downsampled decode, off the main thread.
+    func disk(_ url: URL) async -> UIImage? {
+        let k = Self.key(url)
+        if let m = mem.object(forKey: k as NSString) { return m }
+        let f = file(k), px = Self.parts(url)?.size ?? 0
+        let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let d = try? Data(contentsOf: f) else { return nil }
+            return Self.decode(d, maxPixel: px)
+        }.value
+        if let img { put(img, k) }
         return img
+    }
+
+    func fetch(_ url: URL) async throws -> UIImage {
+        if let c = await disk(url) { return c }
+        guard await limiter.acquire() else { throw CancellationError() }
+        defer { limiter.release() }
+        try Task.checkCancellation()
+        let (data, resp) = try await session.data(from: url)
+        let k = Self.key(url), px = Self.parts(url)?.size ?? 0
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        let img = await Task.detached(priority: .userInitiated) { Self.decode(data, maxPixel: px) }.value
+        guard let img else { throw URLError(.cannotDecodeContentData) }
+        put(img, k)
+        let f = file(k)
+        Task.detached(priority: .utility) { try? data.write(to: f, options: .atomic) }
+        return img
+    }
+
+    /// ImageIO thumbnail decode: never inflates a full-size bitmap, forces decode now (not at first draw on main).
+    static func decode(_ data: Data, maxPixel: Int) -> UIImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        var opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceCreateThumbnailWithTransform: true,
+                                     kCGImageSourceShouldCacheImmediately: true]
+        if maxPixel > 0 { opts[kCGImageSourceThumbnailMaxPixelSize] = maxPixel }
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return UIImage(data: data) }
+        return UIImage(cgImage: cg)
     }
 
     func clear() {

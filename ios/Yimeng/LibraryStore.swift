@@ -73,6 +73,24 @@ final class LibraryStore: ObservableObject {
     @Published var allAlbums: [NDAlbum] = []
     @Published var albumTotal: Int?
     @Published var songTotal: Int?
+    /// Pinyin-sorted artists + A–Z sections for the elevator bar. Built off main, cached by list signature.
+    @Published private(set) var artistIndex: ArtistIndex?
+    private var artistIndexSig: Int?
+
+    func buildArtistIndex(_ list: [NDArtist]) {
+        guard !list.isEmpty else { return }
+        var h = Hasher(); h.combine(list.count); for a in list { h.combine(a.id); h.combine(a.name) }
+        let sig = h.finalize()
+        guard sig != artistIndexSig else { return }
+        artistIndexSig = sig
+        Task {
+            let t0 = Date()
+            let idx = await Task.detached(priority: .userInitiated) { ArtistIndex.build(list) }.value
+            guard sig == artistIndexSig else { return }
+            artistIndex = idx
+            NetLog.logger.info("INDEX artists \(list.count) \(Int(Date().timeIntervalSince(t0) * 1000))ms")
+        }
+    }
     @Published var user = ""
     @Published var host = ""
 

@@ -139,11 +139,13 @@ struct ArtistAvatar: View {
 private struct ArtistImage: View {
     let url: URL?
     @State private var image: UIImage?
-    init(url: URL?) { self.url = url; _image = State(initialValue: url.flatMap { CoverCache.shared.cached($0) }) }
+    init(url: URL?) { self.url = url; _image = State(initialValue: url.flatMap { CoverCache.shared.memory($0) }) }
     var body: some View {
         ZStack { if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) } }
             .task(id: url.map(CoverCache.key)) {
-                guard image == nil, let url, let img = try? await CoverCache.shared.fetch(url) else { return }
+                guard image == nil, let url else { return }
+                if let d = await CoverCache.shared.disk(url) { image = d; return }
+                guard url.scheme != CoverCache.offlineScheme, let img = try? await CoverCache.shared.fetch(url) else { return }
                 withAnimation(.easeOut(duration: 0.25)) { image = img }
             }
     }

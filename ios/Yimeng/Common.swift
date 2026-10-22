@@ -72,7 +72,7 @@ struct RemoteCover: View {
     var size: CGFloat = 148
     var corner: CGFloat = 12
     var body: some View {
-        CoverImage(url: url)
+        CoverImage(url: url, points: size)
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
     }

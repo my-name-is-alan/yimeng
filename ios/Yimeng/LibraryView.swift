@@ -84,9 +84,47 @@ private struct SegmentScroll: View {
     @EnvironmentObject var state: AppState
     @ObservedObject private var cache = LibraryCache.shared
     @State private var anchor: String?
+    @ObservedObject private var library = LibraryStore.shared
+    @State private var pickSeq = 0
     private var key: String { LibraryView.key(seg, sort: state.albumSort) }
 
+    private var hasIndex: Bool {
+        switch seg {
+        case .artists: return library.artistIndex != nil
+        case .albums: return state.albumSort == "alphabeticalByName" && !cache.albumList(state.albumSort).isEmpty
+        default: return false   // 歌曲: search3 order isn't by name on the server — no meaningful A–Z
+        }
+    }
+    private var activeLetter: String? {
+        guard let a = anchor else { return nil }
+        switch seg {
+        case .artists: return library.artistIndex?.letterOf[a]
+        case .albums: return cache.albumList(state.albumSort).first { $0.id == a }.map { Initials.serverLetter($0.name) }
+        default: return nil
+        }
+    }
+
+    private func pick(_ l: String, _ proxy: ScrollViewProxy) {
+        pickSeq += 1; let seq = pickSeq
+        switch seg {
+        case .artists:
+            guard let idx = library.artistIndex else { return }
+            let from = Initials.letters.firstIndex(of: l) ?? 0
+            guard let id = Initials.letters[from...].lazy.compactMap({ idx.firstId[$0] }).first
+                    ?? Initials.letters[..<from].reversed().lazy.compactMap({ idx.firstId[$0] }).first else { return }
+            proxy.scrollTo(id, anchor: .top)
+        case .albums:
+            Task {
+                guard let id = await cache.jumpAlbums(key, letter: l), seq == pickSeq else { return }
+                await Task.yield()
+                proxy.scrollTo(id, anchor: .top)
+            }
+        default: break
+        }
+    }
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             Group {
                 switch seg {
@@ -101,6 +139,15 @@ private struct SegmentScroll: View {
             Color.clear.frame(height: 170)
         }
         .scrollPosition(id: $anchor, anchor: .top)
+        .overlay(alignment: .trailing) {
+            if hasIndex {
+                IndexBar(available: seg == .artists ? library.artistIndex?.available : nil,
+                         active: activeLetter) { pick($0, proxy) }
+                    .padding(.trailing, 1).padding(.bottom, 120)
+                    .transition(.opacity)
+            }
+        }
+        }
         .onAppear { anchor = cache.scrollAnchor[seg.rawValue] }
         .onChange(of: anchor) { _, a in if let a { cache.scrollAnchor[seg.rawValue] = a } }
         .refreshable {
@@ -184,6 +231,12 @@ private struct AlbumsGrid: View {
                 }.padding(.horizontal, Theme.margin)
             }
             let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
+            if (cache.albumBase[key] ?? 0) > 0 {
+                Button { Task { await cache.less(key) } } label: {
+                    Label("从第 \(cache.albumBase[key] ?? 0) 张起 · 载入前面", systemImage: "chevron.up")
+                        .font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                }.buttonStyle(.plain).padding(.horizontal, Theme.margin)
+            }
             if albums.isEmpty {
                 if cache.failed.contains(key) {
                     EmptyState(kind: .network, action: ("重试", { Task { await cache.ensure(key, force: true) } }))
@@ -222,6 +275,7 @@ private struct ArtistsList: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var cache = LibraryCache.shared
+    @ObservedObject private var library = LibraryStore.shared
     var body: some View {
         let artists = cache.artists
         LazyVStack(alignment: .leading, spacing: 0) {
@@ -235,7 +289,7 @@ private struct ArtistsList: View {
                     ForEach(0..<8, id: \.self) { _ in SkeletonRow() }
                 }
             }
-            ForEach(artists) { ar in
+            ForEach(library.artistIndex?.artists ?? artists) { ar in
                 Button { state.path.append(.ndArtist(ar)) } label: {
                     HStack(spacing: 12) {
                         ArtistAvatar(artist: ar, size: 44)
@@ -247,8 +301,11 @@ private struct ArtistsList: View {
                     .foregroundStyle(Theme.fg(scheme))
                     .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
                 }.buttonStyle(.plain)
+                .id(ar.id)
             }
         }
+        .task(id: artists.count) { library.buildArtistIndex(artists) }
+        .onChange(of: artists) { _, a in library.buildArtistIndex(a) }
     }
 }
 
