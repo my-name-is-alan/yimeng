@@ -39,11 +39,21 @@ struct AlbumRow: View {
 struct TrackRow: View {
     let index: Int; let title: String; var subtitle: String? = nil; var trailing = ""; var art: String? = nil; var playing = false
     var accessory: AnyView? = nil
+    /// Flat song lists (曲库 / 收藏 / 搜索): small cover instead of the index. Album tracklists keep track numbers.
+    var showCover = false; var coverURL: URL? = nil
     var onTap: (() -> Void)? = nil
     @Environment(\.colorScheme) var scheme
     var body: some View {
         HStack(spacing: 16) {
-            if let art {
+            if showCover {
+                RemoteCover(url: coverURL, size: 44, corner: 7)
+                    .overlay {
+                        if playing {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.black.opacity(0.35))
+                            Image(systemName: "waveform").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        }
+                    }
+            } else if let art {
                 Image(art).resizable().scaledToFill().frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 Group { if playing { Image(systemName: "waveform") } else { Text("\(index)") } }
@@ -61,7 +71,7 @@ struct TrackRow: View {
             .frame(maxHeight: .infinity)
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
         }
-        .frame(height: art == nil ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
+        .frame(height: art == nil && !showCover ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
     }

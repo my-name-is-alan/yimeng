@@ -63,7 +63,7 @@ struct ArtistDetailView: View {
                 if !top.isEmpty {
                     SectionHeader(title: "热门歌曲", more: false).motionIn(0.16)
                     ForEach(Array(top.prefix(10).enumerated()), id: \.element.id) { i, _ in
-                        SongRowPlay(songs: Array(top.prefix(10)), i: i).motionIn(stagger(i, base: 0.18))
+                        SongRowPlay(songs: Array(top.prefix(10)), i: i, showCover: false).motionIn(stagger(i, base: 0.18))
                     }
                 }
                 if let albums = detail?.albums, !albums.isEmpty {

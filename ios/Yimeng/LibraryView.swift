@@ -170,6 +170,7 @@ extension LibraryView {
 /// Song row that plays itself with `list` as queue.
 struct SongRowPlay: View {
     let songs: [NDSong]; let i: Int
+    var showCover = true
     @EnvironmentObject var state: AppState
     @ObservedObject private var player = PlayerStore.shared
     @ObservedObject private var stars = StarStore.shared
@@ -177,7 +178,8 @@ struct SongRowPlay: View {
         let s = songs[i]
         TrackRow(index: i + 1, title: s.title, subtitle: [s.artist, s.album ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
                  trailing: s.durationLabel, playing: player.song?.id == s.id,
-                 accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) })) {
+                 accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) }),
+                 showCover: showCover, coverURL: showCover ? LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) : nil) {
             PlayerStore.shared.play(songs: songs, startAt: i)
         }
         .songMenu(s)
