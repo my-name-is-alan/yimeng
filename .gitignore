@@ -20,3 +20,6 @@ sim-shots/
 *.mp4
 *.mov
 *.gif
+.secrets/
+**/src/debug/assets/core-account.env
+**/core-account.env

@@ -6,151 +6,65 @@
     xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
     Title="译梦">
 
-  <!-- Win r4 / Mac desktop class: narrow sidebar + wide content; floating mini; NO right play column -->
   <Grid x:Name="RootGrid" Background="#FF0A0A0C">
     <Rectangle Fill="#FF0A0A0C" IsHitTestVisible="False"/>
-
     <Grid>
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="168"/>
         <ColumnDefinition Width="*"/>
       </Grid.ColumnDefinitions>
 
-      <!-- ===== Narrow sidebar: brand + Tabs only ===== -->
       <Border Grid.Column="0" Background="#FF101014" Padding="12,20,10,16">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0,0,28">
             <canvas:CanvasControl Width="26" Height="26" Draw="BrandMark_Draw"/>
             <TextBlock Text="译梦" Foreground="White" FontSize="17" FontWeight="Bold" VerticalAlignment="Center"/>
           </StackPanel>
-          <StackPanel Grid.Row="1" Spacing="4">
-            <Border x:Name="SideHome" CornerRadius="10" Background="#40C8F542" Padding="10,10"
-                    PointerPressed="SideHome_Click">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <canvas:CanvasControl Width="20" Height="20" Draw="GlyphHomeActive_Draw"/>
-                <TextBlock Text="首页" Foreground="#FFC8F542" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-            <Border x:Name="SideLibrary" CornerRadius="10" Padding="10,10" Background="Transparent"
-                    PointerPressed="SideLibrary_Click">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <canvas:CanvasControl Width="20" Height="20" Draw="GlyphLibrary_Draw"/>
-                <TextBlock Text="曲库" Foreground="#BFFFFFFF" FontSize="14" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-            <Border x:Name="SideCollection" CornerRadius="10" Padding="10,10" Background="Transparent"
-                    PointerPressed="SideCollection_Click">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <canvas:CanvasControl Width="20" Height="20" Draw="GlyphCollection_Draw"/>
-                <TextBlock Text="典藏" Foreground="#BFFFFFFF" FontSize="14" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-            <Border x:Name="SideSearch" CornerRadius="10" Padding="10,10" Background="Transparent"
-                    PointerPressed="SideSearch_Click">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <canvas:CanvasControl Width="20" Height="20" Draw="GlyphSearch_Draw"/>
-                <TextBlock Text="搜索" Foreground="#BFFFFFFF" FontSize="14" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-            <Border x:Name="SideMe" CornerRadius="10" Padding="10,10" Background="Transparent"
-                    PointerPressed="SideMe_Click">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <canvas:CanvasControl Width="20" Height="20" Draw="GlyphMe_Draw"/>
-                <TextBlock Text="我的" Foreground="#BFFFFFFF" FontSize="14" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
+          <StackPanel x:Name="SideNav" Grid.Row="1" Spacing="4"/>
+          <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="#66FFFFFF" FontSize="11" TextWrapping="WrapWholeWords" Margin="4,8,0,0"/>
         </Grid>
       </Border>
 
-      <!-- ===== Wide content (fills remaining) ===== -->
       <Grid Grid.Column="1">
-        <!-- Color field behind content so mini glass can show cover colors -->
         <canvas:CanvasControl x:Name="FieldCanvas" Draw="FieldCanvas_Draw" IsHitTestVisible="False"/>
 
-        <!-- HOME: list -->
-        <Grid x:Name="HomePane" Padding="32,28,32,88">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-          <TextBlock Text="首页" Foreground="White" FontSize="28" FontWeight="Bold" Margin="0,0,0,18"/>
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
-            <StackPanel Spacing="8">
-              <Border Background="#22FFFFFF" CornerRadius="12" Padding="14,12" PointerPressed="OpenPlayer_Click">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <Border Width="52" Height="52" CornerRadius="8" Background="#FFFF7A1A">
-                    <canvas:CanvasControl Width="24" Height="24" Draw="BrandMark_Draw"
-                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                    <TextBlock Text="橘子海" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                    <TextBlock Text="陈粒 · 今日推荐" Foreground="#99FFFFFF" FontSize="12"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-              <Border Background="#14FFFFFF" CornerRadius="12" Padding="14,12">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <Border Width="52" Height="52" CornerRadius="8" Background="#FF6B4BD8"/>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                    <TextBlock Text="虚拟" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                    <TextBlock Text="陈粒 · 如也" Foreground="#99FFFFFF" FontSize="12"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-              <Border Background="#14FFFFFF" CornerRadius="12" Padding="14,12">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <Border Width="52" Height="52" CornerRadius="8" Background="#FF3D2EFF"/>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                    <TextBlock Text="易燃易爆炸" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                    <TextBlock Text="陈粒 · 小梦大半" Foreground="#99FFFFFF" FontSize="12"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-              <Border Background="#14FFFFFF" CornerRadius="12" Padding="14,12">
-                <Grid>
-                  <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="52"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/>
-                  </Grid.ColumnDefinitions>
-                  <Border Width="52" Height="52" CornerRadius="8" Background="#FF00B0A0"/>
-                  <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                    <TextBlock Text="奇妙能力歌" Foreground="White" FontSize="15" FontWeight="SemiBold"/>
-                    <TextBlock Text="陈粒 · 游园" Foreground="#99FFFFFF" FontSize="12"/>
-                  </StackPanel>
-                </Grid>
-              </Border>
-            </StackPanel>
-          </ScrollViewer>
-        </Grid>
+        <ScrollViewer x:Name="HomePane" Padding="32,28,32,100" VerticalScrollBarVisibility="Hidden">
+          <StackPanel x:Name="HomeStack" Spacing="8"/>
+        </ScrollViewer>
 
-        <!-- PLAYER PAGE: cover + doodle (opened from mini / list); no right column -->
-        <Grid x:Name="PlayerPane" Visibility="Collapsed" Padding="48,36,48,100">
+        <ScrollViewer x:Name="LibraryPane" Visibility="Collapsed" Padding="32,28,32,100" VerticalScrollBarVisibility="Hidden">
+          <StackPanel x:Name="LibraryStack" Spacing="8"/>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="CollectionPane" Visibility="Collapsed" Padding="32,28,32,100" VerticalScrollBarVisibility="Hidden">
+          <StackPanel x:Name="CollectionStack" Spacing="8"/>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="SearchPane" Visibility="Collapsed" Padding="32,28,32,100" VerticalScrollBarVisibility="Hidden">
+          <StackPanel x:Name="SearchStack" Spacing="8"/>
+        </ScrollViewer>
+
+        <ScrollViewer x:Name="MePane" Visibility="Collapsed" Padding="32,28,32,100" VerticalScrollBarVisibility="Hidden">
+          <StackPanel x:Name="MeStack" Spacing="8"/>
+        </ScrollViewer>
+
+        <Grid x:Name="PlayerPane" Visibility="Collapsed" Padding="48,36,48,40">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
           </Grid.RowDefinitions>
-          <StackPanel Orientation="Horizontal" Spacing="12">
-            <Border Padding="8,6" CornerRadius="8" Background="#18FFFFFF" PointerPressed="ClosePlayer_Click">
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <canvas:CanvasControl Width="16" Height="16" Draw="GlyphBack_Draw"/>
-                <TextBlock Text="返回" Foreground="#CCFFFFFF" FontSize="13" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Border>
-          </StackPanel>
+          <Border Padding="8,6" CornerRadius="8" Background="#18FFFFFF" HorizontalAlignment="Left" PointerPressed="ClosePlayer_Click">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <canvas:CanvasControl Width="16" Height="16" Draw="GlyphBack_Draw"/>
+              <TextBlock Text="返回" Foreground="#CCFFFFFF" FontSize="13" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Border>
           <Grid Grid.Row="1" MaxWidth="520" HorizontalAlignment="Center">
             <Grid.RowDefinitions>
               <RowDefinition Height="*"/>
@@ -166,28 +80,21 @@
               </Border>
             </Grid>
             <StackPanel Grid.Row="1" Spacing="6" Margin="0,20,0,0">
-              <TextBlock Text="橘子海" Foreground="White" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
-              <TextBlock Text="陈粒" Foreground="#B3FFFFFF" FontSize="15" HorizontalAlignment="Center"/>
+              <TextBlock x:Name="PlayerTitle" Text="—" Foreground="White" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
+              <TextBlock x:Name="PlayerArtist" Text="—" Foreground="#B3FFFFFF" FontSize="15" HorizontalAlignment="Center"/>
               <Grid Margin="0,16,0,0" Height="4">
                 <Border Background="#33FFFFFF" CornerRadius="2"/>
                 <Border Background="#FFC8F542" CornerRadius="2" Width="160" HorizontalAlignment="Left"/>
-              </Grid>
-              <Grid Margin="0,6,0,0">
-                <TextBlock Text="1:24" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Left"/>
-                <TextBlock Text="4:02" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Right"/>
               </Grid>
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="32" Margin="0,20,0,0">
                 <canvas:CanvasControl Width="26" Height="26" Draw="GlyphPrev_Draw"/>
                 <canvas:CanvasControl Width="40" Height="40" Draw="GlyphPauseBig_Draw"/>
                 <canvas:CanvasControl Width="26" Height="26" Draw="GlyphNext_Draw"/>
               </StackPanel>
-              <TextBlock Text="海浪打湿了窗台" Foreground="#E6FFFFFF" FontSize="15" HorizontalAlignment="Center" Margin="0,28,0,0"/>
-              <TextBlock Text="你说想去看海" Foreground="#66FFFFFF" FontSize="13" HorizontalAlignment="Center"/>
             </StackPanel>
           </Grid>
         </Grid>
 
-        <!-- Floating liquid-glass mini: full content width, overlays color field -->
         <Border x:Name="MiniPlayerGlass" VerticalAlignment="Bottom" HorizontalAlignment="Stretch"
                 Margin="24,0,24,20" Height="58" CornerRadius="29" Background="Transparent"
                 PointerPressed="OpenPlayer_Click">
@@ -201,8 +108,8 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <StackPanel Grid.Column="2" VerticalAlignment="Center">
-              <TextBlock Text="橘子海" Foreground="White" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
-              <TextBlock Text="陈粒" Foreground="#B3FFFFFF" FontSize="12" TextTrimming="CharacterEllipsis"/>
+              <TextBlock x:Name="MiniTitle" Text="—" Foreground="White" FontWeight="SemiBold" FontSize="14" TextTrimming="CharacterEllipsis"/>
+              <TextBlock x:Name="MiniArtist" Text="—" Foreground="#B3FFFFFF" FontSize="12" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
               <canvas:CanvasControl Width="22" Height="22" Draw="GlyphPause_Draw"/>

@@ -69,7 +69,7 @@ fun GlassCapsule(
             // Keep black 14% tint (separate from haze α)
             .background(Color.Black.copy(alpha = 0.14f))
             // Mini player: Base #0A0A0C 55%
-            .then(if (miniPlayerExtra) Modifier.background(Base.copy(alpha = 0.55f)) else Modifier)
+            .then(if (miniPlayerExtra) Modifier.background(Base.copy(alpha = 0.32f)) else Modifier)
             .then(
                 when {
                     api >= 33 -> Modifier.glassRimApprox()
