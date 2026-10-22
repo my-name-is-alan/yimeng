@@ -316,9 +316,9 @@ export function mountNowBar(nav) {
     subKey = key;
     const text = cl ? cl.text : artistText;
     const span = h("span", { class: `nb-sub-in ${cl ? "lyric" : ""}` }, text);
-    const old = sub.firstElementChild;
-    if (old) { old.classList.add("out"); setTimeout(() => old.remove(), 320); }
-    sub.append(span);
+    // Exactly one line in the slot: the previous one (artist or lyric) is
+    // removed at once; only the incoming line animates, inside the clip.
+    sub.replaceChildren(span);
     sub.classList.toggle("is-lyric", !!cl);
     sub.title = text;
     requestAnimationFrame(() => {

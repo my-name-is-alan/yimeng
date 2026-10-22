@@ -20,7 +20,16 @@ function enhance(el) {
     wrap.appendChild(b);
   };
   btn(-1); btn(1);
+  // Arrows sit on the vertical centre of the first card's artwork so they
+  // never cover titles; rows without artwork (tabs, tables) stay centred.
+  const place = () => {
+    const art = el.querySelector(":scope > * .art, :scope > * .cover, :scope > * img");
+    if (!art || el.classList.contains("tabs")) { wrap.style.removeProperty("--hs-top"); return; }
+    const top = art.getBoundingClientRect().top - wrap.getBoundingClientRect().top + art.offsetHeight / 2;
+    if (top > 0) wrap.style.setProperty("--hs-top", `${Math.round(top)}px`);
+  };
   const update = () => {
+    place();
     const max = el.scrollWidth - el.clientWidth;
     wrap.classList.toggle("can-l", el.scrollLeft > 2);
     wrap.classList.toggle("can-r", max - el.scrollLeft > 2);
