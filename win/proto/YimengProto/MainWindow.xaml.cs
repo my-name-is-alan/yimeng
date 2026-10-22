@@ -53,6 +53,12 @@ public sealed partial class MainWindow : Window
         };
         _timer.Start();
         ExtendsContentIntoTitleBar = true;
+        try
+        {
+            // Keep content opaque (no Mica/Acrylic); avoid see-through desktop under RootGrid.
+            AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+        }
+        catch { }
         Activated += (_, _) => AttachGlassBlur();
     }
 
@@ -84,8 +90,8 @@ public sealed partial class MainWindow : Window
         brush.SetSourceParameter("backdrop", backdrop);
         var sprite = compositor.CreateSpriteVisual();
         sprite.Brush = brush;
-        sprite.Size = new Vector2((float)el.ActualSize.X, (float)el.ActualSize.Y);
-        el.SizeChanged += (_, __) => sprite.Size = new Vector2((float)el.ActualSize.X, (float)el.ActualSize.Y);
+        sprite.RelativeSizeAdjustment = Vector2.One;
+        // Child visual paints behind the element's children in WinUI.
         ElementCompositionPreview.SetElementChildVisual(el, sprite);
         // black 14% tint + optional mini #0A0A0C 55% sit in XAML Background under the sprite
         _ = extraTint; _ = orb;
