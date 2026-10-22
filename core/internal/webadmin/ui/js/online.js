@@ -66,7 +66,7 @@ function pluginRow(p, rerender) {
   const acct = meta
     ? h("span", null, "元数据提供者 · ", Object.values(p.secrets || {}).every(Boolean) && Object.keys(p.secrets || {}).length ? h("span", { class: "badge ok" }, "凭据已配置") : h("span", { class: "badge warn" }, "未配置凭据"))
     : p.logged_in
-    ? h("span", { class: "row", style: { gap: "6px" } }, p.account?.avatar ? h("img", { src: p.account.avatar, alt: "", style: { width: "20px", height: "20px", borderRadius: "50%" } }) : null,
+    ? h("span", { class: "row", style: { gap: "6px" } }, p.account?.avatar_preview ? h("img", { src: `${p.account.avatar_preview}?size=120`, alt: "", style: { width: "20px", height: "20px", borderRadius: "50%" } }) : null,
       p.account?.nickname || "已登录", p.account ? h("span", { class: `badge ${p.account.vip ? "ok" : ""}` }, p.account.vip ? (p.account.tier || "会员") : "非会员") : null)
     : h("span", { class: "muted" }, "未登录 · 可匿名浏览与试听");
   const cool = p.cooldown_until ? h("span", { class: "badge warn", title: "触发平台风控，自动退避中" }, `退避至 ${new Date(p.cooldown_until).toLocaleTimeString("zh-CN", { hour12: false })}`) : null;
@@ -92,7 +92,7 @@ function pluginAccounts(p, done) {
   const m = p.manifest;
   const list = h("div", { class: "stack" });
   const render = (accs, active) => list.replaceChildren(...(accs.length ? accs.map((a) => h("div", { class: "li", style: { gap: "10px" } },
-    a.avatar ? h("img", { src: a.avatar, alt: "", referrerpolicy: "no-referrer", style: { width: "32px", height: "32px", borderRadius: "50%" } }) : h("div", { class: "src-logo", style: { width: "32px", height: "32px" } }, (a.nickname || "?")[0]),
+    a.avatar_preview ? h("img", { src: `${a.avatar_preview}?size=120`, alt: "", referrerpolicy: "no-referrer", style: { width: "32px", height: "32px", borderRadius: "50%" } }) : h("div", { class: "src-logo", style: { width: "32px", height: "32px" } }, (a.nickname || "?")[0]),
     h("div", { class: "grow" }, h("div", { class: "t" }, a.nickname || a.id, " ", a.id === active ? h("span", { class: "badge ok" }, "默认") : null, " ", h("span", { class: `badge ${a.vip ? "ok" : ""}` }, a.vip ? (a.tier || "会员") : "非会员")),
       h("div", { class: "s muted" }, `${LOGIN[a.method] || a.method || ""} · 添加于 ${new Date(a.added_at).toLocaleDateString("zh-CN")}`)),
     a.id === active ? null : h("button", { class: "btn sm", onclick: async () => { try { const st = await post(`/plugins/${m.id}/accounts/${encodeURIComponent(a.id)}/default`); toast(`已切换到 ${a.nickname || a.id}`); render(st.accounts || [], st.active_account); done(); } catch (e) { errToast(e); } } }, "设为默认"),

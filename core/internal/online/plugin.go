@@ -221,11 +221,12 @@ type Lyrics struct {
 
 // Account describes the logged-in user. Never contains secrets.
 type Account struct {
-	UserID   string `json:"user_id"`
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar,omitempty"`
-	VIP      bool   `json:"vip"`
-	Tier     string `json:"tier,omitempty"`
+	UserID        string `json:"user_id"`
+	Nickname      string `json:"nickname"`
+	Avatar        string `json:"avatar,omitempty"`
+	AvatarPreview string `json:"avatar_preview,omitempty"` // D60: avatar via Core's image cache (set by the gateway)
+	VIP           bool   `json:"vip"`
+	Tier          string `json:"tier,omitempty"`
 }
 
 // QRChannel describes one QR login channel: which app must scan the code.

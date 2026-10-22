@@ -96,7 +96,25 @@ func (d Deps) onlineErr(w http.ResponseWriter, what string, err error) {
 // ---- plugin management -------------------------------------------------
 
 func (d Deps) listPlugins(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"items": d.Online.Reg.List(r.Context(), r.URL.Query().Get("check") == "1")})
+	items := d.Online.Reg.List(r.Context(), r.URL.Query().Get("check") == "1")
+	for i := range items {
+		d.decorateStatus(&items[i])
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// decorateStatus adds Core-cached avatar previews so clients never load
+// platform CDNs directly (D60).
+func (d Deps) decorateStatus(st *online.Status) {
+	if st == nil {
+		return
+	}
+	if st.Account != nil {
+		st.Account.AvatarPreview = d.imageURL(st.Account.Avatar)
+	}
+	for i := range st.Accounts {
+		st.Accounts[i].AvatarPreview = d.imageURL(st.Accounts[i].Avatar)
+	}
 }
 
 func (d Deps) getPlugin(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +123,7 @@ func (d Deps) getPlugin(w http.ResponseWriter, r *http.Request) {
 		d.onlineErr(w, "plugin", err)
 		return
 	}
+	d.decorateStatus(&st)
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -268,6 +287,9 @@ func (d Deps) pluginAccounts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d.onlineErr(w, "accounts", err)
 		return
+	}
+	for i := range accs {
+		accs[i].AvatarPreview = d.imageURL(accs[i].Avatar)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": accs})
 }

@@ -15,14 +15,15 @@ import (
 
 // AccountEntry is one saved account of a plugin (no secrets).
 type AccountEntry struct {
-	ID       string      `json:"id"`
-	Nickname string      `json:"nickname"`
-	Avatar   string      `json:"avatar,omitempty"`
-	VIP      bool        `json:"vip"`
-	Tier     string      `json:"tier,omitempty"`
-	Method   LoginMethod `json:"method,omitempty"`
-	Default  bool        `json:"default"`
-	AddedAt  time.Time   `json:"added_at"`
+	ID            string      `json:"id"`
+	Nickname      string      `json:"nickname"`
+	Avatar        string      `json:"avatar,omitempty"`
+	AvatarPreview string      `json:"avatar_preview,omitempty"` // D60: avatar via Core's image cache (set by the gateway)
+	VIP           bool        `json:"vip"`
+	Tier          string      `json:"tier,omitempty"`
+	Method        LoginMethod `json:"method,omitempty"`
+	Default       bool        `json:"default"`
+	AddedAt       time.Time   `json:"added_at"`
 }
 
 var ErrUnknownAccount = errors.New("online: unknown account")
