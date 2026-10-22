@@ -33,6 +33,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 多端：`POST /api/players/{id}/transfer` 移交队列；`/ws` 在线状态（device.online/offline，`player.state.online`）。
 - 管理：设备改名/管理员、`/api/settings/library-roots`、元数据覆盖层（抗重扫）、专辑合并/拆分。
 - 封面缩略图：`/api/.../cover?size=&format=jpeg|webp|png`（纯 Go 缩放缓存）。
+- 歌词远程：默认启用 LRCLIB（`metadata.providers` / `YIMENG_PROVIDERS=lrclib`）；网易云/QQ 为 SPI stub（无安全公开 API）。`GET /api/metadata/providers` 列出已启用的 MetadataProvider。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.8.0
+  version: 0.9.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -1163,6 +1163,34 @@ paths:
         "200": { description: Destination album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /api/metadata/providers:
+    get:
+      tags: [metadata]
+      summary: List enabled metadata providers (MusicBrainz when configured; lyrics providers are not listed here)
+      description: |
+        Returns the MetadataProvider registry (id, capability bitset, health).
+        Remote lyrics backends (lrclib, and stub netease/qq) are wired via
+        `metadata.providers` / `YIMENG_PROVIDERS` and consulted by
+        `GET /api/tracks/{id}/lyrics` when no local/embedded lyrics exist.
+      responses:
+        "200":
+          description: Providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, capabilities, health]
+                      properties:
+                        id: { type: string }
+                        capabilities: { type: integer, description: "Capability bitset (CapTrackTags=1, CapAlbumInfo=2, …)" }
+                        health: { type: string, enum: [ok, degraded, down] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -1454,3 +1482,4 @@ components:
         lossless: { type: boolean }
         bitrates: { type: array, items: { type: integer } }
         default_bitrate: { type: integer }
+

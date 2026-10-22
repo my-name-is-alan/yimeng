@@ -1,182 +1,256 @@
 import SwiftUI
 
+/// v10 正在播放: full-bleed palette field + generative doodle composition (frame / orbit / drip by motif),
+/// elapsed/total time, single glass control capsule, ambience sheet, lyrics mode.
 struct NowPlayingView: View {
     @EnvironmentObject var state: AppState
-    @Environment(\.colorScheme) var scheme
-    @State private var start = Date().addingTimeInterval(-13)
-    let album = Mock.nightfall
+    @Environment(\.heroNS) var ns
+    @State private var showAmbience = false
+    @State private var start = Date().addingTimeInterval(-72)
+    var track: DreamTrack { state.track }
+
     var body: some View {
-        TimelineView(.animation) { tl in
-            let t = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: 36)
-            ZStack {
-                VStack(spacing: 0) {
-                    header
-                    if state.lyricsMode { LyricsView(time: t).frame(maxHeight: .infinity) }
-                    else { visualizer(time: tl.date.timeIntervalSinceReferenceDate).padding(.top, 8); titleBlock(time: t); Spacer(minLength: 0) }
-                    progress(time: t).padding(.top, 16)
-                    transport.padding(.top, 20)
-                    bottomBar.padding(.top, 24).padding(.bottom, 8)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                ZStack(alignment: .top) {
-                    Theme.base(scheme)
-                    DiffusedBackdrop(images: [album.cover], height: 900)
-                    Color.black.opacity(scheme == .dark ? 0.25 : 0)
-                }.ignoresSafeArea()
-            }
-        }
-        .foregroundStyle(Theme.fg(scheme))
-    }
-
-    var header: some View {
-        HStack {
-            Button { state.nowPlaying = false } label: { CircleIconButton(icon: "chevron.down") }.buttonStyle(.plain)
-            Spacer()
-            if state.lyricsMode {
-                HStack(spacing: 10) {
-                    Image(album.cover).resizable().scaledToFill().frame(width: 32, height: 32).clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 0) { Text(album.title).font(.system(size: 13, weight: .semibold)); Text(album.artist).font(.system(size: 11)).opacity(0.6) }
-                    Circle().fill(Theme.accent(scheme)).frame(width: 6, height: 6)
-                }.padding(.leading, 6).padding(.trailing, 16).frame(height: 44).background(Capsule().fill(Theme.fill(scheme)))
-            } else {
-                Text("来自 · 每日推荐").font(.system(size: 13)).opacity(0.7)
-            }
-            Spacer()
-            CircleIconButton(icon: "ellipsis")
-        }.padding(.horizontal, Theme.margin).padding(.top, 4)
-    }
-
-    func visualizer(time: Double) -> some View {
-        ZStack {
-            ParticleField(time: time)
-            Image(album.cover).resizable().scaledToFill().frame(width: 270, height: 270).clipShape(Circle())
-                .rotationEffect(.degrees(time.truncatingRemainder(dividingBy: 30) * 12))
-                .shadow(color: Color(red: 0.91, green: 0.36, blue: 1).opacity(0.45), radius: 30)
-        }.frame(width: 390, height: 390)
-    }
-
-    func titleBlock(time: Double) -> some View {
-        let idx = Mock.lyrics.lastIndex { $0.0 <= time } ?? 0
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) { Text(album.title).font(.system(size: 20, weight: .bold)); Text(album.artist).font(.system(size: 17)).opacity(0.6) }
-                Spacer()
-                CircleIconButton(icon: "heart.fill")
-            }
-            Text("「 \(Mock.lyrics[idx].1) 」").font(.system(size: 15)).opacity(0.7).lineLimit(1)
-        }.padding(.horizontal, Theme.margin)
-    }
-
-    func progress(time: Double) -> some View {
-        let f = 0.25 + time / 36 * 0.5
-        return VStack(spacing: 8) {
+        TimelineView(.periodic(from: .now, by: 0.25)) { tl in
+            let elapsed = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: track.duration)
             GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.fill(scheme).opacity(2)).frame(height: 5)
-                    Capsule().fill(Theme.accent(scheme)).frame(width: g.size.width * f, height: 5)
-                    Circle().fill(.white).frame(width: 14, height: 14).shadow(radius: 2).offset(x: g.size.width * f - 7)
-                }
-            }.frame(height: 14)
-            HStack { Text("1:51"); Spacer(); Text("FLAC 24/96").padding(.horizontal, 8).padding(.vertical, 2).background(Capsule().fill(Theme.fill(scheme))); Spacer(); Text("-3:01") }
-                .font(.system(size: 12)).opacity(0.6)
-        }.padding(.horizontal, Theme.margin)
-    }
-
-    var transport: some View {
-        HStack {
-            Image(systemName: "shuffle").font(.system(size: 20)).opacity(0.7)
-            Spacer(); Image(systemName: "backward.fill").font(.system(size: 30))
-            Spacer()
-            Image(systemName: "pause.fill").font(.system(size: 32)).foregroundStyle(scheme == .dark ? Color.black : .white)
-                .frame(width: 76, height: 76).background(Circle().fill(scheme == .dark ? Color.white : Color(white: 0.07)))
-            Spacer(); Image(systemName: "forward.fill").font(.system(size: 30))
-            Spacer(); Image(systemName: "repeat").font(.system(size: 20)).opacity(0.7)
-        }.padding(.horizontal, Theme.margin + 8)
-    }
-
-    var bottomBar: some View {
-        HStack {
-            Button { withAnimation(.spring) { state.lyricsMode.toggle() } } label: {
-                Image(systemName: "quote.bubble").foregroundStyle(state.lyricsMode ? Theme.accent(scheme) : Theme.fg(scheme))
-            }
-            Spacer(); Image(systemName: "airpodspro"); Spacer(); Image(systemName: "list.bullet")
-        }
-        .font(.system(size: 20)).buttonStyle(.plain)
-        .padding(.horizontal, 40).frame(height: 56).background(GlassCapsule())
-        .padding(.horizontal, Theme.margin)
-    }
-}
-
-/// Audio-reactive-style visualiser: three glowing frequency rings + ~240 orbiting particles with trails.
-struct ParticleField: View {
-    let time: Double
-    static let seeds: [(a: Double, r: Double, v: Double, z: Double, h: Double)] = {
-        var s: UInt64 = 7; func R() -> Double { s = s &* 6364136223846793005 &+ 1442695040888963407; return Double(s >> 33) / Double(1 << 31) }
-        return (0..<240).map { _ in (R() * 6.283, 150 + R() * 45, 0.12 + R() * 0.35, 0.6 + R() * 2.2, R()) }
-    }()
-    static let bins: [Double] = { var s: UInt64 = 3; return (0..<96).map { _ in s = s &* 6364136223846793005 &+ 1; return Double(s >> 33) / Double(1 << 31) } }()
-    var body: some View {
-        Canvas { ctx, size in
-            let c = CGPoint(x: size.width / 2, y: size.height / 2)
-            ctx.blendMode = .plusLighter
-            let ringColors = [Theme.lime.opacity(0.55), Color(red: 0.91, green: 0.36, blue: 1).opacity(0.45), Color(red: 0.48, green: 0.36, blue: 1).opacity(0.5)]
-            for k in 0..<3 {
-                var path = Path()
-                for i in 0...96 {
-                    let a = Double(i) / 96 * 2 * .pi
-                    let e = Self.bins[i % 96] * 0.6 + 0.4 * abs(sin(time * 2.5 + Double(i) * 0.35 + Double(k)))
-                    let r = 140 + Double(k) * 6 + e * (24 - Double(k) * 6)
-                    let p = CGPoint(x: c.x + cos(a) * r, y: c.y + sin(a) * r)
-                    i == 0 ? path.move(to: p) : path.addLine(to: p)
-                }
-                var g = ctx; g.addFilter(.shadow(color: ringColors[k], radius: 8))
-                g.stroke(path, with: .color(ringColors[k]), lineWidth: 2.2 - Double(k) * 0.5)
-            }
-            for p in Self.seeds {
-                let a = p.a + time * p.v
-                let r = p.r + sin(time * 1.6 + p.a * 3) * 8
-                let col: Color = p.h < 0.25 ? Theme.lime : (p.h < 0.6 ? Color(red: 0.91, green: 0.36, blue: 1) : Color(red: 0.6, green: 0.48, blue: 1))
-                let pt = CGPoint(x: c.x + cos(a) * r, y: c.y + sin(a) * r)
-                var trail = Path(); trail.move(to: pt)
-                trail.addLine(to: CGPoint(x: c.x + cos(a - p.v * 0.25) * r, y: c.y + sin(a - p.v * 0.25) * r))
-                ctx.stroke(trail, with: .color(col.opacity(0.25)), lineWidth: p.z * 0.8)
-                ctx.fill(Path(ellipseIn: CGRect(x: pt.x - p.z, y: pt.y - p.z, width: p.z * 2, height: p.z * 2)), with: .color(col.opacity(0.85)))
-            }
-        }
-    }
-}
-
-/// Synced lyrics: current line large with karaoke fill, neighbours dimmed + blurred by distance.
-struct LyricsView: View {
-    let time: Double
-    @Environment(\.colorScheme) var scheme
-    var body: some View {
-        let lines = Mock.lyrics
-        let idx = lines.lastIndex { $0.0 <= time } ?? 0
-        let next = idx + 1 < lines.count ? lines[idx + 1].0 : lines[idx].0 + 4
-        let frac = min(1, max(0, (time - lines[idx].0) / (next - lines[idx].0)))
-        GeometryReader { g in
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
-                    let d = abs(i - idx)
-                    if d == 0 {
-                        Text(l.1).font(.system(size: 28, weight: .heavy))
-                            .foregroundStyle(LinearGradient(stops: [.init(color: Theme.accent(scheme), location: frac), .init(color: Theme.fg(scheme), location: frac)], startPoint: .leading, endPoint: .trailing))
-                            .shadow(color: Theme.accent(scheme).opacity(0.35), radius: 12)
+                let slot = track.layout.slot(width: g.size.width)
+                ZStack(alignment: .topLeading) {
+                    DreamField(track: track)
+                    if state.lyricsMode {
+                        LyricsView(track: track, time: elapsed.truncatingRemainder(dividingBy: 40)).transition(.opacity)
                     } else {
-                        Text(l.1).font(.system(size: d == 1 ? 24 : 22, weight: .bold))
-                            .foregroundStyle(Theme.fg(scheme).opacity(d == 1 ? 0.5 : 0.28)).blur(radius: d == 1 ? 0.6 : 1.6)
+                        if state.ambience == .aurora { AuroraBands(track: track, time: tl.date.timeIntervalSinceReferenceDate).ignoresSafeArea() }
+                        DoodleLayer(track: track, slot: slot, ambience: state.ambience == .aurora ? .pure : state.ambience,
+                                    intensity: state.intensity, beat: state.beatSync)
+                        cover(slot)
+                        info(slot: slot, width: g.size.width, elapsed: elapsed).motionIn(0.16)
+                    }
+                    VStack(spacing: 0) {
+                        topBar.motionIn(0.05, from: .top)
+                        Spacer()
+                        controls.motionIn(0.3)
                     }
                 }
+                .foregroundStyle(.white)
             }
-            .padding(.horizontal, Theme.margin)
-            .offset(y: g.size.height * 0.38 - CGFloat(idx) * 50)
-            .animation(.spring(duration: 0.6), value: idx)
-            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
-            .clipped()
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.12), .init(color: .black, location: 0.8), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+        }
+        .sheet(isPresented: $showAmbience) {
+            AmbienceSheet().environmentObject(state)
+                .presentationDetents([.height(330)])
+                .presentationBackground(.ultraThinMaterial)
+                .presentationCornerRadius(28)
         }
     }
+
+    @ViewBuilder func cover(_ slot: CoverSlot) -> some View {
+        let img = Image(track.cover).resizable().scaledToFill()
+            .frame(width: slot.rect.width, height: slot.rect.height)
+            .clipShape(RoundedRectangle(cornerRadius: min(slot.radius, slot.rect.width / 2), style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 35, y: 30)
+        Group {
+            if let ns { img.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { img }
+        }
+        .offset(x: slot.rect.minX, y: slot.rect.minY)
+        .motionIn(0.08, from: .scale)
+    }
+
+    func info(slot: CoverSlot, width: CGFloat, elapsed: TimeInterval) -> some View {
+        let k = width / 402
+        return VStack(alignment: track.layout.centered ? .center : .leading, spacing: 2) {
+            Text(track.title).font(.system(size: 22, weight: .bold))
+            Text(track.artist).font(.system(size: 16)).opacity(0.75)
+            Text("\(track.genre) · \(track.bpm) BPM · FLAC 24/96").font(.system(size: 12)).opacity(0.55).padding(.top, 4)
+            TimeBar(elapsed: elapsed, total: track.duration).padding(.top, 22)
+        }
+        .frame(width: width - 56, alignment: track.layout.centered ? .center : .leading)
+        .multilineTextAlignment(track.layout.centered ? .center : .leading)
+        .offset(x: 28, y: track.layout.titleY * k)
+    }
+
+    var topBar: some View {
+        HStack {
+            Button { withAnimation(.ui) { state.nowPlaying = false; state.lyricsMode = false } } label: { roundIcon("chevron.down") }
+            Spacer()
+            Text("译梦 · 梦境 \(track.motif.rawValue.uppercased())").font(.system(size: 12)).tracking(2).opacity(0.7)
+            Spacer()
+            Menu {
+                ForEach(DreamMock.all) { t in Button(t.title) { withAnimation(.ui) { state.track = t } } }
+            } label: { roundIcon("ellipsis") }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.margin).padding(.top, 8)
+    }
+
+    func roundIcon(_ s: String) -> some View {
+        Image(systemName: s).font(.system(size: 16, weight: .semibold)).frame(width: 40, height: 40)
+            .background(Circle().fill(Color.white.opacity(0.14)))
+    }
+
+    var controls: some View {
+        HStack {
+            Button { withAnimation(.smooth(duration: 0.45)) { state.lyricsMode.toggle() } } label: {
+                Image(systemName: "quote.bubble").font(.system(size: 20)).opacity(state.lyricsMode ? 1 : 0.8)
+            }
+            Spacer()
+            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
+            Spacer()
+            Button { state.isPlaying.toggle() } label: {
+                Image(systemName: state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 22)).foregroundStyle(Color(white: 0.07))
+                    .frame(width: 48, height: 48).background(Circle().fill(.white))
+            }
+            Spacer()
+            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
+            Spacer()
+            Button { showAmbience = true } label: { Image(systemName: "sparkles").font(.system(size: 20)).opacity(0.8) }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 22).frame(height: 64)
+        .background(GlassCapsule())
+        .environment(\.colorScheme, .dark)
+        .padding(.horizontal, Theme.margin).padding(.bottom, 8)
+    }
+}
+
+struct TimeBar: View {
+    let elapsed: TimeInterval; let total: TimeInterval
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(fmtTime(elapsed)).monospacedDigit()
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.3))
+                    Capsule().fill(Color.white).frame(width: g.size.width * CGFloat(min(1, elapsed / max(total, 1))))
+                }
+            }.frame(height: 3)
+            Text(fmtTime(total)).monospacedDigit()
+        }
+        .font(.system(size: 12)).opacity(0.85)
+    }
+}
+
+/// 梦境 sheet: 涂鸦 / 星尘 / 极光 / 纯净 tiles (live mini renders of the current track), intensity slider, beat toggle.
+struct AmbienceSheet: View {
+    @EnvironmentObject var state: AppState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("梦境").font(.system(size: 17, weight: .semibold))
+                Text("跟随当前歌曲的封面与节奏生成").font(.system(size: 13)).opacity(0.6)
+            }
+            HStack(spacing: 12) {
+                ForEach(Ambience.allCases) { a in
+                    Button { withAnimation(.snappy) { state.ambience = a } } label: {
+                        VStack(spacing: 6) {
+                            AmbienceTile(track: state.track, ambience: a)
+                                .frame(width: 72, height: 100)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(state.ambience == a ? 0.9 : 0), lineWidth: 2))
+                            Text(a.rawValue).font(.system(size: 12, weight: .medium))
+                        }
+                    }.buttonStyle(.plain).frame(maxWidth: .infinity)
+                }
+            }
+            HStack {
+                Text("强度").font(.system(size: 14))
+                Slider(value: $state.intensity, in: 0...1).tint(.primary)
+            }
+            Toggle("随节拍律动", isOn: $state.beatSync).font(.system(size: 14)).tint(Theme.lime)
+        }
+        .padding(.horizontal, 24).padding(.top, 24)
+    }
+}
+
+/// Mini render of the player composition for a given ambience (in production: ImageRenderer at 0.2× cached per track).
+struct AmbienceTile: View {
+    let track: DreamTrack; let ambience: Ambience
+    var body: some View {
+        GeometryReader { g in
+            let scale = g.size.width / 402
+            ZStack(alignment: .topLeading) {
+                DreamField(track: track, animated: false)
+                let slot = track.layout.slot(width: 402)
+                ZStack(alignment: .topLeading) {
+                    if ambience == .aurora { AuroraBands(track: track, time: 0) }
+                    if ambience == .doodle || ambience == .stardust {
+                        DoodleLayer(track: track, slot: slot, ambience: ambience, intensity: 0.7, beat: false)
+                    }
+                    Image(track.cover).resizable().scaledToFill().frame(width: slot.rect.width, height: slot.rect.height)
+                        .clipShape(RoundedRectangle(cornerRadius: min(slot.radius, slot.rect.width / 2)))
+                        .offset(x: slot.rect.minX, y: slot.rect.minY)
+                }
+                .frame(width: 402, height: 874, alignment: .topLeading)
+                .scaleEffect(scale, anchor: .topLeading)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// v10 lyrics: dark desaturated scrim, narrow fade (only ±2+ blur), marker highlight + squiggle on active line,
+/// translation under every line, inline heart.
+struct LyricsView: View {
+    let track: DreamTrack
+    let time: Double
+    @State private var liked: Set<Int> = [2]
+    var body: some View {
+        let lines = track.lyrics
+        let idx = lines.lastIndex { $0.t <= time } ?? 0
+        ZStack {
+            Color(red: 12 / 255, green: 10 / 255, blue: 14 / 255).opacity(0.52).ignoresSafeArea()
+            GeometryReader { g in
+                VStack(alignment: .leading, spacing: 22) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
+                        line(l, i: i, d: abs(i - idx), active: i == idx, accent: track.blobs[1])
+                            .blurIn(stagger(i, base: 0.1, step: 0.06))
+                    }
+                }
+                .padding(.horizontal, 28)
+                .offset(y: g.size.height * 0.36 - CGFloat(idx) * 62)
+                .animation(.smooth(duration: 0.6), value: idx)
+                .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+                .clipped()
+                .mask(LinearGradient(stops: [.init(color: .clear, location: 0.08), .init(color: .black, location: 0.2),
+                                             .init(color: .black, location: 0.8), .init(color: .clear, location: 0.9)], startPoint: .top, endPoint: .bottom))
+            }
+        }
+        .saturation(0.55)
+    }
+
+    @ViewBuilder func line(_ l: LyricLine, i: Int, d: Int, active: Bool, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Text(l.text).font(.system(size: active ? 24 : 21, weight: .bold))
+                    .background(alignment: .leading) {
+                        if active {
+                            ZStack(alignment: .bottomLeading) {
+                                RoundedRectangle(cornerRadius: 4).fill(accent.opacity(0.32)).padding(.vertical, 4).padding(.horizontal, -4)
+                                SquiggleLine().stroke(Color.white.opacity(0.85), lineWidth: 2).frame(height: 6).offset(y: 8)
+                            }
+                        }
+                    }
+                if active {
+                    Button { if liked.contains(i) { liked.remove(i) } else { liked.insert(i) } } label: {
+                        Image(systemName: liked.contains(i) ? "heart.fill" : "heart").font(.system(size: 15)).foregroundStyle(accent)
+                    }.buttonStyle(.plain)
+                }
+            }
+            Text(l.en).font(.system(size: 13)).opacity(0.6)
+        }
+        .opacity(active ? 1 : (d == 1 ? 0.55 : 0.4))
+        .blur(radius: d >= 3 ? 2.5 : (d == 2 ? 1 : 0))
+    }
+}
+
+struct SquiggleLine: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path(); p.move(to: CGPoint(x: r.minX, y: r.midY)); var x = r.minX; var up = true
+        while x < r.maxX { let nx = min(r.maxX, x + 10); p.addQuadCurve(to: CGPoint(x: nx, y: r.midY), control: CGPoint(x: (x + nx) / 2, y: up ? r.minY : r.maxY)); x = nx; up.toggle() }
+        return p
+    }
+}
+
+/// Kept from v6 for reference/AGSL parity (not used by the v10 player).
+struct ParticleField: View {
+    let time: Double
+    var body: some View { StardustHalo(track: DreamMock.zig, slot: DreamLayout.orbit.slot(width: 390), time: time, intensity: 0.8) }
 }

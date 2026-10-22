@@ -14,7 +14,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 8 | Multi-player transfer + online/offline WS | done | 474c46e |
 | 9 | Admin APIs (devices, roots, overrides, album merge/split) | done | 0c8f936 |
 | 10 | Cover thumbnails (pure-Go, webp/jpeg) | done | 89d6cd6 |
-| 11 | Metadata provider registry + lyrics provider stub | pending | |
+| 11 | Metadata provider registry + lyrics provider stub | done | (pending commit) |
 | 12 | HTTPS + trusted proxy + rate limits | pending | |
 | 13 | Offline download endpoint | pending | |
 | 14 | Subsonic API layer | pending | |

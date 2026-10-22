@@ -1,0 +1,22 @@
+name: Yimeng
+options:
+  bundleIdPrefix: art.yimeng
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  Yimeng:
+    type: application
+    platform: iOS
+    sources: [Yimeng]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleDefault
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGNING_ALLOWED: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"

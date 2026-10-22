@@ -7,7 +7,12 @@ targets:
   Yimeng:
     type: application
     platform: iOS
-    sources: [Yimeng]
+    sources:
+      - Yimeng
+      - Shared
+    dependencies:
+      - target: YimengWidgets
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app
@@ -15,8 +20,35 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: 译梦
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleDefault
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGNING_ALLOWED: NO
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "3"
+  YimengWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - YimengWidgets
+      - Shared
+      - path: Yimeng/Assets.xcassets
+        buildPhase: resources
+    info:
+      path: YimengWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: 译梦
+        CFBundleShortVersionString: "0.3.0"
+        CFBundleVersion: "3"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app.widgets
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGNING_ALLOWED: NO
+        SKIP_INSTALL: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "3"

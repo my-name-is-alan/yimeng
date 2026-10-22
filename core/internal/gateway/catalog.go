@@ -272,3 +272,15 @@ func (d Deps) trackLyrics(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, l)
 	}
 }
+
+func (d Deps) listProviders(w http.ResponseWriter, r *http.Request) {
+	items := []map[string]any{}
+	if d.Providers != nil {
+		for _, p := range d.Providers.All() {
+			items = append(items, map[string]any{
+				"id": p.ID(), "capabilities": uint32(p.Capabilities()), "health": p.Health(r.Context()),
+			})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}

@@ -8,14 +8,16 @@
 //   - credentials only via a vault.Scoped handed in at construction time;
 //   - providers return DTOs and never write to the database themselves.
 //
-// No implementations exist yet (P0).
+// MusicBrainz is registered when enabled; NetEase/QQ stay unregistered (D12).
 package metadata
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
@@ -171,3 +173,72 @@ type Deps struct {
 }
 
 type Factory func(Deps) (MetadataProvider, error)
+
+// Registry holds enabled MetadataProviders keyed by id.
+type Registry struct {
+	mu        sync.Mutex
+	providers map[ProviderID]MetadataProvider
+	factories map[ProviderID]Factory
+}
+
+func NewRegistry() *Registry {
+	return &Registry{providers: map[ProviderID]MetadataProvider{}, factories: map[ProviderID]Factory{}}
+}
+
+func (r *Registry) RegisterFactory(id ProviderID, f Factory) {
+	r.mu.Lock()
+	r.factories[id] = f
+	r.mu.Unlock()
+}
+
+// Enable constructs the provider (idempotent) using deps.
+func (r *Registry) Enable(id ProviderID, deps Deps) (MetadataProvider, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if p, ok := r.providers[id]; ok {
+		return p, nil
+	}
+	f, ok := r.factories[id]
+	if !ok {
+		return nil, fmt.Errorf("metadata: unknown provider %q", id)
+	}
+	p, err := f(deps)
+	if err != nil {
+		return nil, err
+	}
+	r.providers[id] = p
+	return p, nil
+}
+
+func (r *Registry) Put(p MetadataProvider) {
+	r.mu.Lock()
+	r.providers[p.ID()] = p
+	r.mu.Unlock()
+}
+
+func (r *Registry) Get(id ProviderID) (MetadataProvider, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p, ok := r.providers[id]
+	return p, ok
+}
+
+func (r *Registry) All() []MetadataProvider {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]MetadataProvider, 0, len(r.providers))
+	for _, p := range r.providers {
+		out = append(out, p)
+	}
+	return out
+}
+
+func (r *Registry) IDs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.providers))
+	for id := range r.providers {
+		out = append(out, string(id))
+	}
+	return out
+}

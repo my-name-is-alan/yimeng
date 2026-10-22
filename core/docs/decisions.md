@@ -110,3 +110,12 @@ alternative considered. Newest items at the bottom.
 - Optional `?size=&format=` on cover endpoints. Pure-Go decode (jpeg/png/gif/webp)
   + Catmull-Rom resize + encode jpeg/webp/png. Cache key includes source
   path/mtime/size so edits invalidate. Original (no query) still served as-is.
+
+## D12 Metadata provider registry + remote lyrics
+- `metadata.Registry` owns MetadataProvider factories; MusicBrainz registers when
+  `metadata.musicbrainz.enabled` or `providers` includes `musicbrainz`.
+- Remote lyrics use a separate `lyrics/providers` Chain adapted to
+  `library.LyricsFetcher`. Default `providers = ["lrclib"]` (public, no-auth).
+- NetEase / QQ Music: SPI stubs only — no documented public API without scraping
+  or private mobile endpoints. Do not enable by default; warn if listed.
+- `GET /api/metadata/providers` lists registry MetadataProviders (not lyrics stubs).

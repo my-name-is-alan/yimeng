@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/logging"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/loudness"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
@@ -108,12 +110,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 	_ = vlt // handed to StreamSource / MetadataProvider factories (vault.Scope) as they land
 
 	hub := events.NewHub()
+	reg := metadata.NewRegistry()
+	reg.RegisterFactory(metadata.MusicBrainz, func(d metadata.Deps) (metadata.MetadataProvider, error) {
+		return musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: d.UserAgent})
+	})
+	// NetEase/QQ metadata remain unregistered: no safe public API (docs/decisions.md D12).
 	var enrich func()
-	if cfg.MusicBrainz.Enabled {
-		mb, err := musicbrainz.New(musicbrainz.Config{
-			BaseURL:   cfg.MusicBrainz.BaseURL,
-			UserAgent: fmt.Sprintf("yimeng/%s ( %s )", version, cfg.MusicBrainz.Contact),
-		})
+	ua := fmt.Sprintf("yimeng/%s ( %s )", version, cfg.MusicBrainz.Contact)
+	if cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz") {
+		mb, err := reg.Enable(metadata.MusicBrainz, metadata.Deps{UserAgent: ua})
 		if err != nil {
 			return err
 		}
@@ -121,6 +126,28 @@ func run(cfg config.Config, log *slog.Logger) error {
 		go en.Run(ctx)
 		enrich = en.Kick
 		log.Info("MusicBrainz enrichment enabled")
+	}
+	var lyricChain providers.Chain
+	for _, name := range cfg.Providers {
+		switch strings.ToLower(name) {
+		case "lrclib":
+			lyricChain = append(lyricChain, &providers.LRCLIB{UA: ua})
+		case "netease":
+			lyricChain = append(lyricChain, providers.NetEase{})
+			log.Warn("netease lyrics provider is a stub (no safe public API)")
+		case "qq":
+			lyricChain = append(lyricChain, providers.QQ{})
+			log.Warn("qq lyrics provider is a stub (no safe public API)")
+		case "musicbrainz":
+			// handled above via Registry
+		default:
+			log.Warn("unknown provider ignored", "id", name)
+		}
+	}
+	var lyricsFetcher library.LyricsFetcher
+	if len(lyricChain) > 0 {
+		lyricsFetcher = lyricChain.AsFetcher()
+		log.Info("lyrics providers enabled", "n", len(lyricChain))
 	}
 	var analyzer *loudness.Analyzer
 	scanner := library.NewScanner(database, library.Options{
@@ -221,6 +248,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Playlists:       scanner,
 			Admin:           scanner,
 			Covers:          &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
+			LyricsFetcher:   lyricsFetcher,
+			Providers:       reg,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
@@ -235,6 +264,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 					"backup": true, "lyrics": true, "history": true, "playlists": true,
 					"loudness": cfg.Library.LoudnessAnalysis, "transcode": tc != nil,
 					"subsonic": cfg.Subsonic, "mdns": cfg.MDNS,
+					"providers": len(reg.IDs()) > 0 || len(lyricChain) > 0,
 				},
 			},
 		}),
@@ -272,4 +302,13 @@ func healthcheck(bind string) int {
 		return 1
 	}
 	return 0
+}
+
+func containsCI(list []string, want string) bool {
+	for _, s := range list {
+		if strings.EqualFold(s, want) {
+			return true
+		}
+	}
+	return false
 }

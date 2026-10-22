@@ -92,6 +92,7 @@ type fileConfig struct {
 	} `toml:"auth"`
 	Metadata struct {
 		MusicBrainz MusicBrainzConfig `toml:"musicbrainz"`
+		Providers   []string          `toml:"providers"`
 	} `toml:"metadata"`
 	DB        struct{ Path string } `toml:"db"`
 	Transcode struct {
@@ -132,12 +133,13 @@ func Defaults() Config {
 		RescanInterval: time.Hour,
 		PairCodeTTL:    5 * time.Minute,
 
-		Backup:   BackupConfig{Interval: 24 * time.Hour, Keep: 7, RestoreMaxBytes: 4 << 30},
-		Log:      LogConfig{Format: "text", Level: "info"},
-		Server:   ServerConfig{RateLimit: 50, RateBurst: 200},
-		Library:  LibraryExtra{LoudnessAnalysis: true},
-		Subsonic: true,
-		MDNS:     true,
+		Backup:    BackupConfig{Interval: 24 * time.Hour, Keep: 7, RestoreMaxBytes: 4 << 30},
+		Log:       LogConfig{Format: "text", Level: "info"},
+		Server:    ServerConfig{RateLimit: 50, RateBurst: 200},
+		Library:   LibraryExtra{LoudnessAnalysis: true},
+		Providers: []string{"lrclib"},
+		Subsonic:  true,
+		MDNS:      true,
 	}
 }
 
@@ -191,6 +193,9 @@ func load(getenv func(string) string) (Config, error) {
 			return cfg, err
 		}
 		cfg.MusicBrainz = fc.Metadata.MusicBrainz
+		if fc.Metadata.Providers != nil {
+			cfg.Providers = fc.Metadata.Providers
+		}
 		setStr(&cfg.Backup.Dir, fc.Backup.Dir)
 		if fc.Backup.Keep > 0 {
 			cfg.Backup.Keep = fc.Backup.Keep

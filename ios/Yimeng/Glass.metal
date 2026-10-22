@@ -47,3 +47,10 @@ static float2 lensOffset(float2 p, float4 R, float bezel, float strength) {
     float a = (edge * (0.18 + 0.82 * pow(light, 2.0)) + inner * light) * intensity;
     return half4(a, a, a, a);
 }
+
+// Crayon wobble for doodle strokes: small, smooth, time-varying displacement.
+[[ stitchable ]] float2 doodleWobble(float2 pos, float t, float amp) {
+    float dx = sin(pos.y * 0.045 + t * 1.7) * 0.6 + sin(pos.y * 0.13 + t * 0.9) * 0.4;
+    float dy = cos(pos.x * 0.05 + t * 1.3) * 0.6 + sin(pos.x * 0.11 - t * 1.1) * 0.4;
+    return pos + float2(dx, dy) * amp * 0.5;
+}

@@ -1,4 +1,5 @@
 import UIKit
+import CoreImage
 import SwiftUI
 
 /// Dominant-colour extraction: downsample to 24×24, k-means (k=5, deterministic luminance-quantile seeds),
@@ -55,7 +56,25 @@ struct Palette: Equatable {
     }
 }
 
-/// Diffused backdrop: dominant colour + cover scaled 2.6×, blurred 80, saturated, faded to base.
+/// Pre-rendered, cached diffused layer (downsample → blur → saturate) so nothing is blurred per frame.
+enum BackdropCache {
+    private static var cache: [String: UIImage] = [:]
+    private static let ctx = CIContext(options: [.useSoftwareRenderer: false])
+    static func image(_ name: String) -> UIImage {
+        if let i = cache[name] { return i }
+        guard let src = UIImage(named: name), let cg = src.cgImage else { return UIImage() }
+        let ci = CIImage(cgImage: cg)
+        let scale = 96 / max(ci.extent.width, ci.extent.height)
+        let small = ci.transformed(by: .init(scaleX: scale, y: scale))
+        let sat = small.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.8])
+        let blur = sat.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 10]).cropped(to: small.extent)
+        let out = ctx.createCGImage(blur, from: small.extent).map { UIImage(cgImage: $0) } ?? src
+        cache[name] = out; return out
+    }
+    static func warm(_ names: [String]) { DispatchQueue.global(qos: .userInitiated).async { for n in names { _ = Palette.of(n); _ = image(n) } } }
+}
+
+/// Diffused backdrop: dominant colour + cached blurred cover (scaled 2.6×), faded to base. Weights follow continuous progress (mod count).
 struct DiffusedBackdrop: View {
     let images: [String]
     var progress: Double = 0
@@ -65,14 +84,17 @@ struct DiffusedBackdrop: View {
         GeometryReader { geo in
             ZStack {
                 ForEach(Array(images.enumerated()), id: \.offset) { i, name in
-                    ZStack {
-                        Palette.of(name).color
-                        Image(name).resizable().scaledToFill()
-                            .frame(width: geo.size.width, height: geo.size.width)
-                            .scaleEffect(2.6).saturation(1.8).blur(radius: 80)
-                            .position(x: geo.size.width / 2, y: height * 0.4)
+                    let w = Self.weight(i, progress, images.count)
+                    if w > 0.001 {
+                        ZStack {
+                            Palette.of(name).color
+                            Image(uiImage: BackdropCache.image(name)).resizable().interpolation(.medium).scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.width)
+                                .scaleEffect(2.6)
+                                .position(x: geo.size.width / 2, y: height * 0.4)
+                        }
+                        .opacity(w)
                     }
-                    .opacity(max(0, 1 - abs(progress - Double(i))))
                 }
                 LinearGradient(stops: [.init(color: Theme.base(scheme).opacity(0), location: 0),
                                        .init(color: Theme.base(scheme).opacity(0.13), location: 0.25),
@@ -80,15 +102,23 @@ struct DiffusedBackdrop: View {
                                        .init(color: Theme.base(scheme), location: 1)], startPoint: .top, endPoint: .bottom)
             }
             .frame(width: geo.size.width, height: height).clipped()
+            .drawingGroup()
         }
         .frame(height: height).allowsHitTesting(false)
+    }
+    /// Circular weight so the last→first wrap blends seamlessly.
+    static func weight(_ i: Int, _ p: Double, _ n: Int) -> Double {
+        guard n > 1 else { return 1 }
+        let m = (p.truncatingRemainder(dividingBy: Double(n)) + Double(n)).truncatingRemainder(dividingBy: Double(n))
+        var d = abs(m - Double(i)); d = min(d, Double(n) - d)
+        return max(0, 1 - d)
     }
 }
 
 extension Color {
     static func header(_ images: [String], progress: Double, dark: Bool) -> Color {
         var acc = 0.0, tw = 0.0
-        for (i, n) in images.enumerated() { let w = max(0, 1 - abs(progress - Double(i))); acc += (Palette.of(n).headerIsLight(dark: dark) ? 1 : 0.07) * w; tw += w }
+        for (i, n) in images.enumerated() { let w = DiffusedBackdrop.weight(i, progress, images.count); acc += (Palette.of(n).headerIsLight(dark: dark) ? 1 : 0.07) * w; tw += w }
         return Color(white: tw > 0 ? acc / tw : 1)
     }
 }

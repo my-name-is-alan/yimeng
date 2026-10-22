@@ -30,6 +30,11 @@ concurrency = 0            # concurrent ffmpeg processes; 0 = NumCPU/2
 [auth]
 pair_code_ttl_seconds = 300
 
+[metadata]
+# Optional remote providers (lyrics / metadata). Default includes lrclib.
+# Set providers = [] to disable. NetEase/QQ are stubs (no safe public API).
+providers = ["lrclib"]
+
 [metadata.musicbrainz]
 enabled = false            # opt-in: fetch MBIDs, credits and Cover Art Archive covers (≤1 req/s)
 contact = ""               # REQUIRED when enabled: your email or URL (sent in the User-Agent)

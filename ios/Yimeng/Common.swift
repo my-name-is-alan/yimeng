@@ -15,8 +15,9 @@ struct SectionHeader: View {
 
 struct AlbumRow: View {
     let albums: [Album]; var size: CGFloat = 148
-    var onTap: (Album) -> Void = { _ in }
+    @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
+    @Environment(\.heroNS) var ns
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
@@ -24,10 +25,11 @@ struct AlbumRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Image(a.cover).resizable().scaledToFill().frame(width: size, height: size)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .zoomSource(a.id, ns)
                         Text(a.title).font(.system(size: 14, weight: .medium)).lineLimit(1).padding(.top, 6)
                         Text(a.artist).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                     }
-                    .frame(width: size).onTapGesture { onTap(a) }
+                    .frame(width: size).scrollReveal(.horizontal).contentShape(Rectangle()).onTapGesture { state.path.append(.album(a)) }
                 }
             }.padding(.horizontal, Theme.margin)
         }
@@ -56,6 +58,6 @@ struct TrackRow: View {
             .frame(maxHeight: .infinity)
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
         }
-        .frame(height: art == nil ? 56 : 64).padding(.horizontal, Theme.margin)
+        .frame(height: art == nil ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
     }
 }

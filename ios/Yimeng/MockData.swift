@@ -25,6 +25,7 @@ enum Mock {
     static let nightfall = Album(id: "nf", title: "夜航星", artist: "不才", cover: "ym_nightfall", year: "2023")
     static let tracks = [Track(title: "夜航星", duration: "4:52"), Track(title: "山河令", duration: "3:41"), Track(title: "一程山路", duration: "5:08"),
                          Track(title: "参商", duration: "4:17"), Track(title: "明月几时", duration: "3:59"), Track(title: "长安忆", duration: "4:33")]
+    static let moreTracks = [Track(title: "归途", duration: "4:02"), Track(title: "落笔", duration: "3:28"), Track(title: "星河", duration: "5:11"), Track(title: "北行", duration: "4:44")]
     static let coldplayTop = [("ym_c1", "Yellow", "Parachutes · 2000"), ("ym_c2", "Viva La Vida", "Viva La Vida · 2008"),
                               ("ym_c3", "Fix You", "X&Y · 2005"), ("ym_c4", "The Scientist", "A Rush of Blood · 2002")]
     static let coldplayAlbums = [Album(id: "c5", title: "Moon Music", artist: "2024", cover: "ym_c5"), Album(id: "c2", title: "Viva La Vida", artist: "2008", cover: "ym_c2"),

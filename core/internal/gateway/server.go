@@ -16,6 +16,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
+	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
@@ -70,6 +71,7 @@ type Deps struct {
 	Presence      *Presence
 	Admin         AdminLibrary
 	Covers        *covers.Cache
+	Providers     *metadata.Registry // optional; listed by GET /api/metadata/providers
 }
 
 type contextT = context.Context
@@ -123,6 +125,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
 	mux.HandleFunc("POST /api/metadata/enrich", d.enrich)
+	mux.HandleFunc("GET /api/metadata/providers", d.listProviders)
 
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
 	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
