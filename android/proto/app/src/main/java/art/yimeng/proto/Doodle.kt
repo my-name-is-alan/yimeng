@@ -107,6 +107,24 @@ fun DoodleLayer(
                 color = Color.White.copy(alpha = 0.6f + 0.3f * intensity),
                 style = Stroke(width = strokePx, cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
+            // Zig stars: Int(4+energy×8), seed+99, r 4–10, α 0.5–0.95
+            if (track.motif == Motif.Zig && drawn > 0.05f) {
+                val rng = SeededRNG(track.seed + 99uL)
+                val n = track.density // (4 + energy×8).toInt()
+                val rc = slot.rect
+                for (i in 0 until n) {
+                    val sx = rng.d(20.0, (size.width - 20).toDouble()).toFloat()
+                    val sy = rng.d((rc.top - 50).toDouble(), (rc.bottom + 60).toDouble()).toFloat()
+                    val sr = rng.d(4.0, 10.0).toFloat()
+                    val sa = rng.d(0.5, 0.95).toFloat()
+                    val rot = rng.d(0.0, 1.0)
+                    drawPath(
+                        path = DoodlePaths.star(Offset(sx, sy), sr, rot),
+                        color = Color.White.copy(alpha = sa * drawn),
+                        style = Stroke(width = strokePx * 0.8f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    )
+                }
+            }
         }
     }
 }

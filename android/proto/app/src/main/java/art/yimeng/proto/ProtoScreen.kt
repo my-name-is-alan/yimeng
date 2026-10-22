@@ -49,15 +49,15 @@ import androidx.compose.material3.Text
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 
-private data class Tab(val label: String)
+private data class Tab(val label: String, val glyph: YMGlyph)
 
 @Composable
 fun ProtoScreen() {
     val haze = remember { HazeState() }
     var tab by remember { mutableIntStateOf(0) }
     val track = DreamMock.orange
-    val left = listOf(Tab("首页"), Tab("曲库"))
-    val right = listOf(Tab("搜索"), Tab("我的"))
+    val left = listOf(Tab("首页", YMGlyph.Home), Tab("曲库", YMGlyph.Library))
+    val right = listOf(Tab("搜索", YMGlyph.Search), Tab("我的", YMGlyph.Me))
     val ctx = LocalContext.current
     val reduce = remember {
         Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
@@ -104,11 +104,10 @@ fun ProtoScreen() {
         Column(
             Modifier.align(Alignment.TopStart).statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
-            TextSafe("译梦 · 玻璃 + 涂鸦 PoC", YmTheme.fg, 20.sp, FontWeight.Bold)
-            TextSafe(
-                "Haze ${blurCmp}dp α=0.35 · motif=${track.motif} · " + if (glassBlurActive()) "API≥31" else "API<31",
-                YmTheme.secondary, 13.sp,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                YMBrandMark(size = 28.dp)
+                TextSafe("译梦 · 玻璃 + 涂鸦 PoC", YmTheme.fg, 20.sp, FontWeight.Bold)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(12, 16, 20, 24).forEach { r ->
                     TextSafe(
@@ -122,6 +121,20 @@ fun ProtoScreen() {
                             .clickable { blurCmp = r }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                     )
+                }
+            }
+            // Icon set strip (port of YMIcons.swift) for review screenshots
+            Row(
+                Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                listOf(
+                    YMGlyph.Home, YMGlyph.Library, YMGlyph.Collection, YMGlyph.Search, YMGlyph.Me,
+                    YMGlyph.Play, YMGlyph.Pause, YMGlyph.Previous, YMGlyph.Next,
+                    YMGlyph.Heart, YMGlyph.Star, YMGlyph.Recognize,
+                ).forEach { g ->
+                    YMIcon(g, size = 18.dp, weight = 1.6f, color = YmTheme.fg.copy(0.9f))
                 }
             }
         }
@@ -147,10 +160,9 @@ fun ProtoScreen() {
                         TextSafe(track.title, YmTheme.fg, 14.sp, FontWeight.SemiBold, maxLines = 1)
                         TextSafe(track.artist, YmTheme.fg.copy(0.7f), 12.sp, maxLines = 1)
                     }
-                    // No Material icons — geometric transport marks only.
-                    PauseMark(color = YmTheme.fg, size = 22.dp)
+                    YMIcon(YMGlyph.Pause, size = 22.dp, weight = 1.9f, filled = true, color = YmTheme.fg)
                     Spacer(Modifier.width(14.dp))
-                    SkipMark(color = YmTheme.fg, size = 20.dp)
+                    YMIcon(YMGlyph.Next, size = 20.dp, weight = 1.9f, filled = true, color = YmTheme.fg)
                 }
             }
 
@@ -209,11 +221,12 @@ private fun TabItem(t: Tab, selected: Boolean, onClick: () -> Unit, modifier: Mo
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // Transition: dream-ring + spark brand mark only (await iOS shared icon set).
-            DreamRingSpark(
-                color = if (selected) YmTheme.accent else YmTheme.fg,
+            YMIcon(
+                glyph = t.glyph,
                 size = 19.dp,
-                selected = selected,
+                weight = 1.7f,
+                active = selected,
+                color = if (selected) YmTheme.accent else YmTheme.fg,
             )
             TextSafe(
                 t.label,
@@ -267,24 +280,14 @@ private fun CollectionOrb(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // Moon + star as paths + Crayon double-stroke — no emoji.
-            Box(Modifier.size(30.dp, 26.dp)) {
-                Canvas(Modifier.fillMaxSize().rotate(if (selected) -12f else 0f)) {
-                    val r = 11.dp.toPx()
-                    val moonP = moonPath(Offset(size.width * 0.42f, size.height * 0.58f), r)
-                    crayonStroke(moonP, Color.White, 2.2.dp.toPx())
-                }
-                Canvas(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 2.dp, y = (-2).dp)
-                        .size(9.dp)
-                        .scale(starScale.value),
-                ) {
-                    val spark = starSparkPath(Offset(size.width / 2f, size.height / 2f), size.minDimension / 2f)
-                    crayonStroke(spark, Color.White, 1.6.dp.toPx())
-                }
-            }
+            // iOS Tab.collection → YMGlyph.Collection (stacks)
+            YMIcon(
+                glyph = YMGlyph.Collection,
+                size = 22.dp,
+                weight = 1.7f,
+                color = Color.White,
+                modifier = Modifier.scale(starScale.value),
+            )
             TextSafe("典藏", Color.White.copy(0.92f), 10.sp, FontWeight.SemiBold)
             if (selected) {
                 Box(Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape).background(YmTheme.accent))

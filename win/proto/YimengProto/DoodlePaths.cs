@@ -208,21 +208,28 @@ public static class DoodlePaths
         return combined;
     }
 
+    /// <summary>Ink motif parts around a cover slot (player page). Kept separate so wobble is per-contour.</summary>
+    public static CanvasGeometry[] MotifInkParts(ICanvasResourceCreator rc, float left, float top, float s)
+    {
+        float sc = s / 232f;
+        return new CanvasGeometry[]
+        {
+            Flower(rc, new Vector2(left + s - 6f * sc, top + 8f * sc), 22f * sc, 6),
+            Flower(rc, new Vector2(left + 10f * sc, top + s - 6f * sc), 15f * sc, 5),
+            Loops(rc, new Vector2(left - 30f * sc, top - 24f * sc), 120f * sc, 9f * sc),
+            Drip(rc, new Vector2(left + s * 0.22f, top + s + 4f * sc), 32f * sc),
+            Drip(rc, new Vector2(left + s * 0.48f, top + s + 4f * sc), 46f * sc),
+            Drip(rc, new Vector2(left + s * 0.71f, top + s + 4f * sc), 60f * sc),
+            Flower(rc, new Vector2(left + s + 40f * sc, top + s + 40f * sc), 10f * sc, 5),
+        };
+    }
+
     /// <summary>Ink motif for 橘子海 (acoustic / energy 0.55) — matches Android DreamMock.orange.</summary>
     public static CanvasGeometry MotifInk(ICanvasResourceCreator rc, float w, float h)
     {
         float k = w / 402f;
         float left = 128 * k, top = 136 * k, s = 232 * k;
-        var parts = new CanvasGeometry[]
-        {
-            Flower(rc, new Vector2(left + s - 6f, top + 8f), 22f, 6),
-            Flower(rc, new Vector2(left + 10f, top + s - 6f), 15f, 5),
-            Loops(rc, new Vector2(left - 30f, top - 24f), 120f, 9f),
-            Drip(rc, new Vector2(left + s * 0.22f, top + s + 4f), 32f),
-            Drip(rc, new Vector2(left + s * 0.48f, top + s + 4f), 46f),
-            Drip(rc, new Vector2(left + s * 0.71f, top + s + 4f), 60f),
-            Flower(rc, new Vector2(w - 72f, top + s + 120f), 10f, 5),
-        };
+        var parts = MotifInkParts(rc, left, top, s);
         var group = CanvasGeometry.CreateGroup(rc, parts);
         foreach (var p in parts) p.Dispose();
         return group;

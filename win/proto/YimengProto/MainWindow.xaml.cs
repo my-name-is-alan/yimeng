@@ -10,6 +10,7 @@ using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Input;
 using Windows.Graphics.Effects;
 using Windows.UI;
 using Windows.UI.ViewManagement;
@@ -25,18 +26,21 @@ public sealed partial class MainWindow : Window
     private const float Intensity = 0.7f;
     private const float Energy = 0.55f;
     private const float Jitter = 2.875f; // 1.5 + energy×2.5
-    private readonly float _strokeDp = 1.6f + 0.55f * 1.4f; // 1.6+energy×1.4
+    private readonly float _strokeDp = 1.6f + 0.55f * 1.4f;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(33) };
     private bool _calm;
     private CanvasRenderTarget? _fieldCache;
-    private CanvasGeometry? _motif;
+    private CanvasGeometry[]? _motifParts;
     private float _motifW, _motifH;
     private bool _fieldCached;
+    // Zig demo energy for star density; orange/ink motif uses Energy; stars only when _useZigStars
+    private const bool UseZigStars = true; // show Int(4+energy×8) stars for r3 visual check
+    private const ulong TrackSeed = 42;
 
     public MainWindow()
     {
         InitializeComponent();
-        SystemBackdrop = null; // no Mica / Acrylic — opaque RootGrid
+        SystemBackdrop = null;
         _calm = !new UISettings().AnimationsEnabled;
         _timer.Interval = TimeSpan.FromMilliseconds(_calm ? 250 : 33);
         _timer.Tick += (_, _) =>
@@ -50,15 +54,12 @@ public sealed partial class MainWindow : Window
             {
                 float wall = _t / (_calm ? 0.08f : 1f);
                 float p = Math.Clamp(wall / 1.6f, 0f, 1f);
-                _drawn = DoodlePaths.CubicBezierEase(p); // cubic-bezier(0.42,0,0.58,1)
+                _drawn = DoodlePaths.CubicBezierEase(p);
             }
             DoodleCanvas.Invalidate();
-            OrbCanvas.Invalidate();
             if (!_fieldCached || !_calm) FieldCanvas.Invalidate();
         };
         _timer.Start();
-        // Do NOT ExtendsContentIntoTitleBar with null SystemBackdrop — that punches
-        // desktop through the HWND. Keep a normal title bar + fully opaque content.
         ExtendsContentIntoTitleBar = false;
         try
         {
@@ -66,14 +67,13 @@ public sealed partial class MainWindow : Window
             AppWindow.TitleBar.ButtonBackgroundColor = opaque;
             AppWindow.TitleBar.ButtonInactiveBackgroundColor = opaque;
             AppWindow.TitleBar.BackgroundColor = opaque;
-            // Win32: ensure HWND is not layered-transparent
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             ForceOpaque(hwnd);
         }
         catch { }
         Activated += (_, _) => AttachGlassBlur();
-        // Default phone-like size so bar+orb+doodle all fit
-        try { AppWindow.Resize(new Windows.Graphics.SizeInt32(480, 900)); } catch { }
+        // Desktop landscape — NavigationSplitView shell
+        try { AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 800)); } catch { }
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -88,7 +88,6 @@ public sealed partial class MainWindow : Window
 
     private static void ForceOpaque(IntPtr hwnd)
     {
-        // Keep layered if needed but force alpha=255 so desktop never bleeds
         int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
         SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED);
         SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
@@ -96,20 +95,15 @@ public sealed partial class MainWindow : Window
 
     private void AttachGlassBlur()
     {
-        try
-        {
-            ApplyBlur(MiniPlayerGlass, 20f, extraTint: true);
-            ApplyBlur(TabGlass, 20f, extraTint: false);
-            ApplyBlur(OrbGlass, 20f, extraTint: false, orb: true);
-        }
+        try { ApplyBlur(MiniPlayerGlass, 20f, miniBase: true); }
         catch { }
     }
 
     /// <summary>
-    /// Real blur stack: Backdrop → GaussianBlur 20 → black 14% → (mini) Base #0A0A0C 55%.
-    /// XAML also keeps Base 55% / black 14% so panels stay opaque if composition fails.
+    /// Liquid glass: Backdrop → GaussianBlur → sprite Opacity=0.35 → black 14%.
+    /// Mini: + Base #0A0A0C 55% as a SINGLE layer (XAML Background is Transparent).
     /// </summary>
-    private void ApplyBlur(FrameworkElement el, float blurPx, bool extraTint, bool orb = false)
+    private void ApplyBlur(FrameworkElement el, float blurPx, bool miniBase)
     {
         var visual = ElementCompositionPreview.GetElementVisual(el);
         var compositor = visual.Compositor;
@@ -122,15 +116,14 @@ public sealed partial class MainWindow : Window
             BorderMode = EffectBorderMode.Hard,
             Source = new CompositionEffectSourceParameter("backdrop"),
         };
+        // Haze α=0.35 on blur only (not on tint layers)
+        var haze = new OpacityEffect { Source = blur, Opacity = 0.35f };
 
-        // black 14% over blur
-        var blackTint = new ColorSourceEffect
-        {
-            Color = Color.FromArgb(36, 0, 0, 0), // 14%
-        };
+        // black 14% over haze
+        var blackTint = new ColorSourceEffect { Color = Color.FromArgb(36, 0, 0, 0) };
         IGraphicsEffect graph = new ArithmeticCompositeEffect
         {
-            Source1 = blur,
+            Source1 = haze,
             Source2 = blackTint,
             Source1Amount = 1f,
             Source2Amount = 1f,
@@ -138,13 +131,10 @@ public sealed partial class MainWindow : Window
             Offset = 0f,
         };
 
-        if (extraTint)
+        if (miniBase)
         {
-            // Base #0A0A0C 55% — must actually stack (fixes see-through desktop)
-            var baseTint = new ColorSourceEffect
-            {
-                Color = Color.FromArgb(140, 0x0A, 0x0A, 0x0C), // 55%
-            };
+            // Base #0A0A0C 55% — single layer (XAML Background is Transparent)
+            var baseTint = new ColorSourceEffect { Color = Color.FromArgb(140, 0x0A, 0x0A, 0x0C) };
             graph = new ArithmeticCompositeEffect
             {
                 Source1 = graph,
@@ -163,7 +153,6 @@ public sealed partial class MainWindow : Window
         sprite.Brush = brush;
         sprite.RelativeSizeAdjustment = Vector2.One;
         ElementCompositionPreview.SetElementChildVisual(el, sprite);
-        _ = orb;
     }
 
     private void FieldCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
@@ -177,14 +166,13 @@ public sealed partial class MainWindow : Window
             _fieldCache?.Dispose();
             _fieldCache = new CanvasRenderTarget(sender, w, h, 96);
             using var cds = _fieldCache.CreateDrawingSession();
-            cds.Clear(Color.FromArgb(255, 0x0A, 0x0A, 0x0C)); // opaque Base
-            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x7A, 0x1A), w * 0.10f, h * 0.08f, w * 0.52f);
-            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xD2, 0x3F), w * 0.90f, h * 0.32f, w * 0.48f);
-            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x3D, 0x2E), w * 0.05f, h * 0.68f, w * 0.50f);
-            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xB0, 0x00), w * 0.95f, h * 0.92f, w * 0.45f);
+            cds.Clear(Color.FromArgb(255, 0x0A, 0x0A, 0x0C));
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x7A, 0x1A), w * 0.30f, h * 0.22f, w * 0.55f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xD2, 0x3F), w * 0.78f, h * 0.38f, w * 0.48f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0x3D, 0x2E), w * 0.18f, h * 0.72f, w * 0.50f);
+            DrawSoft(cds, Color.FromArgb(140, 0xFF, 0xB0, 0x00), w * 0.85f, h * 0.88f, w * 0.42f);
             _fieldCached = true;
         }
-        // BlendMode.Screen, fixed r=420, α=blob0×0.22×pulse
         if (!_calm && _fieldCache != null)
         {
             float pulse = MathF.Exp(-7f * _beatAgo);
@@ -226,8 +214,14 @@ public sealed partial class MainWindow : Window
 
     private void DoodleCanvas_CreateResources(CanvasControl sender, CanvasCreateResourcesEventArgs args)
     {
-        _motif?.Dispose();
-        _motif = null;
+        DisposeMotif();
+    }
+
+    private void DisposeMotif()
+    {
+        if (_motifParts == null) return;
+        foreach (var g in _motifParts) g.Dispose();
+        _motifParts = null;
     }
 
     private void DoodleCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
@@ -236,169 +230,203 @@ public sealed partial class MainWindow : Window
         float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
         if (w < 1 || h < 1) return;
 
-        if (_motif == null || MathF.Abs(_motifW - w) > 0.5f || MathF.Abs(_motifH - h) > 0.5f)
+        // Cover slot centered (iOS player page drip layout scaled into host)
+        float cover = MathF.Min(w, h) * 0.72f;
+        float left = (w - cover) / 2f;
+        float top = (h - cover) / 2f;
+
+        if (_motifParts == null || MathF.Abs(_motifW - w) > 0.5f || MathF.Abs(_motifH - h) > 0.5f)
         {
-            _motif?.Dispose();
-            _motif = DoodlePaths.MotifInk(sender, w, h);
+            DisposeMotif();
+            _motifParts = DoodlePaths.MotifInkParts(sender, left, top, cover);
             _motifW = w; _motifH = h;
         }
-        float total = _motif.ComputePathLength();
-        float target = MathF.Max(0.01f, total * _drawn);
 
-        // Trim ALL contours together via dash over full path length
+        float strokePx = MathF.Max(1.4f, _strokeDp * (cover / 232f));
+        float pulse = _calm ? 0 : 0.04f * Intensity * MathF.Exp(-7f * _beatAgo);
+        float scale = 1f + pulse;
+        var mid = new Vector2(left + cover / 2f, top + cover / 2f);
+
+        float amp = Jitter * Intensity * (_calm ? 0.08f : 1f);
+
+        // Cumulative trim across ALL contours (parts)
+        float totalLen = 0f;
+        foreach (var p in _motifParts) totalLen += p.ComputePathLength();
+        float target = MathF.Max(0.01f, totalLen * _drawn);
+
+        ds.Transform = Matrix3x2.CreateScale(scale, mid);
+
+        float acc = 0f;
+        var white = Color.FromArgb((byte)(255 * (0.6f + 0.3f * Intensity)), 255, 255, 255);
         var style = new CanvasStrokeStyle
         {
             StartCap = CanvasCapStyle.Round,
             EndCap = CanvasCapStyle.Round,
             DashCap = CanvasCapStyle.Round,
-            CustomDashStyle = new float[] { target, total },
         };
 
-        float strokePx = _strokeDp * (96f / 96f); // 1.6+energy×1.4 dp ≈ px at 96dpi; scale with width
-        strokePx *= w / 402f; // density-ish
-        strokePx = MathF.Max(1.4f, _strokeDp * (w / 402f)); // 1.6+energy×1.4 dp scaled
-
-        float pulse = _calm ? 0 : 0.04f * Intensity * MathF.Exp(-7f * _beatAgo);
-        float scale = 1f + pulse;
-        float k = w / 402f;
-        var mid = new Vector2((128 + 116) * k, (136 + 116) * k);
-
-        // Wire up wobble (amp = jitter×intensity)
-        CanvasGeometry drawGeo = _motif;
-        CanvasGeometry? wobbleGeo = null;
-        float amp = Jitter * Intensity * (_calm ? 0.08f : 1f);
-        if (amp > 0.01f)
-        {
-            wobbleGeo = Wobble(sender, _motif, amp, _t);
-            drawGeo = wobbleGeo;
-            total = drawGeo.ComputePathLength();
-            target = MathF.Max(0.01f, total * _drawn);
-            style.CustomDashStyle = new float[] { target, total };
-        }
-
-        ds.Transform = Matrix3x2.CreateScale(scale, mid);
-
-        // Glow = white 50% + blur ~4dp (GaussianBlur on stroked command list)
         using (var cl = new CanvasCommandList(sender))
         {
             using (var cds = cl.CreateDrawingSession())
             {
-                cds.DrawGeometry(drawGeo, Color.FromArgb(128, 255, 255, 255), strokePx, style);
+                DrawParts(cds, sender, _motifParts, amp, target, ref acc, Color.FromArgb(128, 255, 255, 255), strokePx, style);
             }
-            float blurPx = 4f * (w / 402f) * 2.5f;
+            float blurPx = MathF.Max(2f, 4f * (cover / 232f) * 2.5f);
             var glowFx = new GaussianBlurEffect
             {
                 Source = cl,
-                BlurAmount = MathF.Max(2f, blurPx),
+                BlurAmount = blurPx,
                 BorderMode = EffectBorderMode.Soft,
             };
             ds.DrawImage(glowFx);
         }
 
-        // Main stroke alpha 0.6+0.3×intensity
-        var white = Color.FromArgb((byte)(255 * (0.6f + 0.3f * Intensity)), 255, 255, 255);
-        ds.DrawGeometry(drawGeo, white, strokePx, style);
+        acc = 0f;
+        DrawParts(ds, sender, _motifParts, amp, target, ref acc, white, strokePx, style);
+
+        // Zig stars: Int(4+energy×8), seed+99, r 4–10, α 0.5–0.95
+        if (UseZigStars && _drawn > 0.05f)
+        {
+            int density = (int)(4 + Energy * 8); // orange energy 0.55 → 8; zig 0.85 → 10
+            // Use zig energy 0.85 for star count demo when UseZigStars
+            density = (int)(4 + 0.85 * 8);
+            ulong state = TrackSeed + 99;
+            float strokeStar = strokePx * 0.8f;
+            for (int i = 0; i < density; i++)
+            {
+                float sx = (float)DoodlePaths.SeededRNG.D(ref state, 20, w - 20);
+                float sy = (float)DoodlePaths.SeededRNG.D(ref state, top - 50, top + cover + 60);
+                float sr = (float)DoodlePaths.SeededRNG.D(ref state, 4, 10);
+                float sa = (float)DoodlePaths.SeededRNG.D(ref state, 0.5, 0.95);
+                float rot = (float)DoodlePaths.SeededRNG.D(ref state, 0, 1);
+                using var star = DoodlePaths.Star(sender, new Vector2(sx, sy), sr, rot);
+                byte a = (byte)(255 * sa * _drawn);
+                ds.DrawGeometry(star, Color.FromArgb(a, 255, 255, 255), strokeStar, style);
+            }
+        }
+
         ds.Transform = Matrix3x2.Identity;
-        wobbleGeo?.Dispose();
     }
 
-    /// <summary>Perpendicular sine offset along flattened path (wobble was computed but unused).</summary>
-    private static CanvasGeometry Wobble(ICanvasResourceCreator rc, CanvasGeometry src, float amp, float phase)
+    /// <summary>Wobble + dash-trim EACH contour separately (no V-connector across figures).</summary>
+    private void DrawParts(
+        CanvasDrawingSession ds, ICanvasResourceCreator rc, CanvasGeometry[] parts,
+        float amp, float target, ref float acc, Color ink, float strokePx, CanvasStrokeStyle style)
     {
-        // Approximate: stroke then? Use CreatePath via tessellation points from ComputePointOnPath
+        foreach (var part in parts)
+        {
+            float len = part.ComputePathLength();
+            CanvasGeometry? wob = null;
+            CanvasGeometry draw = part;
+            if (amp > 0.01f)
+            {
+                wob = WobbleOne(rc, part, amp, _t);
+                draw = wob;
+                len = draw.ComputePathLength();
+            }
+
+            float remain = target - acc;
+            if (remain > 0.5f)
+            {
+                float dash = MathF.Min(remain, len);
+                style.CustomDashStyle = new float[] { dash, len + 1f };
+                ds.DrawGeometry(draw, ink, strokePx, style);
+            }
+            acc += len;
+            wob?.Dispose();
+        }
+        style.CustomDashStyle = null;
+    }
+
+    /// <summary>Perpendicular sine offset along a SINGLE contour (open path).</summary>
+    private static CanvasGeometry WobbleOne(ICanvasResourceCreator rc, CanvasGeometry src, float amp, float phase)
+    {
         float len = src.ComputePathLength();
         if (len < 1f) return src;
         int steps = Math.Max(2, (int)(len / 3.5f));
         using var b = new CanvasPathBuilder(rc);
-        bool started = false;
         for (int i = 0; i <= steps; i++)
         {
             float d = len * i / steps;
             Vector2 pos = src.ComputePointOnPath(d, out Vector2 tan);
-            // normalize tan
             float tl = MathF.Sqrt(tan.X * tan.X + tan.Y * tan.Y);
             if (tl > 1e-4f) { tan.X /= tl; tan.Y /= tl; }
             float nx = -tan.Y, ny = tan.X;
             float wob = MathF.Sin(d * 0.085f + phase * 2.4f) * amp;
             var pt = new Vector2(pos.X + nx * wob, pos.Y + ny * wob);
-            if (!started) { b.BeginFigure(pt); started = true; }
+            if (i == 0) b.BeginFigure(pt);
             else b.AddLine(pt);
         }
         b.EndFigure(CanvasFigureLoop.Open);
         return CanvasGeometry.CreatePath(b);
     }
 
-    private void OrbCanvas_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+    private void SideHome_Click(object sender, PointerRoutedEventArgs e) { }
+
+    private void GlyphPause_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Pause, filled: true, ink: Colors.White);
+
+    private void GlyphPauseBig_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Pause, filled: true, ink: Colors.White);
+
+    private void GlyphNext_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Next, filled: true, ink: Colors.White);
+
+    private void GlyphPrev_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Previous, filled: true, ink: Colors.White);
+
+    private void GlyphHomeActive_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Home, ink: Color.FromArgb(255, 0xC8, 0xF5, 0x42));
+
+    private void GlyphLibrary_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Library, ink: Color.FromArgb(191, 255, 255, 255));
+
+    private void GlyphCollection_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Collection, ink: Color.FromArgb(191, 255, 255, 255));
+
+    private void GlyphSearch_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Search, ink: Color.FromArgb(191, 255, 255, 255));
+
+    private void GlyphMe_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Me, ink: Color.FromArgb(191, 255, 255, 255));
+
+    private void BrandMark_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         var ds = args.DrawingSession;
-        float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
-        if (w < 1 || h < 1) return;
-        // Moon + star paths + Crayon double-stroke; no emoji
-        float r = 11f * (w / 64f);
-        var moonC = new Vector2(w * 0.42f, h * 0.42f);
-        using var moon = DoodlePaths.Moon(sender, moonC, r);
-        CrayonStroke(ds, moon, Color.FromArgb(230, 255, 255, 255), 2.2f * (w / 64f), w, h);
-
-        using var spark = DoodlePaths.Sparkle(sender, new Vector2(w * 0.72f, h * 0.22f), 4.5f * (w / 64f));
-        CrayonStroke(ds, spark, Color.FromArgb(230, 255, 255, 255), 1.6f * (w / 64f), w, h);
+        float s = (float)Math.Min(sender.ActualWidth, sender.ActualHeight);
+        if (s < 1) return;
+        YMIconPaths.DrawBrandMark(ds, sender, s, accentSparkle: true);
     }
 
-    /// <summary>Crayon: main 90% + second pass 35% @ offset(0.8,−0.6) rotate 0.8°.</summary>
-    private static void CrayonStroke(CanvasDrawingSession ds, CanvasGeometry geo, Color color, float width, float w, float h)
-    {
-        var style = new CanvasStrokeStyle { StartCap = CanvasCapStyle.Round, EndCap = CanvasCapStyle.Round };
-        var c1 = Color.FromArgb((byte)(color.A * 0.9f), color.R, color.G, color.B);
-        ds.DrawGeometry(geo, c1, width, style);
-        var prev = ds.Transform;
-        ds.Transform = Matrix3x2.CreateTranslation(0.8f, -0.6f)
-                     * Matrix3x2.CreateRotation(0.8f * MathF.PI / 180f, new Vector2(w / 2f, h / 2f))
-                     * prev;
-        var c2 = Color.FromArgb((byte)(color.A * 0.35f), color.R, color.G, color.B);
-        ds.DrawGeometry(geo, c2, width * 0.7f, style);
-        ds.Transform = prev;
-    }
-
-    private void PauseMark_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+    private void IconStrip_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {
         var ds = args.DrawingSession;
-        float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
-        float barW = w * 0.18f, gap = w * 0.16f, barH = h * 0.55f;
-        float top = (h - barH) / 2f, left = w / 2f - gap / 2f - barW;
-        ds.FillRoundedRectangle(left, top, barW, barH, barW / 3f, barW / 3f, Colors.White);
-        ds.FillRoundedRectangle(left + barW + gap, top, barW, barH, barW / 3f, barW / 3f, Colors.White);
+        float h = (float)sender.ActualHeight;
+        if (h < 1) return;
+        var glyphs = new[]
+        {
+            YMGlyph.Home, YMGlyph.Library, YMGlyph.Collection, YMGlyph.Search, YMGlyph.Me,
+            YMGlyph.Play, YMGlyph.Pause, YMGlyph.Previous, YMGlyph.Next,
+            YMGlyph.Heart, YMGlyph.Star, YMGlyph.Recognize,
+        };
+        float cell = h;
+        float gap = 6f;
+        float x = 0;
+        var ink = Color.FromArgb(180, 255, 255, 255);
+        foreach (var g in glyphs)
+        {
+            ds.Transform = Matrix3x2.CreateTranslation(x, 0);
+            YMIconPaths.DrawIcon(ds, sender, g, cell * 0.9f, ink, weight: 1.5f);
+            ds.Transform = Matrix3x2.Identity;
+            x += cell + gap;
+        }
     }
 
-    private void SkipMark_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+    private static void DrawGlyph(CanvasControl sender, CanvasDrawEventArgs args, YMGlyph g, bool filled = false, Color? ink = null)
     {
         var ds = args.DrawingSession;
-        float w = (float)sender.ActualWidth, h = (float)sender.ActualHeight;
-        using var b = new CanvasPathBuilder(sender);
-        b.BeginFigure(w * 0.22f, h * 0.22f);
-        b.AddLine(w * 0.62f, h * 0.50f);
-        b.AddLine(w * 0.22f, h * 0.78f);
-        b.EndFigure(CanvasFigureLoop.Closed);
-        using var tri = CanvasGeometry.CreatePath(b);
-        ds.FillGeometry(tri, Colors.White);
-        ds.FillRectangle(w * 0.68f, h * 0.22f, w * 0.12f, h * 0.56f, Colors.White);
-    }
-
-    private void DreamRing_Draw(CanvasControl sender, CanvasDrawEventArgs args)
-        => DrawDreamRing(sender, args, selected: false);
-
-    private void DreamRingSelected_Draw(CanvasControl sender, CanvasDrawEventArgs args)
-        => DrawDreamRing(sender, args, selected: true);
-
-    private static void DrawDreamRing(CanvasControl sender, CanvasDrawEventArgs args, bool selected)
-    {
-        var ds = args.DrawingSession;
-        float w = (float)sender.ActualWidth;
-        float r = w / 2f;
-        float a = selected ? 1f : 0.75f;
-        var ring = Color.FromArgb((byte)(255 * 0.85f * a), (byte)(selected ? 0xC8 : 0xFF), (byte)(selected ? 0xF5 : 0xFF), (byte)(selected ? 0x42 : 0xFF));
-        var sparkC = Color.FromArgb((byte)(255 * 0.95f * a), ring.R, ring.G, ring.B);
-        float stroke = MathF.Max(1.2f, 1.4f);
-        ds.DrawCircle(r, r, r * 0.72f, ring, stroke);
-        using var spark = DoodlePaths.Sparkle(sender, new Vector2(r, r), r * 0.28f);
-        ds.DrawGeometry(spark, sparkC, stroke * 0.7f);
+        float s = (float)Math.Min(sender.ActualWidth, sender.ActualHeight);
+        if (s < 1) return;
+        YMIconPaths.DrawIcon(ds, sender, g, s, ink ?? Colors.White, weight: 1.7f, filled: filled);
     }
 }
