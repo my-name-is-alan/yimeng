@@ -4,6 +4,7 @@ import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, 
 import { state, isAdmin } from "./state.js";
 import { pluginsSection, localHidden } from "./online.js";
 import { sourceSwitchSec, playbackSec } from "./prefs.js";
+import { lastfmSec } from "./report.js";
 
 const head = (title, sub, ...actions) => h("div", { class: "page-head" }, h("div", { style: { flex: 1, minWidth: 0 } }, h("h1", null, title), sub ? h("div", { class: "sub" }, sub) : null), ...actions);
 const card = (title, ic, ...body) => h("div", { class: "card" }, h("h3", null, ic ? icon(ic) : null, title), ...body);
@@ -367,7 +368,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";

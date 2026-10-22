@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/my-name-is-alan/yimeng/core/internal/lastfm"
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
+	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,6 +38,7 @@ type env struct {
 	auth  *auth.Service
 	token string
 	tc    *transcode.Transcoder
+	lfm   *lastfm.Service
 }
 
 func (e *env) do(method, path, body, tok string, hdr ...string) (*http.Response, []byte) {
@@ -92,10 +95,18 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	vk := make([]byte, 32)
+	vlt, err := vault.NewSQLStore(d, vk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lfm := &lastfm.Service{DB: d, Vault: vlt}
+	ud := &userdata.Store{DB: d, OnPlay: func(ctx context.Context, uid string, p userdata.Play) { lfm.Enqueue(ctx, uid, p.TrackID, p.PlayedAt) }}
 	deps := Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
 		Backup:         &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
-		UserData:       &userdata.Store{DB: d},
+		UserData:       ud,
+		LastFM:         lfm,
 		Alerts:         &secalert.Store{DB: d, Hub: hub},
 		BackupInterval: 24 * time.Hour,
 		Playlists:      sc,
@@ -113,7 +124,7 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	}
 	srv := httptest.NewServer(NewRouter(deps))
 	t.Cleanup(srv.Close)
-	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}
+	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc, lfm: lfm}
 	code, _, _ := a.NewCode()
 	res, body := e.do("POST", "/api/pair", `{"code":"`+code+`","name":"test","device_type":"web"}`, "")
 	if res.StatusCode != 201 {

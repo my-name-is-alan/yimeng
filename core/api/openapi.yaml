@@ -900,6 +900,68 @@ paths:
         "204": { description: Marked }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /api/v1/me/report:
+    get:
+      tags: [me]
+      summary: Listening report (D55) for one month or year, computed only from the caller's own plays
+      parameters:
+        - { name: period, in: query, schema: { type: string, enum: [month, year], default: month } }
+        - { name: year, in: query, schema: { type: integer }, description: "Default: current year in tz" }
+        - { name: month, in: query, schema: { type: integer, minimum: 1, maximum: 12 }, description: "Default: current month; ignored for period=year" }
+        - { name: tz, in: query, schema: { type: string, example: Asia/Shanghai }, description: "IANA zone for bucketing; default the server zone" }
+        - { name: top, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+      responses:
+        "200": { description: Report, content: { application/json: { schema: { $ref: "#/components/schemas/ListeningReport" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/me/lastfm:
+    get:
+      tags: [me]
+      summary: "Last.fm status for the caller's account (D56). Keys and session are never returned."
+      responses:
+        "200": { description: Status, content: { application/json: { schema: { $ref: "#/components/schemas/LastFMStatus" } } } }
+        "403": { description: "account_required — devices without an account cannot use Last.fm" }
+        "501": { description: Not configured }
+    put:
+      tags: [me]
+      summary: Pause or resume scrobbling (keeps the session)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } } } } } }
+      responses:
+        "200": { description: Status, content: { application/json: { schema: { $ref: "#/components/schemas/LastFMStatus" } } } }
+        "409": { description: lastfm_not_authorized }
+    delete:
+      tags: [me]
+      summary: Disconnect; deletes keys, session and queued scrobbles
+      responses:
+        "204": { description: Removed }
+
+  /api/v1/me/lastfm/keys:
+    put:
+      tags: [me]
+      summary: "Save the account's own Last.fm API key and shared secret (write-only, stored encrypted in the Vault). Clears any session."
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [api_key, api_secret], properties: { api_key: { type: string, pattern: "^[0-9a-f]{32}$" }, api_secret: { type: string, pattern: "^[0-9a-f]{32}$" } } } } } }
+      responses:
+        "200": { description: Status, content: { application/json: { schema: { $ref: "#/components/schemas/LastFMStatus" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/v1/me/lastfm/auth:
+    post:
+      tags: [me]
+      summary: "Start the Last.fm desktop auth flow; open auth_url in a browser, grant access, then call /auth/complete"
+      responses:
+        "200": { description: Auth URL, content: { application/json: { schema: { type: object, properties: { auth_url: { type: string } } } } } }
+        "409": { description: lastfm_no_keys }
+        "502": { description: lastfm_error / lastfm_unreachable }
+
+  /api/v1/me/lastfm/auth/complete:
+    post:
+      tags: [me]
+      summary: Exchange the granted token for a session; scrobbling starts
+      responses:
+        "200": { description: Status, content: { application/json: { schema: { $ref: "#/components/schemas/LastFMStatus" } } } }
+        "409": { description: "lastfm_no_token or lastfm_not_authorized (user has not granted access yet)" }
+
   /api/v1/system/export:
     get:
       tags: [system]
@@ -2626,6 +2688,38 @@ components:
         ip: { type: string }
         detail: { type: object }
         read: { type: boolean }
+    ReportEntry:
+      type: object
+      properties: { id: { type: string }, name: { type: string }, artist_name: { type: string }, plays: { type: integer }, listened_ms: { type: integer } }
+    ListeningReport:
+      type: object
+      properties:
+        period: { type: string, enum: [month, year] }
+        year: { type: integer }
+        month: { type: integer }
+        tz: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        plays: { type: integer }
+        listened_ms: { type: integer }
+        unique_tracks: { type: integer }
+        unique_artists: { type: integer }
+        unique_albums: { type: integer }
+        active_days: { type: integer }
+        top_tracks: { type: array, items: { $ref: "#/components/schemas/ReportEntry" } }
+        top_artists: { type: array, items: { $ref: "#/components/schemas/ReportEntry" } }
+        top_albums: { type: array, items: { $ref: "#/components/schemas/ReportEntry" } }
+        by_hour: { type: array, items: { type: integer }, minItems: 24, maxItems: 24 }
+        by_weekday: { type: array, items: { type: integer }, minItems: 7, maxItems: 7, description: "0 = Monday" }
+        by_day: { type: array, items: { type: integer }, description: "month: per day of month; year: per month (12)" }
+    LastFMStatus:
+      type: object
+      properties:
+        configured: { type: boolean }
+        connected: { type: boolean }
+        enabled: { type: boolean }
+        username: { type: string }
+        pending: { type: integer, description: Queued scrobbles }
     PlaybackPrefs:
       type: object
       properties:

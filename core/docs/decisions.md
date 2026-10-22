@@ -449,3 +449,22 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - `/playlists` `cursor` and `groups` are marked deprecated and are still returned.
 - `GET /system` for non-admins returns only `{version, api_version}`.
 - `limit` is clamped to 500.
+
+## D55 — Listening report
+- `GET /me/report?period=month|year&year=&month=&tz=&top=`. It is computed on request from the caller's own `plays` rows only, by `plays.user_id` (D49); 译梦 still has no recommendation system.
+- Returns:
+  - totals: plays, listened time, unique tracks/artists/albums, active days
+  - top tracks, artists and albums (by play count, then listened time)
+  - `by_hour` (24), `by_weekday` (Monday first) and `by_day` (days of the month, or 12 months).
+- Buckets use the client's `tz`; the default is the server zone. Online-track snapshots count like local tracks.
+- Web: the 听歌报告 page.
+
+## D56 — Last.fm scrobbling (optional, per account)
+- Each account brings its own API key and shared secret. They, the pending auth token and the session key are stored only in the Vault (entry `lastfm:<user id>`, encrypted). They are never returned, logged, or committed. API responses expose only `{configured, connected, enabled, username, pending}`.
+- **Auth:** the Last.fm desktop flow. `auth.getToken` → the user opens `auth_url` → `/auth/complete` calls `auth.getSession`.
+- **Queueing:** every recorded play (same qualification as history: ≥50% or 4 min, or ended) of a connected, enabled account is queued in `lastfm_queue` (migration 0025, no secrets).
+- **Sending:** a background loop sends `track.scrobble` in batches of up to 50 every minute.
+  - Failures back off exponentially and are dropped after 8 attempts.
+  - Tracks shorter than 30 s, or without a title or artist, are skipped.
+  - An invalid session (Last.fm errors 9, 10, 26) clears the session, so the user must re-authorize.
+- Devices without an account get 403. Disconnecting deletes the Vault entry and the queue.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/lastfm"
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"log/slog"
 	"net"
@@ -300,6 +301,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	ud := &userdata.Store{DB: database}
+	lfm := &lastfm.Service{DB: database, Vault: vlt, Log: log}
+	ud.OnPlay = func(ctx context.Context, userID string, p userdata.Play) {
+		lfm.Enqueue(ctx, userID, p.TrackID, p.PlayedAt)
+	}
+	go lfm.Run(ctx, time.Minute)
 	orch.OnListened = func(l playback.Listen) {
 		if !userdata.Counts(l.PlayedMs, l.DurationMs, l.Completed) {
 			return
@@ -475,6 +481,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Online:         onlineSvc,
 			OnlineLib:      scanner,
 			Vault:          vlt,
+			LastFM:         lfm,
 			UserEdits:      scanner,
 			LyricsSearch:   lyricsSearch(lrclibSearch, anonSrc),
 			ArtistAliases:  artistAliases,

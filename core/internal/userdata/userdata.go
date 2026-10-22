@@ -18,6 +18,9 @@ var (
 type Store struct {
 	DB  *sql.DB
 	Now func() time.Time
+	// OnPlay, if set, is called after a play is stored with the owning
+	// account (e.g. to queue a Last.fm scrobble, D56).
+	OnPlay func(ctx context.Context, userID string, p Play)
 }
 
 func (s *Store) now() time.Time {
@@ -87,9 +90,10 @@ func (s *Store) Record(ctx context.Context, p Play) error {
 	// D49: a play belongs to the caller's account, or (background recording
 	// by the player orchestrator) to the account that owns the player.
 	o := owner.From(ctx)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO plays(track_id, player_id, played_at, duration_ms, completed, source, user_id)
-		VALUES (?,?,?,?,?,?, CASE WHEN ? THEN ? ELSE COALESCE((SELECT user_id FROM players WHERE id=?), '') END)`,
-		p.TrackID, pid, at, p.DurationMs, p.Completed, p.Source, o.Set, o.ID, pid); err != nil {
+	var uid string
+	if err := tx.QueryRowContext(ctx, `INSERT INTO plays(track_id, player_id, played_at, duration_ms, completed, source, user_id)
+		VALUES (?,?,?,?,?,?, CASE WHEN ? THEN ? ELSE COALESCE((SELECT user_id FROM players WHERE id=?), '') END) RETURNING user_id`,
+		p.TrackID, pid, at, p.DurationMs, p.Completed, p.Source, o.Set, o.ID, pid).Scan(&uid); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO track_stats(track_id, play_count, last_played_at) VALUES (?,1,?)
@@ -97,7 +101,13 @@ func (s *Store) Record(ctx context.Context, p Play) error {
 		p.TrackID, at); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.OnPlay != nil {
+		s.OnPlay(ctx, uid, p)
+	}
+	return nil
 }
 
 type HistoryItem struct {

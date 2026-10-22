@@ -5,6 +5,7 @@ import { state, isAdmin } from "./state.js";
 import { player, mountNowBar, closeNP, loadPlaybackPrefs } from "./player.js";
 import { initSleep, sleepButton } from "./sleep.js";
 import * as lib from "./library.js";
+import { reportPage } from "./report.js";
 import * as adm from "./admin.js";
 import { lyricsPage } from "./lyrics.js";
 import { metadataPage } from "./metadata.js";
@@ -19,7 +20,7 @@ const app = $("#app"), main = $("#main");
 const navigate = (hash) => { location.hash = hash; };
 
 const NAV = [
-  ["曲库", [["#/", "首页", "home"], ["#/library", "曲库", "track"], ["#/favorites", "典藏", "heart"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/playlists", "歌单", "list"], ["#/history", "播放历史", "history"]]],
+  ["曲库", [["#/", "首页", "home"], ["#/library", "曲库", "track"], ["#/favorites", "典藏", "heart"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/playlists", "歌单", "list"], ["#/history", "播放历史", "history"], ["#/report", "听歌报告", "chart"]]],
   ["管理", [["#/dashboard", "仪表盘", "dash"], ["#/metadata", "元数据", "edit"], ["#/lyrics", "歌词匹配", "lyrics"], ["#/devices", "设备", "device"], ["#/users", "用户", "artist"], ["#/settings", "设置", "settings"], ["#/logs", "日志", "logs"]]],
 ];
 const TABS = [["#/", "首页", "home"], ["#/library", "曲库", "track"], ["#/search", "搜索", "search", true], ["#/playlists", "歌单", "list"], ["#/dashboard", "管理", "dash"]];
@@ -111,6 +112,7 @@ const ROUTES = [
   [/^\/playlist\/([\w-]+)$/, (m) => lib.playlist(main, m[1])],
   [/^\/favorites$/, () => lib.favorites(main)],
   [/^\/history$/, () => lib.historyPage(main)],
+  [/^\/report$/, () => reportPage(main)],
   [/^\/metadata$/, (m, p) => metadataPage(main, p)],
   [/^\/lyrics(?:\/([\w-]+))?$/, (m, p, c) => lyricsPage(main, m[1], c)],
   [/^\/devices$/, () => adm.devices(main)],

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/lastfm"
 	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
@@ -93,7 +94,8 @@ type Deps struct {
 	RateLimits     *RateLimits
 	Subsonic       *subsonic.Handler // optional; mounts /rest/*
 	Sources        *playback.Registry
-	Vault          vault.Vault // for logout / credential delete; never exposed
+	LastFM         *lastfm.Service // optional per-account scrobbling (D56)
+	Vault          vault.Vault     // for logout / credential delete; never exposed
 
 	// Web admin extras (all optional).
 	UserEdits    UserEdits
@@ -150,6 +152,13 @@ func NewRouter(d Deps) http.Handler {
 	if d.UserData != nil {
 		mux.HandleFunc("GET /api/me/source-switch", d.getSourceSwitch)
 		mux.HandleFunc("GET /api/me/playback", d.getPlaybackPrefs)
+		mux.HandleFunc("GET /api/me/report", d.getReport)
+		mux.HandleFunc("GET /api/me/lastfm", d.getLastFM)
+		mux.HandleFunc("PUT /api/me/lastfm", d.putLastFM)
+		mux.HandleFunc("DELETE /api/me/lastfm", d.deleteLastFM)
+		mux.HandleFunc("PUT /api/me/lastfm/keys", d.putLastFMKeys)
+		mux.HandleFunc("POST /api/me/lastfm/auth", d.startLastFMAuth)
+		mux.HandleFunc("POST /api/me/lastfm/auth/complete", d.completeLastFMAuth)
 		mux.HandleFunc("PUT /api/me/playback", d.putPlaybackPrefs)
 		mux.HandleFunc("PUT /api/me/source-switch", d.putSourceSwitch)
 		mux.HandleFunc("GET /api/progress", d.getProgress)
