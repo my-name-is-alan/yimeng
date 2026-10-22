@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Brushes;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.Graphics.Canvas.Geometry;
 using Microsoft.Graphics.Canvas.UI;
@@ -66,7 +67,7 @@ public sealed partial class MainWindow : Window
         catch { /* Designer machine may lack composition blur; solid tint remains. */ }
     }
 
-    private void ApplyBlur(UIElement el, float blurPx, bool extraTint, bool orb = false)
+    private void ApplyBlur(FrameworkElement el, float blurPx, bool extraTint, bool orb = false)
     {
         var visual = ElementCompositionPreview.GetElementVisual(el);
         var compositor = visual.Compositor;
