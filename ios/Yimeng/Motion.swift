@@ -8,12 +8,14 @@ struct MotionIn: ViewModifier {
     var from: MotionFrom = .bottom
     @Environment(\.accessibilityReduceMotion) private var reduce
     @State private var shown = false
+    private var shotMac: Bool { ProcessInfo.processInfo.arguments.contains("-shotMac") }
     func body(content: Content) -> some View {
         content
-            .opacity(shown ? 1 : 0)
-            .offset(y: reduce || shown ? 0 : (from == .bottom ? 16 : from == .top ? -16 : 0))
-            .scaleEffect(reduce || shown ? 1 : (from == .scale ? 0.92 : 1))
+            .opacity(shown || shotMac ? 1 : 0)
+            .offset(y: reduce || shown || shotMac ? 0 : (from == .bottom ? 16 : from == .top ? -16 : 0))
+            .scaleEffect(reduce || shown || shotMac ? 1 : (from == .scale ? 0.92 : 1))
             .onAppear {
+                if shotMac { shown = true; return }
                 guard !shown else { return }
                 let anim: Animation = reduce ? .easeOut(duration: 0.25) :
                     (from == .scale ? .spring(response: 0.55, dampingFraction: 0.68) : .spring(response: 0.5, dampingFraction: 0.8))

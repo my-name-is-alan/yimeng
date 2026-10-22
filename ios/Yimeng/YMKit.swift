@@ -20,7 +20,11 @@ struct YMBackdrop: View {
     var body: some View {
         ZStack(alignment: .top) {
             Theme.base(scheme)
-            if let u = player.coverURL { RemoteBackdrop(urls: [u], height: 420).opacity(scheme == .dark ? 0.55 : 0.35) }
+            if let u = player.coverURL ?? AppStateBridge.current?.remoteCoverURL {
+                RemoteBackdrop(urls: [u], height: 420).opacity(scheme == .dark ? 0.55 : 0.35)
+            } else if let name = AppStateBridge.current?.track.cover, !name.isEmpty {
+                DiffusedBackdrop(images: [name], height: 420).opacity(scheme == .dark ? 0.55 : 0.35)
+            }
         }
         .ignoresSafeArea()
     }

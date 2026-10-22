@@ -102,7 +102,6 @@ enum DoodlePaths {
 
 // MARK: - Composition layer
 
-#if os(iOS)
 struct CoverSlot { let rect: CGRect; let radius: CGFloat }
 
 extension DreamLayout {
@@ -150,8 +149,10 @@ struct DoodleLayer: View {
                     }
                 }
                 .scaleEffect(pulse, anchor: UnitPoint(x: slot.rect.midX / max(g.size.width, 1), y: slot.rect.midY / max(g.size.height, 1)))
+                #if os(iOS)
                 .distortionEffect(ShaderLibrary.doodleWobble(.float(Float(t.truncatingRemainder(dividingBy: 1000))), .float(Float(track.jitter * intensity))),
                                   maxSampleOffset: CGSize(width: 6, height: 6))
+                #endif
             }
         }
         .allowsHitTesting(false)
@@ -240,4 +241,3 @@ struct AuroraBands: View {
         }
     }
 }
-#endif

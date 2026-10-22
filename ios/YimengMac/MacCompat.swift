@@ -142,12 +142,3 @@ struct MonogramAvatar: View {
         .frame(width: size, height: size)
     }
 }
-struct CoverSlot { let rect: CGRect; let radius: CGFloat }
-struct DoodleLayer: View {
-    let track: DreamTrack
-    let slot: CoverSlot
-    var ambience: Ambience = .doodle
-    var intensity: Double = 0.7
-    var beat = true
-    var body: some View { Color.clear }
-}
