@@ -173,9 +173,15 @@ func (d Deps) matchArtistImage(id string) {
 	}
 	infos, err := d.Matcher.LookupArtist(ctx, metadata.ArtistQuery{Name: a.Name, MBArtistID: a.MBID})
 	if err != nil {
+		d.Log.Info("artist image lookup failed", "artist", id, "err", err.Error())
 		artistMatchSeen.Store(id, time.Now().Add(-artistMatchRetry+time.Hour)) // retry in an hour
 		return
 	}
+	defer func() {
+		if _, ok := d.Covers.Aliased("artist:" + id); !ok {
+			d.Log.Info("artist image: no exact-name match", "artist", id, "candidates", len(infos))
+		}
+	}()
 	for _, in := range infos {
 		if normName(in.Name) != normName(a.Name) {
 			continue

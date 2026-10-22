@@ -448,6 +448,9 @@ func absURL(r *http.Request, path string, size int) string {
 func (h *Handler) getArtistInfo2(w http.ResponseWriter, r *http.Request, _ auth.Device) {
 	id := strings.TrimPrefix(r.URL.Query().Get("id"), "ar-")
 	a, err := h.Library.GetArtist(r.Context(), id)
+	if err != nil && library.IsExternalID(id) && h.ArtistInfo != nil {
+		a, err = library.Artist{ID: id}, nil // online artist: info comes from the platform
+	}
 	if err != nil {
 		writeErr(w, r, 70, "artist not found")
 		return
