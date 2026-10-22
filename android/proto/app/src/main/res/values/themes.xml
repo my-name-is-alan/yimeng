@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.YimengProto" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0A0A0C</item>
+        <item name="android:navigationBarColor">#0A0A0C</item>
+        <item name="android:windowBackground">#0A0A0C</item>
+        <item name="android:colorPrimary">#C8F542</item>
+    </style>
+</resources>

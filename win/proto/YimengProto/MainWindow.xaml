@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="YimengProto.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml"
+    Title="译梦 · 玻璃 + 涂鸦 PoC">
+
+  <Grid Background="{StaticResource YmBaseBrush}">
+    <!-- Dream field blobs (simplified) -->
+    <canvas:CanvasControl x:Name="FieldCanvas" Draw="FieldCanvas_Draw"/>
+
+    <!-- Doodle layer -->
+    <canvas:CanvasControl x:Name="DoodleCanvas" Draw="DoodleCanvas_Draw" CreateResources="DoodleCanvas_CreateResources"/>
+
+    <Grid VerticalAlignment="Bottom" Margin="16,0,16,16" RowSpacing="10">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="56"/>
+        <RowDefinition Height="62"/>
+      </Grid.RowDefinitions>
+
+      <!-- Mini player: Acrylic (in-app backdrop blur) + tint — design-spec glass role -->
+      <Border Grid.Row="0" CornerRadius="28" Padding="8,0,16,0">
+        <Border.Background>
+          <AcrylicBrush TintColor="#24000000" TintOpacity="0.55" FallbackColor="#8C0A0A0C"
+                        BackgroundSource="Backdrop"/>
+        </Border.Background>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="40"/><ColumnDefinition Width="12"/>
+            <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Ellipse Width="40" Height="40" Fill="#FF5FA8"/>
+          <StackPanel Grid.Column="2" VerticalAlignment="Center">
+            <TextBlock Text="海阔天空" Foreground="White" FontWeight="SemiBold" FontSize="14"/>
+            <TextBlock Text="Beyond" Foreground="#B3FFFFFF" FontSize="12"/>
+          </StackPanel>
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+            <FontIcon Glyph="&#xE769;" Foreground="White" FontSize="18"/>
+            <FontIcon Glyph="&#xE893;" Foreground="White" FontSize="16"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Tab bar Acrylic + centre orb -->
+      <Grid Grid.Row="1">
+        <Border CornerRadius="31">
+          <Border.Background>
+            <AcrylicBrush TintColor="#24000000" TintOpacity="0.55" FallbackColor="#8C0A0A0C"
+                          BackgroundSource="Backdrop"/>
+          </Border.Background>
+          <Grid Padding="4,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition/><ColumnDefinition/><ColumnDefinition Width="76"/>
+              <ColumnDefinition/><ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="首页" Foreground="{StaticResource YmAccentBrush}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+            <TextBlock Grid.Column="1" Text="曲库" Foreground="#BFFFFFFF"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <TextBlock Grid.Column="3" Text="搜索" Foreground="#BFFFFFFF"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <TextBlock Grid.Column="4" Text="我的" Foreground="#BFFFFFFF"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+          </Grid>
+        </Border>
+        <Border Width="64" Height="64" CornerRadius="32" VerticalAlignment="Top"
+                Margin="0,-18,0,0" HorizontalAlignment="Center" BorderBrush="#66FFFFFF" BorderThickness="0.8">
+          <Border.Background>
+            <AcrylicBrush TintColor="#6B7A1CFF" TintOpacity="0.55" FallbackColor="#AA7A1CFF"
+                          BackgroundSource="Backdrop"/>
+          </Border.Background>
+          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="☽" Foreground="White" FontSize="22" HorizontalAlignment="Center"/>
+            <TextBlock Text="典藏" Foreground="#D9FFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <StackPanel Margin="20,16,20,0" VerticalAlignment="Top">
+      <TextBlock Text="译梦 · 玻璃 + 涂鸦 PoC" Foreground="White" FontSize="20" FontWeight="Bold"/>
+      <TextBlock Text="Mica 窗口底 + Acrylic 玻璃条；Win2D 涂鸦描线（需在 Win11 上构建运行）"
+                 Foreground="#99FFFFFF" FontSize="13" TextWrapping="WrapWholeWords"/>
+    </StackPanel>
+  </Grid>
+</Window>
