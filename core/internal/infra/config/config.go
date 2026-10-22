@@ -76,7 +76,10 @@ type MusicBrainzConfig struct {
 }
 
 type fileConfig struct {
-	Server  struct{ Bind string } `toml:"server"`
+	Server struct {
+		Bind string `toml:"bind"`
+		MDNS *bool  `toml:"mdns"`
+	} `toml:"server"`
 	Library struct {
 		Roots          []string `toml:"roots"`
 		ScanOnStart    *bool    `toml:"scan_on_start"`
@@ -164,6 +167,9 @@ func load(getenv func(string) string) (Config, error) {
 			return cfg, fmt.Errorf("config %s: %w", p, err)
 		}
 		setStr(&cfg.Bind, fc.Server.Bind)
+		if fc.Server.MDNS != nil {
+			cfg.MDNS = *fc.Server.MDNS
+		}
 		if len(fc.Library.Roots) > 0 {
 			cfg.LibraryRoots = fc.Library.Roots
 		}

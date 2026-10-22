@@ -3,6 +3,7 @@
 # YIMENG_VAULT_PATH, YIMENG_CACHE_DIR, YIMENG_CACHE_MAX_BYTES.
 [server]
 bind = "0.0.0.0:8741"
+mdns = true               # announce _yimeng._tcp on the LAN; env YIMENG_MDNS
 
 [library]
 roots = ["/music"]

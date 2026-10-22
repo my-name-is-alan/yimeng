@@ -29,6 +29,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 歌单：`/api/playlists` 静态/智能（规则 JSON：最近添加、最常播放、字段筛选），M3U 导入/导出。
 - 响度：读取 REPLAYGAIN_*/R128；缺失时后台用 ffmpeg ebur128 分析（`YIMENG_LOUDNESS_ANALYSIS`），增益见曲目 `stream.replaygain` 与 `player.state`。
 - 系统：`GET /api/system`（版本/曲库统计/扫描/ffmpeg 能力/根目录诊断）；日志 `YIMENG_LOG_FORMAT=json|text`、`YIMENG_LOG_LEVEL`（访问日志不记 query）。
+- 发现：局域网 mDNS `_yimeng._tcp`（`YIMENG_MDNS`/`server.mdns`，默认开）。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

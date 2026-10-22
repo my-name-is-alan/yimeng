@@ -17,6 +17,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
+	"github.com/my-name-is-alan/yimeng/core/internal/discovery"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
 	"github.com/my-name-is-alan/yimeng/core/internal/gateway"
 	"github.com/my-name-is-alan/yimeng/core/internal/infra/config"
@@ -193,6 +194,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 		}
 	}
 	go bk.Run(ctx, cfg.Backup.Interval)
+	go func() {
+		if err := discovery.Run(ctx, discovery.Options{Enabled: cfg.MDNS, Bind: cfg.Bind, Version: version, Log: log}); err != nil {
+			log.Warn("mDNS", "err", err)
+		}
+	}()
 	watchDone := make(chan struct{})
 	go func() {
 		defer close(watchDone)

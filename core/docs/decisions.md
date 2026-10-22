@@ -79,3 +79,9 @@ alternative considered. Newest items at the bottom.
 - `GET /api/system` is readable by every paired device (status for clients);
   backup/restore stay admin-only. Diagnostics surface root permission errors,
   low disk, low inotify watches, missing ffmpeg, stale backups, scan failures.
+
+## D8 mDNS discovery
+- Announce `_yimeng._tcp` via DNS-SD (grandcat/zeroconf) with TXT `path=/`,
+  `version=…`, `proto=http`. Instance name "Yimeng". Port taken from `server.bind`.
+  Disabled with `YIMENG_MDNS=false`. Clients browse the service type; no custom
+  UDP protocol. Goodbye packet on shutdown.

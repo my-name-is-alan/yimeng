@@ -10,7 +10,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 4 | Playlists + smart + M3U | done | `7886fcf` |
 | 5 | ReplayGain / R128 + ebur128 analysis | done | `70b8d1f` |
 | 6 | Structured logging + `/api/system` | done | a483986 |
-| 7 | mDNS `_yimeng._tcp` | pending | |
+| 7 | mDNS `_yimeng._tcp` | done | (pending commit) |
 | 8 | Multi-player transfer + online/offline WS | pending | |
 | 9 | Admin APIs (devices, roots, overrides, album merge/split) | pending | |
 | 10 | Cover thumbnails (pure-Go, webp/jpeg) | pending | |
