@@ -85,3 +85,12 @@ alternative considered. Newest items at the bottom.
   `version=…`, `proto=http`. Instance name "Yimeng". Port taken from `server.bind`.
   Disabled with `YIMENG_MDNS=false`. Clients browse the service type; no custom
   UDP protocol. Goodbye packet on shutdown.
+
+## D9 Transfer playback and presence
+- Online = at least one open WebSocket for that device. Multiple tabs share a
+  count; only 0↔1 transitions publish device.online / device.offline. Hello
+  includes the current online set.
+- Transfer moves queue + session (incl. shuffle seed/order) to the destination
+  and clears the source. Playing becomes paused on arrival so the new renderer
+  can buffer before resume. Rejected: simultaneously keeping both playing
+  (would require dual leases and split scrobbling).

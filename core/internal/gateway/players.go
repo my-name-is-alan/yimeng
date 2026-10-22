@@ -29,12 +29,21 @@ func (d Deps) playbackResult(w http.ResponseWriter, v any, err error) {
 
 func (d Deps) listPlayers(w http.ResponseWriter, r *http.Request) {
 	st, err := d.Playback.States(r.Context())
-	d.playbackResult(w, map[string]any{"items": st}, err)
+	for i := range st {
+		st[i].Online = d.Presence.Online(st[i].PlayerID)
+	}
+	d.playbackResult(w, map[string]any{"items": st, "online": d.Presence.Snapshot()}, err)
 }
 
 func (d Deps) playerState(w http.ResponseWriter, r *http.Request) {
 	st, err := d.Playback.State(r.Context(), r.PathValue("id"))
-	d.playbackResult(w, st, err)
+	st.Online = d.Presence.Online(st.PlayerID)
+	d.playbackResult(w, d.withOnline(st), err)
+}
+
+func (d Deps) withOnline(st playback.State) playback.State {
+	st.Online = d.Presence.Online(st.PlayerID)
+	return st
 }
 
 func (d Deps) playerQueue(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +102,15 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 				return
 			}
 			st, err = d.Playback.SetShuffle(ctx, pid, *b.Enabled, b.Reshuffle)
+		case "transfer":
+			var b struct {
+				To string `json:"to"`
+			}
+			if err := decodeBody(r, &b); err != nil || b.To == "" {
+				writeErr(w, http.StatusBadRequest, "invalid_body", "to (destination player id) required")
+				return
+			}
+			st, err = d.Playback.Transfer(ctx, pid, b.To)
 		case "queue":
 			var b playback.QueueOp
 			if err := decodeBody(r, &b); err != nil {
@@ -101,7 +119,7 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 			}
 			st, err = d.Playback.EditQueue(ctx, pid, b)
 		}
-		d.playbackResult(w, st, err)
+		d.playbackResult(w, d.withOnline(st), err)
 	}
 }
 
@@ -136,13 +154,17 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 
 	events, unsub := d.Hub.Subscribe()
 	defer unsub()
+	d.Presence.Connect(dev.ID)
+	defer d.Presence.Disconnect(dev.ID)
 
 	states, err := d.Playback.States(ctx)
 	if err != nil {
 		c.Close(websocket.StatusInternalError, "state")
 		return
 	}
-	if err := writeWS(ctx, c, "hello", map[string]any{"device_id": dev.ID, "players": states}); err != nil {
+	if err := writeWS(ctx, c, "hello", map[string]any{
+		"device_id": dev.ID, "players": states, "online": d.Presence.Snapshot(),
+	}); err != nil {
 		return
 	}
 

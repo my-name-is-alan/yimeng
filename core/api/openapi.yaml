@@ -1038,6 +1038,31 @@ paths:
                         message: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/players/{id}/transfer:
+    post:
+      tags: [playback]
+      summary: Move the queue and playhead to another player
+      description: |
+        The destination receives the queue, shuffle order, repeat mode, current index and
+        position. If the source was playing it arrives paused (the new device resumes).
+        The source becomes idle with an empty queue. Publishes player.transferred plus
+        player.state / queue.updated for both players. Devices with an open /ws are marked
+        online (device.online / device.offline events; hello includes the online set).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties: { to: { type: string, description: destination player/device id } }
+      responses:
+        "200": { description: Destination state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Source queue empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -1087,6 +1112,7 @@ components:
         queue_length: { type: integer }
         repeat: { type: string, enum: [off, all, one] }
         shuffle: { type: boolean }
+        online: { type: boolean, description: "true while the device holds an open /ws" }
         track: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
         lease: { oneOf: [{ $ref: "#/components/schemas/Lease" }, { type: "null" }] }
         next_index: { type: integer, description: "Queue index that plays after the current track ends naturally (repeat/shuffle aware); -1 = none" }

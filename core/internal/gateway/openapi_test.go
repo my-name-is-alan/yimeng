@@ -27,7 +27,7 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 			t.Errorf("route %q missing from openapi.yaml", pat)
 		}
 	}
-	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue"} {
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer"} {
 		if !strings.Contains(string(spec), "\n  /api/players/{id}/"+a+":") {
 			t.Errorf("player action %s missing", a)
 		}

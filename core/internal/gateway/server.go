@@ -66,6 +66,7 @@ type Deps struct {
 	UserData      *userdata.Store
 	Playlists     PlaylistUseCases
 	System        *system.Collector
+	Presence      *Presence
 }
 
 type contextT = context.Context
@@ -73,6 +74,9 @@ type contextT = context.Context
 func NewRouter(d Deps) http.Handler {
 	if d.Log == nil {
 		d.Log = slog.Default()
+	}
+	if d.Presence == nil {
+		d.Presence = NewPresence(d.Hub)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -108,7 +112,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/players", d.listPlayers)
 	mux.HandleFunc("GET /api/players/{id}", d.playerState)
 	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
-	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue"} {
+	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer"} {
 		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
 	}
 	mux.HandleFunc("GET /ws", d.ws)

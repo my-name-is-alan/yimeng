@@ -412,3 +412,34 @@ func TestOnListened(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+func TestTransfer(t *testing.T) {
+	f := newFixture(t)
+	must := mustFn(t)
+	ctx := context.Background()
+	must(f.o.Play(ctx, "p1", PlayRequest{TrackIDs: []string{"t1", "t2", "t3"}, Index: idx(1)}))
+	f.o.Progress(ctx, "p1", 0)
+	must(f.o.SetShuffle(ctx, "p1", true, false))
+	order := queueOf(t, f, "p1").PlayOrder
+	f.now = f.now.Add(45 * time.Second)
+	_ = f.o.Progress(ctx, "p1", 45000) // pin playhead before transfer
+
+	st := must(f.o.Transfer(ctx, "p1", "p2"))
+	if st.PlayerID != "p2" || st.CurrentIndex != 1 || st.Track.ID != "t2" || st.Transport != Paused ||
+		st.PositionMs != 45000 || !st.Shuffle {
+		t.Fatalf("dst %+v", st)
+	}
+	if q := queueOf(t, f, "p2"); fmt.Sprint(q.PlayOrder) != fmt.Sprint(order) || len(q.Items) != 3 {
+		t.Fatalf("dst queue %+v", q)
+	}
+	src := must(f.o.State(ctx, "p1"))
+	if src.Transport != Idle || src.QueueLength != 0 || src.CurrentIndex != -1 {
+		t.Fatalf("src %+v", src)
+	}
+	if _, err := f.o.Transfer(ctx, "p1", "p2"); !errors.Is(err, ErrEmptyQueue) {
+		t.Fatal(err)
+	}
+	if _, err := f.o.Transfer(ctx, "p2", "p2"); !errors.Is(err, ErrBadRequest) {
+		t.Fatal(err)
+	}
+}

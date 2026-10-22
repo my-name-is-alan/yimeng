@@ -65,6 +65,7 @@ type State struct {
 	QueueLength  int       `json:"queue_length"`
 	Repeat       string    `json:"repeat"` // off | all | one
 	Shuffle      bool      `json:"shuffle"`
+	Online       bool      `json:"online"` // filled by gateway from WS presence
 	Track        *TrackRef `json:"track"`
 	Lease        *Lease    `json:"lease"`
 	// Next is what plays after Track ends naturally (repeat/shuffle aware);
@@ -572,6 +573,91 @@ func (o *Orchestrator) SetShuffle(ctx context.Context, pid string, on, reshuffle
 		}
 		return nil
 	})
+}
+
+// Transfer moves the queue and playhead from src to dst. The source becomes
+// idle with an empty queue; the destination receives the queue, current index,
+// position and transport (paused if it was playing — the new device must
+// resume). Shuffle order travels with the session.
+func (o *Orchestrator) Transfer(ctx context.Context, src, dst string) (State, error) {
+	if src == dst {
+		return State{}, fmt.Errorf("%w: source and destination are the same", ErrBadRequest)
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	tx, err := o.db.BeginTx(ctx, nil)
+	if err != nil {
+		return State{}, err
+	}
+	defer tx.Rollback()
+	from, err := o.load(ctx, tx, src)
+	if err != nil {
+		return State{}, err
+	}
+	to, err := o.load(ctx, tx, dst)
+	if err != nil {
+		return State{}, err
+	}
+	_ = to
+	if len(from.queue) == 0 {
+		return State{}, ErrEmptyQueue
+	}
+	// clear destination queue rows
+	if _, err := tx.ExecContext(ctx, `DELETE FROM queue_items WHERE player_id=?`, dst); err != nil {
+		return State{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM queue_items WHERE player_id=?`, src); err != nil {
+		return State{}, err
+	}
+	for i, id := range from.queue {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO queue_items(player_id, idx, track_id) VALUES (?,?,?)`, dst, i, id); err != nil {
+			return State{}, err
+		}
+	}
+	state := from.state
+	pos := o.position(from)
+	if state == Playing || state == Buffering {
+		state = Paused // receiving device resumes explicitly
+	}
+	now := o.now().UnixMilli()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(player_id, state, position_ms, updated_at, current_idx, repeat_mode, shuffle, shuffle_order, shuffle_seed)
+		VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(player_id) DO UPDATE SET state=excluded.state, position_ms=excluded.position_ms,
+		updated_at=excluded.updated_at, current_idx=excluded.current_idx, repeat_mode=excluded.repeat_mode,
+		shuffle=excluded.shuffle, shuffle_order=excluded.shuffle_order, shuffle_seed=excluded.shuffle_seed`,
+		dst, state, pos, now, from.idx, from.repeat, from.shuffle, encodeOrder(from), from.seed); err != nil {
+		return State{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(player_id, state, position_ms, updated_at, current_idx, repeat_mode, shuffle, shuffle_order, shuffle_seed)
+		VALUES (?,?,0,?,?,?,?,NULL,0) ON CONFLICT(player_id) DO UPDATE SET state=excluded.state, position_ms=0,
+		updated_at=excluded.updated_at, current_idx=-1, repeat_mode='off', shuffle=0, shuffle_order=NULL, shuffle_seed=0`,
+		src, Idle, now, -1, "off", false); err != nil {
+		return State{}, err
+	}
+	to.queue, to.idx, to.pos, to.state, to.repeat = from.queue, from.idx, pos, state, from.repeat
+	to.shuffle, to.order, to.seed, to.updated = from.shuffle, from.order, from.seed, o.now()
+	st, err := o.state(ctx, tx, dst, to)
+	if err != nil {
+		return State{}, err
+	}
+	q, err := o.queue(ctx, tx, dst, to)
+	if err != nil {
+		return State{}, err
+	}
+	fromCleared := &session{state: Idle, idx: -1, repeat: "off", updated: o.now()}
+	srcSt, err := o.state(ctx, tx, src, fromCleared)
+	if err != nil {
+		return State{}, err
+	}
+	srcQ := Queue{PlayerID: src, CurrentIndex: -1, Items: []QueueItem{}, PlayOrder: []int{}}
+	if err := tx.Commit(); err != nil {
+		return State{}, err
+	}
+	o.hub.Publish("player.state", srcSt)
+	o.hub.Publish("queue.updated", srcQ)
+	o.hub.Publish("player.state", st)
+	o.hub.Publish("queue.updated", q)
+	o.hub.Publish("player.transferred", map[string]string{"from": src, "to": dst})
+	return st, nil
 }
 
 func (o *Orchestrator) SetRepeat(ctx context.Context, pid, mode string) (State, error) {
