@@ -345,6 +345,7 @@ func (d Deps) lyricsBestAPI(w http.ResponseWriter, r *http.Request) {
 			Trans: lyrics.Parse(it.Translation).Lines, Roma: lyrics.Parse(it.Roma).Lines, Words: it.Words})
 	}
 	m := lyrics.Merge(srcs)
+	lyrics.MarkMeta(m.Lines, q.Title)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"query": q, "found": true, "source": c.Provider, "sources": m.Sources,
 		"id": candidateID(c), "provider": c.Provider, "title": c.Title, "artist": c.Artist, "album": c.Album,

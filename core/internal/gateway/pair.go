@@ -73,6 +73,16 @@ func (d Deps) listDevices(w http.ResponseWriter, r *http.Request) {
 		d.internal(w, "list devices", err)
 		return
 	}
+	if me, _ := DeviceFrom(r.Context()); !me.Admin {
+		// non-admins only see their own sessions (same user, or the device itself)
+		mine := devs[:0]
+		for _, dv := range devs {
+			if sameOwner(me, dv) {
+				mine = append(mine, dv)
+			}
+		}
+		devs = mine
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": devs})
 }
 
@@ -82,6 +92,14 @@ func (d Deps) me(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) revokeDevice(w http.ResponseWriter, r *http.Request) {
+	if me, _ := DeviceFrom(r.Context()); !me.Admin {
+		// non-admins may only sign out their own sessions
+		target, err := d.Auth.DeviceByID(r.Context(), r.PathValue("id"))
+		if err != nil || !sameOwner(me, target) {
+			writeErr(w, http.StatusNotFound, "not_found", "device not found")
+			return
+		}
+	}
 	err := d.Auth.Revoke(r.Context(), r.PathValue("id"))
 	switch {
 	case errors.Is(err, auth.ErrNotFound):

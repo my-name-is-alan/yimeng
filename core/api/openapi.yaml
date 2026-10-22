@@ -15,6 +15,7 @@ info:
     Optional Subsonic-compatible `/rest/*.view` (disable with `YIMENG_SUBSONIC=false`):
     password = paired device token (`ymd_…`); token+salt (t/s) is not supported.
 servers:
+  - url: http://localhost:8741
   - url: http://nas.local:8741
 security:
   - bearer: []
@@ -53,7 +54,7 @@ paths:
                   status: { type: string, example: ok }
                   service: { type: string, example: yimeng-core }
 
-  /api/pair/request:
+  /api/v1/pair/request:
     post:
       tags: [pairing]
       security: []
@@ -71,7 +72,7 @@ paths:
                   message: { type: string }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /api/auth/setup:
+  /api/v1/auth/setup:
     get:
       tags: [auth]
       summary: Whether first-run setup is needed (no web accounts exist yet). Public
@@ -91,7 +92,7 @@ paths:
         "400": { description: weak_password / invalid_username }
         "409": { description: setup_done }
 
-  /api/auth/login:
+  /api/v1/auth/login:
     post:
       tags: [auth]
       summary: Sign in with username and password; returns a device token (same bearer model as pairing). Public
@@ -105,7 +106,7 @@ paths:
         "401": { description: invalid_credentials }
         "429": { description: rate_limited }
 
-  /api/auth/logout:
+  /api/v1/auth/logout:
     post:
       tags: [auth]
       summary: Revoke the calling session's token
@@ -113,7 +114,7 @@ paths:
         "204": { description: Done }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/auth/password:
+  /api/v1/auth/password:
     post:
       tags: [auth]
       summary: Change the signed-in user's password ({old_password, new_password}); the user's other sessions are revoked
@@ -126,7 +127,7 @@ paths:
         "403": { description: wrong current password }
         "409": { description: not_a_user_session (device paired with a code) }
 
-  /api/users:
+  /api/v1/users:
     get:
       tags: [auth]
       summary: List web accounts (admin)
@@ -143,7 +144,7 @@ paths:
         "201": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
         "409": { description: username_taken }
 
-  /api/users/{id}:
+  /api/v1/users/{id}:
     patch:
       tags: [auth]
       summary: Change role and/or set a new password (admin). Demoting the last admin fails (409 last_admin); a new password revokes that user's sessions
@@ -162,7 +163,7 @@ paths:
         "204": { description: Done }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/pair:
+  /api/v1/pair:
     post:
       tags: [pairing]
       security: []
@@ -198,7 +199,7 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /api/pair/codes:
+  /api/v1/pair/codes:
     post:
       tags: [pairing]
       summary: Create a pairing code from an already-paired device (to show in its UI)
@@ -215,7 +216,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
-  /api/devices:
+  /api/v1/devices:
     get:
       tags: [pairing]
       summary: List paired devices
@@ -230,7 +231,7 @@ paths:
                   items: { type: array, items: { $ref: "#/components/schemas/Device" } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/devices/me:
+  /api/v1/devices/me:
     get:
       tags: [pairing]
       summary: The device owning the presented token
@@ -238,7 +239,7 @@ paths:
         "200": { description: Device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/devices/me/stream-quality:
+  /api/v1/devices/me/stream-quality:
     get:
       tags: [media]
       summary: This device's default stream quality and the formats the server can produce
@@ -265,7 +266,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/devices/{id}:
+  /api/v1/devices/{id}:
     patch:
       tags: [pairing]
       summary: Rename a device and/or set admin (admin only)
@@ -293,7 +294,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/library/scan:
+  /api/v1/library/scan:
     post:
       tags: [library]
       summary: Start a library scan (incremental by mtime/size unless full=true)
@@ -332,7 +333,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/library/scan/{id}:
+  /api/v1/library/scan/{id}:
     get:
       tags: [library]
       summary: Scan job status
@@ -342,7 +343,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/artists:
+  /api/v1/artists:
     get:
       tags: [catalog]
       summary: List artists
@@ -365,7 +366,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/artists/{id}:
+  /api/v1/artists/{id}:
     get:
       tags: [catalog]
       summary: Artist page (artist + albums + up to 20 tracks)
@@ -384,7 +385,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/albums:
+  /api/v1/albums:
     get:
       tags: [catalog]
       summary: List albums
@@ -409,7 +410,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/albums/{id}:
+  /api/v1/albums/{id}:
     get:
       tags: [catalog]
       summary: Album page (album + tracks + credits + related albums)
@@ -429,7 +430,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/albums/{id}/cover:
+  /api/v1/albums/{id}/cover:
     get:
       tags: [media]
       summary: Album cover image (optional sized thumbnail)
@@ -444,7 +445,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/albums/{id}/cover/from-match:
+  /api/v1/albums/{id}/cover/from-match:
     post:
       tags: [metadata]
       summary: Replace a local album's cover with a match candidate's image (admin)
@@ -459,7 +460,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { description: Provider error }
 
-  /api/tracks:
+  /api/v1/tracks:
     get:
       tags: [catalog]
       summary: List tracks
@@ -485,7 +486,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/tracks/{id}:
+  /api/v1/tracks/{id}:
     get:
       tags: [catalog]
       summary: Track
@@ -495,7 +496,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/tracks/{id}/cover:
+  /api/v1/tracks/{id}/cover:
     get:
       tags: [media]
       summary: Track cover (embedded or folder art) (optional sized thumbnail)
@@ -510,7 +511,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/search:
+  /api/v1/search:
     get:
       tags: [catalog]
       summary: Search artists, albums and tracks (substring match). ?online=1 adds platform groups; ?stream=1 (or Accept text/event-stream) streams SSE events local, online (one per platform as it finishes), done
@@ -533,7 +534,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/stream/{id}:
+  /api/v1/stream/{id}:
     get:
       tags: [media]
       summary: Stream a track, original or transcoded (GET and HEAD)
@@ -574,7 +575,7 @@ paths:
         "416": { description: Range not satisfiable }
         "503": { description: Transcode could not be started, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players:
+  /api/v1/players:
     get:
       tags: [playback]
       summary: All players (paired devices) with their session state
@@ -588,7 +589,7 @@ paths:
                 properties: { items: { type: array, items: { $ref: "#/components/schemas/PlayerState" } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/players/{id}:
+  /api/v1/players/{id}:
     get:
       tags: [playback]
       summary: Player state
@@ -598,7 +599,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/players/{id}/queue:
+  /api/v1/players/{id}/queue:
     get:
       tags: [playback]
       summary: Player queue
@@ -621,7 +622,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/play:
+  /api/v1/players/{id}/play:
     post:
       tags: [playback]
       summary: "Play — replace queue (track_ids), jump (index) or resume"
@@ -636,7 +637,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/pause:
+  /api/v1/players/{id}/pause:
     post:
       tags: [playback]
       summary: Pause (stores extrapolated position)
@@ -648,7 +649,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/stop:
+  /api/v1/players/{id}/stop:
     post:
       tags: [playback]
       summary: Stop (idle, position 0)
@@ -660,7 +661,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/next:
+  /api/v1/players/{id}/next:
     post:
       tags: [playback]
       summary: Next track (wraps when repeat=all, else idle at end)
@@ -672,7 +673,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/prev:
+  /api/v1/players/{id}/prev:
     post:
       tags: [playback]
       summary: Previous track (restarts current if > 3 s in)
@@ -684,7 +685,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/seek:
+  /api/v1/players/{id}/seek:
     post:
       tags: [playback]
       summary: Seek (playing -> buffering)
@@ -699,7 +700,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/repeat:
+  /api/v1/players/{id}/repeat:
     post:
       tags: [playback]
       summary: Set repeat mode
@@ -714,7 +715,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/players/{id}/shuffle:
+  /api/v1/players/{id}/shuffle:
     post:
       tags: [playback]
       summary: Toggle shuffle (a persisted play-order view; the queue itself is not reordered)
@@ -758,7 +759,7 @@ paths:
         "101": { description: Switching protocols }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/tracks/{id}/credits:
+  /api/v1/tracks/{id}/credits:
     get:
       tags: [catalog]
       summary: Track credits (from opt-in metadata providers)
@@ -774,7 +775,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/metadata/enrich:
+  /api/v1/metadata/enrich:
     post:
       tags: [metadata]
       summary: Schedule a background metadata pass (MusicBrainz; also runs after every scan)
@@ -784,7 +785,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { description: No provider enabled, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/settings/artist-split:
+  /api/v1/settings/artist-split:
     get:
       tags: [settings]
       summary: Artist split policy
@@ -802,7 +803,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/system/backups:
+  /api/v1/system/backups:
     get:
       tags: [system]
       summary: List stored backups (admin)
@@ -818,7 +819,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/system/backups/{name}:
+  /api/v1/system/backups/{name}:
     parameters: [{ name: name, in: path, required: true, schema: { type: string, pattern: '^yimeng-[0-9]{8}-[0-9]{6}(-[a-z0-9-]{1,32})?\.ymbak$' } }]
     get:
       tags: [system]
@@ -835,7 +836,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/system/export:
+  /api/v1/system/export:
     get:
       tags: [system]
       summary: Stream a fresh backup archive (admin)
@@ -845,7 +846,7 @@ paths:
         "200": { description: Zip archive, content: { application/zip: { schema: { type: string, format: binary } } } }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/system/restore:
+  /api/v1/system/restore:
     post:
       tags: [system]
       summary: Upload a backup archive to restore (admin); applied at the next start
@@ -856,7 +857,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/tracks/{id}/lyrics:
+  /api/v1/tracks/{id}/lyrics:
     get:
       tags: [catalog]
       summary: Lyrics for a track (synced LRC or plain)
@@ -867,7 +868,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/lyrics/search:
+  /api/v1/lyrics/search:
     get:
       tags: [lyrics]
       summary: Lyrics candidates for ANY song (paired apps)
@@ -889,7 +890,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: rate_limited, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-  /api/lyrics/best:
+  /api/v1/lyrics/best:
     get:
       tags: [lyrics]
       summary: The single best lyrics for ANY song, with text, offset and translation
@@ -908,7 +909,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { description: rate_limited, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/artists/{id}/image:
+  /api/v1/artists/{id}/image:
     get:
       tags: [catalog]
       summary: Artist image chosen by an admin (JPEG/PNG/WebP)
@@ -938,7 +939,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: not_local_source, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-  /api/artists/{id}/image/candidates:
+  /api/v1/artists/{id}/image/candidates:
     get:
       tags: [catalog]
       summary: Artist image candidates from metadata sources (admin)
@@ -950,7 +951,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { description: provider_error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-  /api/artists/{id}/image/from-match:
+  /api/v1/artists/{id}/image/from-match:
     post:
       tags: [catalog]
       summary: Set the artist image from a candidate (admin; Core downloads it from an allow-listed host)
@@ -963,7 +964,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { description: provider_error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/settings/cache:
+  /api/v1/settings/cache:
     get:
       summary: Platform cache stats (admin)
       tags: [settings]
@@ -985,7 +986,7 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { deleted: { type: integer } } }
-  /api/settings/server:
+  /api/v1/settings/server:
     get:
       tags: [settings]
       summary: Runtime-editable server settings (admin)
@@ -1004,7 +1005,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/scrobble:
+  /api/v1/scrobble:
     post:
       tags: [history]
       summary: Record a play reported by a client that played the track itself
@@ -1027,7 +1028,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/history:
+  /api/v1/history:
     get:
       tags: [history]
       summary: Listening history, newest first
@@ -1062,7 +1063,7 @@ paths:
                         available: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/history/top:
+  /api/v1/history/top:
     get:
       tags: [history]
       summary: Most played tracks, albums or artists
@@ -1081,7 +1082,7 @@ paths:
                   items: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, artist_name: { type: string }, plays: { type: integer } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
-  /api/favorites:
+  /api/v1/favorites:
     get:
       tags: [history]
       summary: Favorites (newest first)
@@ -1099,7 +1100,7 @@ paths:
                 properties:
                   items: { type: array, items: { type: object, properties: { type: { type: string }, id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time }, available: { type: boolean } } } }
 
-  /api/favorites/{type}/{id}:
+  /api/v1/favorites/{type}/{id}:
     parameters:
       - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
       - $ref: "#/components/parameters/Id"
@@ -1116,7 +1117,7 @@ paths:
       responses:
         "204": { description: Done }
 
-  /api/ratings/{type}/{id}:
+  /api/v1/ratings/{type}/{id}:
     parameters:
       - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
       - $ref: "#/components/parameters/Id"
@@ -1129,7 +1130,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/playlists:
+  /api/v1/playlists:
     get:
       tags: [playlists]
       summary: All playlists (static and smart) with counts. With ?scope=mine|recommend|discover|charts returns external playlists grouped by platform ({scope, groups})
@@ -1147,7 +1148,7 @@ paths:
         "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
-  /api/playlists/import:
+  /api/v1/playlists/import:
     post:
       tags: [playlists]
       summary: Import an M3U/M3U8 playlist (≤4 MiB) as a static playlist
@@ -1167,7 +1168,7 @@ paths:
                   unmatched: { type: array, items: { type: string } }
         "400": { $ref: "#/components/responses/BadRequest" }
 
-  /api/playlists/{id}:
+  /api/v1/playlists/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [playlists]
@@ -1201,7 +1202,7 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/playlists/{id}/items:
+  /api/v1/playlists/{id}/items:
     post:
       tags: [playlists]
       summary: Edit items of a static playlist (event playlist.updated)
@@ -1225,7 +1226,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Smart playlists have no editable items, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/playlists/{id}/m3u:
+  /api/v1/playlists/{id}/m3u:
     get:
       tags: [playlists]
       summary: Export as extended M3U (UTF-8)
@@ -1236,7 +1237,7 @@ paths:
         "200": { description: M3U, content: { audio/x-mpegurl: { schema: { type: string } } } }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/system:
+  /api/v1/system:
     get:
       tags: [system]
       summary: Version, library stats, scan state, ffmpeg/loudness caps, root diagnostics
@@ -1324,7 +1325,7 @@ paths:
                         message: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/players/{id}/transfer:
+  /api/v1/players/{id}/transfer:
     post:
       tags: [playback]
       summary: Move the queue and playhead to another player
@@ -1349,7 +1350,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Source queue empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /api/settings/library-roots:
+  /api/v1/settings/library-roots:
     get:
       tags: [settings]
       summary: Configured library roots (admin)
@@ -1365,7 +1366,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/overrides/{type}/{id}:
+  /api/v1/overrides/{type}/{id}:
     parameters:
       - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
       - $ref: "#/components/parameters/Id"
@@ -1393,7 +1394,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/albums/merge:
+  /api/v1/albums/merge:
     post:
       tags: [catalog]
       summary: Merge albums into a target (admin)
@@ -1402,7 +1403,7 @@ paths:
         "200": { description: Target album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/albums/split:
+  /api/v1/albums/split:
     post:
       tags: [catalog]
       summary: Move tracks from an album into a new (or existing) album (admin)
@@ -1423,7 +1424,7 @@ paths:
         "200": { description: Destination album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/metadata/providers:
+  /api/v1/metadata/providers:
     get:
       tags: [metadata]
       summary: List enabled metadata providers (MusicBrainz when configured; lyrics providers are not listed here)
@@ -1451,7 +1452,7 @@ paths:
                         health: { type: string, enum: [ok, degraded, down] }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/tracks/{id}/download:
+  /api/v1/tracks/{id}/download:
     get:
       tags: [library]
       summary: Download a track for offline caching
@@ -1496,7 +1497,7 @@ paths:
       responses:
         "200": { description: "subsonic-response envelope" }
 
-  /api/sources:
+  /api/v1/sources:
     get:
       tags: [sources]
       summary: List StreamSource accounts (health + linked status; never credentials)
@@ -1519,7 +1520,7 @@ paths:
                         linked: { type: boolean }
                         account: { type: object }
         "401": { $ref: "#/components/responses/Unauthorized" }
-  /api/sources/{id}:
+  /api/v1/sources/{id}:
     get:
       tags: [sources]
       summary: Get one StreamSource
@@ -1527,7 +1528,7 @@ paths:
       responses:
         "200": { description: Source }
         "404": { $ref: "#/components/responses/NotFound" }
-  /api/sources/{id}/login:
+  /api/v1/sources/{id}/login:
     post:
       tags: [sources]
       summary: Store credentials for a source (admin; cookie/password)
@@ -1547,7 +1548,7 @@ paths:
         "200": { description: AccountInfo }
         "403": { $ref: "#/components/responses/Forbidden" }
         "501": { description: Method not supported by stub }
-  /api/sources/{id}/login/qr:
+  /api/v1/sources/{id}/login/qr:
     post:
       tags: [sources]
       summary: Start QR login (admin)
@@ -1555,7 +1556,7 @@ paths:
       responses:
         "200": { description: QR challenge }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/sources/{id}/login/qr/{challenge}:
+  /api/v1/sources/{id}/login/qr/{challenge}:
     get:
       tags: [sources]
       summary: Poll QR login (admin)
@@ -1564,7 +1565,7 @@ paths:
         - { name: challenge, in: path, required: true, schema: { type: string } }
       responses:
         "200": { description: "{ status }" }
-  /api/sources/{id}/credentials:
+  /api/v1/sources/{id}/credentials:
     delete:
       tags: [sources]
       summary: Remove stored credentials (admin)
@@ -1572,7 +1573,7 @@ paths:
       responses:
         "204": { description: Deleted }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/sources/{id}/sync:
+  /api/v1/sources/{id}/sync:
     post:
       tags: [sources]
       summary: Sync remote library page (admin; stubs return 501)
@@ -1581,7 +1582,7 @@ paths:
         "200": { description: SyncPage }
         "501": { description: Not implemented by stub }
 
-  /api/players/{id}/sleep:
+  /api/v1/players/{id}/sleep:
     post:
       tags: [playback]
       summary: Arm or clear a sleep timer (pauses when due)
@@ -1598,7 +1599,7 @@ paths:
         "200": { description: Player state with sleep_until }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/players/{id}/radio:
+  /api/v1/players/{id}/radio:
     post:
       tags: [playback]
       summary: Fill the queue with radio/auto-continue seeds (same artist, then genre)
@@ -1632,21 +1633,21 @@ paths:
       security: []
       responses:
         "200": { description: HTML }
-  /api/library/health:
+  /api/v1/library/health:
     get:
       tags: [library]
       summary: Library health report (missing covers, genre gaps, format counts)
       responses:
         "200": { description: HealthReport }
         "401": { $ref: "#/components/responses/Unauthorized" }
-  /api/stats:
+  /api/v1/stats:
     get:
       tags: [library]
       summary: Library listening stats (top tracks/artists)
       responses:
         "200": { description: Stats }
         "401": { $ref: "#/components/responses/Unauthorized" }
-  /api/stats/on-this-day:
+  /api/v1/stats/on-this-day:
     get:
       tags: [library]
       summary: Tracks played on this calendar day in past years
@@ -1657,7 +1658,7 @@ paths:
         "200": { description: OnThisDay }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/settings/mode:
+  /api/v1/settings/mode:
     get:
       tags: [settings]
       summary: First-run mode (local | online | both), local track count and enabled plugins
@@ -1675,7 +1676,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins:
+  /api/v1/plugins:
     get:
       tags: [online]
       summary: List online source plugins (manifest, config schema, enabled, login status; never credentials). ?check=1 revalidates sessions
@@ -1683,7 +1684,7 @@ paths:
         "200": { description: Plugins, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/plugins/{id}:
+  /api/v1/plugins/{id}:
     get:
       tags: [online]
       summary: One plugin status
@@ -1702,7 +1703,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/login:
+  /api/v1/plugins/{id}/login:
     post:
       tags: [online]
       summary: Log in with cookie ({method:"cookie",cookie}), account+password ({method:"password",username,password}) or phone+SMS code ({method:"sms",phone,code}) (admin). Session stored in the Vault only
@@ -1714,7 +1715,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/login/sms:
+  /api/v1/plugins/{id}/login/sms:
     post:
       tags: [online]
       summary: Ask the platform to text an SMS login code to {phone} (admin)
@@ -1726,7 +1727,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/login/qr:
+  /api/v1/plugins/{id}/login/qr:
     post:
       tags: [online]
       summary: "Start a QR login (admin); returns {key, content, image (PNG data URL), expires_at}. Optional body {channel} picks one of manifest.qr_channels (which app scans: QQ / 微信 / platform app)"
@@ -1739,7 +1740,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/login/qr/{key}:
+  /api/v1/plugins/{id}/login/qr/{key}:
     get:
       tags: [online]
       summary: "Poll a QR login (admin): waiting | scanned | confirmed | expired"
@@ -1748,7 +1749,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/refresh:
+  /api/v1/plugins/{id}/refresh:
     post:
       tags: [online]
       summary: Refresh the platform session (admin)
@@ -1757,7 +1758,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/session:
+  /api/v1/plugins/{id}/session:
     delete:
       tags: [online]
       summary: "Log out: forget the stored session (admin)"
@@ -1766,7 +1767,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/plugins/{id}/accounts:
+  /api/v1/plugins/{id}/accounts:
     get:
       tags: [online]
       summary: "Saved accounts of a platform plugin (admin): {items: [{account_id, nickname, avatar, vip, tier, method, is_default, active, added_at, used_at}], active}"
@@ -1774,7 +1775,7 @@ paths:
         "200": { description: Accounts, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/plugins/{id}/accounts/{acct}/default:
+  /api/v1/plugins/{id}/accounts/{acct}/default:
     post:
       tags: [online]
       summary: "Make an account the default and switch the plugin to it (admin)"
@@ -1783,7 +1784,7 @@ paths:
         "404": { description: unknown_account }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-  /api/plugins/{id}/accounts/{acct}:
+  /api/v1/plugins/{id}/accounts/{acct}:
     delete:
       tags: [online]
       summary: "Remove a saved account and its Vault session (admin). Removing the active account switches to the next one or signs out"
@@ -1793,7 +1794,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
-  /api/home:
+  /api/v1/home:
     get:
       tags: [online]
       summary: Home sections per enabled plugin (daily recommendations, my playlists, recommended playlists, charts). Failing sections carry an error code
@@ -1801,7 +1802,7 @@ paths:
         "200": { description: Sections, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/charts:
+  /api/v1/charts:
     get:
       tags: [online]
       summary: Charts grouped by platform; ?origin= limits to one plugin
@@ -1809,7 +1810,7 @@ paths:
         "200": { description: Chart groups, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/online/resolve/{id}:
+  /api/v1/online/resolve/{id}:
     get:
       tags: [online]
       summary: "What /api/stream/{id} will play for an online track: entitlement (full | preview | unavailable), preview window, fallback (local or another logged-in account). Never the upstream URL. ?quality=, ?fresh=1"
@@ -1817,7 +1818,7 @@ paths:
         "200": { description: Resolution, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/online/favorites:
+  /api/v1/online/favorites:
     get:
       tags: [online]
       summary: Cloud "liked songs" of each logged-in account (?origin=)
@@ -1825,7 +1826,7 @@ paths:
         "200": { description: Liked playlists, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/online/{origin}/{kind}/{id}:
+  /api/v1/online/{origin}/{kind}/{id}:
     get:
       tags: [online]
       summary: External item detail; kind = tracks | albums | artists | playlists. Playlists include per-track playable status, local links and counts
@@ -1833,7 +1834,7 @@ paths:
         "200": { description: Item, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
-  /api/online/{origin}/playlists/{id}/clone:
+  /api/v1/online/{origin}/playlists/{id}/clone:
     post:
       tags: [online]
       summary: Clone an external playlist into a local playlist. Body {name?, prefer_local? (default true), skip_unavailable?}
@@ -1842,7 +1843,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ---- App API (D45). All paths also available under /api/v1. ----
-  /api/auth/refresh:
+  /api/v1/auth/refresh:
     post:
       tags: [auth]
       summary: Exchange a refresh token (the ymd_ device token) for a new session; rotates the refresh token. Public.
@@ -1854,14 +1855,14 @@ paths:
       responses:
         "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
         "401": { description: invalid_refresh_token }
-  /api/server/info:
+  /api/v1/server/info:
     get:
       tags: [system]
       summary: Public server description - name, version, api_version, features, platforms[{origin,name,enabled,logged_in,capabilities}]. nickname/vip only when authenticated.
       security: []
       responses:
         "200": { description: Info, content: { application/json: { schema: { $ref: "#/components/schemas/ServerInfo" } } } }
-  /api/events:
+  /api/v1/events:
     get:
       tags: [system]
       summary: Server-Sent Events (same events as /ws, scoped to the caller). Auth via Bearer or ?access_token=/?token=. ?types=a,b filters. Keepalive every 15 s.
@@ -1869,7 +1870,7 @@ paths:
         - { name: types, in: query, schema: { type: string } }
       responses:
         "200": { description: text/event-stream; events favorites.changed, playlists.changed, history.added, progress.changed, library.updated, player.* }
-  /api/search/suggest:
+  /api/v1/search/suggest:
     get:
       tags: [catalog]
       summary: Fast suggestions (prefix and pinyin) from the library
@@ -1877,7 +1878,7 @@ paths:
         - { name: q, in: query, required: true, schema: { type: string } }
       responses:
         "200": { description: "{q, items:[string]}" }
-  /api/covers/{id}:
+  /api/v1/covers/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [catalog]
@@ -1889,14 +1890,14 @@ paths:
         "200": { description: image/webp or image/jpeg }
         "304": { description: Not modified }
         "401": { description: invalid_signature }
-  /api/covers/{id}/meta:
+  /api/v1/covers/{id}/meta:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [catalog]
       summary: Cover placeholder data
       responses:
         "200": { description: "{blurhash, colors:[3 x #rrggbb]}" }
-  /api/progress:
+  /api/v1/progress:
     get:
       tags: [userdata]
       summary: Playback progress (resume points) for the caller; ?ids=a,b or the 500 most recent. Does NOT write play history.
@@ -1904,7 +1905,7 @@ paths:
         - { name: ids, in: query, schema: { type: string } }
       responses:
         "200": { description: "{items:[{track_id, position_ms, duration_ms, finished, device_id, updated_at}]}" }
-  /api/progress/{id}:
+  /api/v1/progress/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     put:
       tags: [userdata]
@@ -1918,25 +1919,25 @@ paths:
       tags: [userdata]
       summary: Clear progress
       responses: { "204": { description: Deleted } }
-  /api/artists/{id}/albums:
+  /api/v1/artists/{id}/albums:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [catalog]
       summary: Albums of an artist (list envelope; default sort year desc)
       responses: { "200": { description: "{items, total, cursor, next_cursor, updated_at}" } }
-  /api/artists/{id}/tracks:
+  /api/v1/artists/{id}/tracks:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [catalog]
       summary: Tracks of an artist (list envelope)
       responses: { "200": { description: "{items, total, cursor, next_cursor, updated_at}" } }
-  /api/tracks/{id}/dream:
+  /api/v1/tracks/{id}/dream:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [catalog]
       summary: Reduced visual metadata - no audio analysis. colors/blurhash from the cover, tags from genre/platform tags, bpm only when a platform/tag provides it (else null). Online ids like netease:123 may be raw or %3A-encoded.
       responses: { "200": { description: "{track_id, colors:[3]|null, blurhash|null, tags:[string], bpm:null|number}" } }
-  /api/playlists/{id}/tracks:
+  /api/v1/playlists/{id}/tracks:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     get:
       tags: [playlists]
@@ -1965,17 +1966,17 @@ paths:
         - { name: indexes, in: query, schema: { type: string } }
         - { name: track_ids, in: query, schema: { type: string } }
       responses: { "200": { description: Playlist } }
-  /api/online/{origin}/{sub}:
+  /api/v1/online/{origin}/{sub}:
     parameters:
       - { name: origin, in: path, required: true, schema: { type: string, enum: [netease, qq, kugou] } }
       - { name: sub, in: path, required: true, schema: { type: string, enum: [daily, fm] } }
     get:
       tags: [online]
-      summary: Platform pass-through only (no own recommendation). daily -> {origin, date, tracks, items}; fm -> {origin, items} (no-store). 404 not_logged_in / not_supported.
+      summary: Platform pass-through only (no own recommendation). daily -> {origin, date, items:[Track]} (tracks is a deprecated alias of items); fm -> {origin, items} (no-store). 404 not_logged_in / not_supported.
       responses:
         "200": { description: Tracks }
         "404": { description: not_logged_in or not_supported }
-  /api/online/{origin}/fm/feedback:
+  /api/v1/online/{origin}/fm/feedback:
     parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
     post:
       tags: [online]
@@ -1985,13 +1986,13 @@ paths:
           application/json:
             schema: { type: object, required: [track_id, action], properties: { track_id: { type: string }, action: { type: string, enum: [like, trash] } } }
       responses: { "204": { description: Forwarded }, "404": { description: not_logged_in or not_supported } }
-  /api/online/{origin}/recommend/playlists:
+  /api/v1/online/{origin}/recommend/playlists:
     parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
     get:
       tags: [online]
       summary: Platform's recommended playlists (login required)
       responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
-  /api/online/{origin}/user/playlists:
+  /api/v1/online/{origin}/user/playlists:
     parameters: [{ name: origin, in: path, required: true, schema: { type: string } }]
     get:
       tags: [online]
@@ -2000,12 +2001,12 @@ paths:
         - { name: type, in: query, schema: { type: string, enum: [created, collected] } }
       responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
   # ---- P1: sessions, 一起听 rooms (D48) ----
-  /api/sessions:
+  /api/v1/sessions:
     get:
       tags: [players]
       summary: The caller's sessions (devices of the same user) with presence and playback state
       responses: { "200": { description: "{items:[{device, current, online, state|null}]}" } }
-  /api/sessions/handoff:
+  /api/v1/sessions/handoff:
     post:
       tags: [players]
       summary: Move playback (queue, track, position) between the caller's sessions; from defaults to the caller
@@ -2014,7 +2015,7 @@ paths:
           application/json:
             schema: { type: object, required: [to], properties: { from: { type: string }, to: { type: string } } }
       responses: { "200": { description: Destination player state }, "404": { description: Session not found } }
-  /api/rooms:
+  /api/v1/rooms:
     get:
       tags: [rooms]
       summary: 一起听 rooms the caller is in (in-memory, ephemeral)
@@ -2024,16 +2025,16 @@ paths:
       summary: Create a room; the caller is host. Returns {id, code (6 chars), name, host, state, members, server_time, web_url}
       requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
       responses: { "201": { description: Room } }
-  /api/rooms/{id}:
+  /api/v1/rooms/{id}:
     parameters: [{ name: id, in: path, required: true, description: room id or 6-char code, schema: { type: string } }]
     get: { tags: [rooms], summary: Room, responses: { "200": { description: Room }, "404": { description: room_not_found } } }
-  /api/rooms/{id}/join:
+  /api/v1/rooms/{id}/join:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [rooms], summary: Join by id or code (max 50 members), responses: { "200": { description: Room } } }
-  /api/rooms/{id}/leave:
+  /api/v1/rooms/{id}/leave:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post: { tags: [rooms], summary: Leave; a leaving host hands host to the oldest member, responses: { "204": { description: Left } } }
-  /api/rooms/{id}/state:
+  /api/v1/rooms/{id}/state:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     put:
       tags: [rooms]
@@ -2043,7 +2044,7 @@ paths:
           application/json:
             schema: { type: object, properties: { track_id: { type: string }, position_ms: { type: integer }, playing: { type: boolean } } }
       responses: { "200": { description: Room }, "403": { description: not_host } }
-  /api/rooms/{id}/danmaku:
+  /api/v1/rooms/{id}/danmaku:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get: { tags: [rooms], summary: Last 200 弹幕, responses: { "200": { description: "{items:[{id, device_id, name, text, track_id, t_ms, color, at}]}" } } }
     post:
@@ -2054,7 +2055,7 @@ paths:
           application/json:
             schema: { type: object, required: [text], properties: { text: { type: string }, t_ms: { type: integer }, color: { type: string, description: "#rrggbb" } } }
       responses: { "201": { description: Danmaku }, "429": { description: rate_limited } }
-  /api/rooms/{id}/events:
+  /api/v1/rooms/{id}/events:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     get:
       tags: [rooms]

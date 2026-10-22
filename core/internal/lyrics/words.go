@@ -174,6 +174,34 @@ type MergedLine struct {
 	Trans string `json:"trans,omitempty"`
 	Roma  string `json:"roma,omitempty"`
 	Words []Word `json:"words,omitempty"`
+	// Meta marks title/credit lines (作词：…, 作曲：…, "Song - Artist") that
+	// platforms put at the top; players usually hide or dim them.
+	Meta bool `json:"meta,omitempty"`
+}
+
+var creditRe = regexp.MustCompile(`(?i)^\s*(作词|作詞|作曲|编曲|編曲|词|詞|曲|制作人|製作人|制作|監製|监制|混音|母带|母帶|录音|錄音|和声|和聲|吉他|贝斯|貝斯|鼓|键盘|弦乐|出品|发行|發行|策划|统筹|OP|SP|ISRC|Lyrics?|Lyricist|Written by|Composer|Composed by|Arranger|Arranged by|Producer|Produced by|Mixed by|Mastered by)\s*[:：]`)
+
+// MarkMeta flags leading credit/title lines (only within the first 12 lines
+// and before the first ordinary lyric line).
+func MarkMeta(lines []MergedLine, title string) {
+	t := strings.ToLower(strings.TrimSpace(title))
+	for i := range lines {
+		if i >= 12 {
+			return
+		}
+		txt := strings.TrimSpace(lines[i].Text)
+		low := strings.ToLower(txt)
+		switch {
+		case creditRe.MatchString(txt):
+			lines[i].Meta = true
+		case i < 2 && t != "" && strings.HasPrefix(low, t) && (strings.Contains(txt, " - ") || strings.Contains(txt, "-") || low == t):
+			lines[i].Meta = true
+		case txt == "":
+			continue
+		default:
+			return // the first real lyric line ends the top block
+		}
+	}
 }
 
 // Source is one candidate's lyric material for merging.

@@ -161,7 +161,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("PUT /api/devices/me/stream-quality", d.putStreamQuality)
 	mux.HandleFunc("DELETE /api/devices/{id}", d.revokeDevice)
 
-	mux.HandleFunc("POST /api/library/scan", d.startScan)
+	mux.HandleFunc("POST /api/library/scan", d.adminOnly(d.startScan))
 	mux.HandleFunc("GET /api/library/scan", d.latestScan)
 	mux.HandleFunc("GET /api/library/scan/{id}", d.scanStatus)
 
@@ -215,11 +215,11 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
 	mux.HandleFunc("GET /api/lyrics/search", d.lyricsSearchAPI)
 	mux.HandleFunc("GET /api/lyrics/best", d.lyricsBestAPI)
-	mux.HandleFunc("POST /api/metadata/enrich", d.enrich)
+	mux.HandleFunc("POST /api/metadata/enrich", d.adminOnly(d.enrich))
 	mux.HandleFunc("GET /api/metadata/providers", d.listProviders)
 
 	mux.HandleFunc("GET /api/settings/artist-split", d.getSplit)
-	mux.HandleFunc("PUT /api/settings/artist-split", d.putSplit)
+	mux.HandleFunc("PUT /api/settings/artist-split", d.adminOnly(d.putSplit))
 
 	if d.System != nil {
 		mux.HandleFunc("GET /api/system", d.getSystem)

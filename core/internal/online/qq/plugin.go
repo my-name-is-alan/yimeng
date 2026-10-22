@@ -433,13 +433,32 @@ func (p *Plugin) Charts(ctx context.Context) ([]online.Playlist, error) {
 // RecommendTracks: "猜你喜欢" radio for logged-in users, otherwise new songs.
 func (p *Plugin) RecommendTracks(ctx context.Context) ([]online.Track, error) {
 	if p.loggedIn() {
-		var d struct {
-			Tracks []qSong `json:"tracks"`
+		// the personal radio hands out small batches (~5): collect up to 30
+		var all []qSong
+		seen := map[string]bool{}
+		for i := 0; i < 8 && len(all) < 30; i++ {
+			var d struct {
+				Tracks []qSong `json:"tracks"`
+			}
+			err := p.one(ctx, "music.radioProxy.MbTrackRadioSvr", "get_radio_track", map[string]any{"id": 99, "num": 30, "from": 0,
+				"scene": 0, "song_ids": []int{}, "ext": map[string]any{"bluetooth": ""}, "should_count_down": 1}, &d)
+			if err != nil || len(d.Tracks) == 0 {
+				break
+			}
+			added := 0
+			for _, t := range d.Tracks {
+				if k := t.Mid; k != "" && !seen[k] {
+					seen[k] = true
+					all = append(all, t)
+					added++
+				}
+			}
+			if added == 0 {
+				break
+			}
 		}
-		err := p.one(ctx, "music.radioProxy.MbTrackRadioSvr", "get_radio_track", map[string]any{"id": 99, "num": 30, "from": 0,
-			"scene": 0, "song_ids": []int{}, "ext": map[string]any{"bluetooth": ""}, "should_count_down": 1}, &d)
-		if err == nil && len(d.Tracks) > 0 {
-			return mapSongs(d.Tracks, p.vip()), nil
+		if len(all) > 0 {
+			return mapSongs(all, p.vip()), nil
 		}
 	}
 	var d struct {

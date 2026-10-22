@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/infra/safehttp"
 	"image"
 	"io"
 	"math"
@@ -86,7 +87,7 @@ func ETag(path string) string {
 // ErrRemote is returned when a remote cover cannot be fetched.
 var ErrRemote = errors.New("remote cover unavailable")
 
-var remoteClient = &http.Client{Timeout: 15 * time.Second}
+var remoteClient = &http.Client{Timeout: 15 * time.Second, Transport: safehttp.Transport()}
 
 // Remote downloads an online cover once into the disk cache (immutable:
 // platform CDN cover URLs are content-addressed) and returns the local path.

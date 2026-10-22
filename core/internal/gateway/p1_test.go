@@ -177,3 +177,32 @@ func TestSearchStream(t *testing.T) {
 		t.Fatalf("no online group: %v", evs)
 	}
 }
+
+func TestNonAdminAuthz(t *testing.T) {
+	e := newEnv(t)
+	other := e.pairDevice("phone")
+	_, b := e.do("GET", "/api/v1/devices/me", "", e.token)
+	var admin struct{ ID string }
+	json.Unmarshal(b, &admin)
+	if res, _ := e.do("DELETE", "/api/v1/devices/"+admin.ID, "", other); res.StatusCode != 404 {
+		t.Fatalf("non-admin revoked admin device: %d", res.StatusCode)
+	}
+	if res, _ := e.do("GET", "/api/v1/devices/me", "", e.token); res.StatusCode != 200 {
+		t.Fatalf("admin token gone: %d", res.StatusCode)
+	}
+	_, b = e.do("GET", "/api/v1/devices", "", other)
+	if strings.Contains(string(b), admin.ID) {
+		t.Fatalf("non-admin sees other devices: %s", b)
+	}
+	for _, c := range [][2]string{{"POST", "/api/v1/library/scan"}, {"POST", "/api/v1/metadata/enrich"}, {"PUT", "/api/v1/settings/artist-split"}} {
+		if res, _ := e.do(c[0], c[1], `{}`, other); res.StatusCode != 403 {
+			t.Errorf("%s %s by non-admin: %d", c[0], c[1], res.StatusCode)
+		}
+	}
+	_, b = e.do("GET", "/api/v1/devices/me", "", other)
+	var me struct{ ID string }
+	json.Unmarshal(b, &me)
+	if res, _ := e.do("DELETE", "/api/v1/devices/"+me.ID, "", other); res.StatusCode != 204 {
+		t.Fatalf("self sign-out: %d", res.StatusCode)
+	}
+}

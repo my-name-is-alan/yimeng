@@ -102,6 +102,19 @@ func (d Deps) listTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getTrack(w http.ResponseWriter, r *http.Request) {
+	if id := r.PathValue("id"); d.Online != nil && library.IsExternalID(id) {
+		if _, err := d.Library.GetTrack(r.Context(), id); err != nil {
+			t, err := d.Online.Track(r.Context(), id)
+			if err != nil {
+				d.platformErr(w, "track", err)
+				return
+			}
+			ts := []online.Track{t}
+			d.decorateOnlineTracks(ts)
+			writeJSON(w, http.StatusOK, ts[0])
+			return
+		}
+	}
 	d.writeOne(w, "track", func() (any, error) {
 		t, err := d.Library.GetTrack(r.Context(), r.PathValue("id"))
 		if err == nil {

@@ -53,3 +53,13 @@ func TestMerge(t *testing.T) {
 		t.Fatalf("line %+v", l)
 	}
 }
+
+func TestMarkMeta(t *testing.T) {
+	ls := []MergedLine{{Text: "稻香 - 周杰伦"}, {Text: "词：周杰伦"}, {Text: "作曲 : 周杰伦"}, {Text: "编曲：黄雨勋"}, {Text: "对这个世界如果你有太多的抱怨"}, {Text: "曲：x"}}
+	MarkMeta(ls, "稻香")
+	for i, want := range []bool{true, true, true, true, false, false} {
+		if ls[i].Meta != want {
+			t.Errorf("line %d %q meta=%v", i, ls[i].Text, ls[i].Meta)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/infra/safehttp"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,7 +32,7 @@ const settingMode = "app.mode" // local | online | both
 
 // upstreamHC fetches audio from platform CDNs (no overall timeout: streams are long).
 var upstreamHC = &http.Client{
-	Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ResponseHeaderTimeout: 15 * time.Second, IdleConnTimeout: 60 * time.Second},
+	Transport: safehttp.Transport(),
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || (req.URL.Scheme != "http" && req.URL.Scheme != "https") {
 			return errors.New("bad redirect")
@@ -512,8 +513,15 @@ func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
 // listPlaylistScope serves /api/playlists?scope=mine|recommend|discover:
 // external playlists grouped by platform ("local" scope = classic list).
 func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope string) bool {
-	if scope == "" || scope == "local" || d.Online == nil {
+	if scope == "" || scope == "local" || (d.Online == nil && scope != "all") {
 		return false
+	}
+	if d.Online == nil { // all = local only
+		return false
+	}
+	platform := scope
+	if scope == "all" || scope == "online" {
+		platform = "mine"
 	}
 	q := r.URL.Query()
 	origins := d.Online.Reg.EnabledIDs()
@@ -533,7 +541,7 @@ func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope st
 			defer wg.Done()
 			var items []online.Playlist
 			var err error
-			switch scope {
+			switch platform {
 			case "mine":
 				items, err = d.Online.UserPlaylists(r.Context(), o)
 			case "recommend":
@@ -553,12 +561,31 @@ func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope st
 	}
 	wg.Wait()
 	switch scope {
-	case "mine", "recommend", "discover", "charts":
+	case "all", "online", "mine", "recommend", "discover", "charts":
 	default:
-		writeErr(w, http.StatusBadRequest, "invalid_query", "scope must be local, mine, recommend, discover or charts")
+		writeErr(w, http.StatusBadRequest, "invalid_query", "scope must be all, local, online, mine, recommend, discover or charts")
 		return true
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "groups": out})
+	// flat items too: scope=all puts the local playlists first
+	var flat []any
+	if scope == "all" && d.Playlists != nil {
+		if l, err := d.Playlists.ListPlaylists(r.Context()); err == nil {
+			d.decoratePlaylists(r, l)
+			for _, p := range l {
+				flat = append(flat, p)
+			}
+		}
+	}
+	for _, g := range out {
+		d.decorateOnlinePlaylists(g.Items)
+		for _, p := range g.Items {
+			flat = append(flat, p)
+		}
+	}
+	if flat == nil {
+		flat = []any{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "groups": out, "items": flat, "total": len(flat), "next_cursor": nil})
 	return true
 }
 
@@ -870,8 +897,13 @@ func (d Deps) fetchUpstream(r *http.Request, method string, res online.Resolutio
 		if status < 400 {
 			status = http.StatusForbidden // error page served as 200
 		}
+		// QQ's primary CDN hosts answer 200 with an empty body and no
+		// Content-Type for some files; the next host serves the audio.
+		peek := make([]byte, 64)
+		n, _ := io.ReadFull(resp.Body, peek)
 		resp.Body.Close()
-		d.Log.Warn("online upstream rejected", "origin", res.Origin, "host", u.Host, "status", resp.StatusCode, "content_type", ct)
+		d.Log.Info("online upstream skipped, trying next host", "origin", res.Origin, "host", u.Host, "status", resp.StatusCode,
+			"content_type", ct, "body_bytes", n)
 	}
 	return nil, status
 }

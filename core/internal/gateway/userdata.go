@@ -44,9 +44,11 @@ func (d Deps) scrobble(w http.ResponseWriter, r *http.Request) {
 		p.PlayedAt = *b.PlayedAt
 	}
 	if err := d.UserData.Record(r.Context(), p); err != nil {
+		d.Log.Info("scrobble rejected", "device", dev.ID, "track", b.TrackID, "err", err)
 		d.userErr(w, "track", err)
 		return
 	}
+	d.Log.Info("scrobble", "device", dev.ID, "track", p.TrackID, "duration_ms", p.DurationMs, "completed", p.Completed)
 	d.Hub.Publish("history.played", map[string]any{"track_id": p.TrackID, "player_id": p.PlayerID})
 	d.Hub.Publish("history.added", map[string]any{"track_id": p.TrackID, "player_id": p.PlayerID, "source": p.Source})
 	w.WriteHeader(http.StatusNoContent)

@@ -37,6 +37,7 @@ func (d Deps) putProgress(w http.ResponseWriter, r *http.Request) {
 		d.userErr(w, "progress", err)
 		return
 	}
+	d.Log.Info("progress", "device", dev.ID, "track", p.TrackID, "position_ms", p.PositionMs, "duration_ms", p.DurationMs, "finished", p.Finished)
 	d.publishUser(dev, "progress.changed", p)
 	writeJSON(w, http.StatusOK, p)
 }

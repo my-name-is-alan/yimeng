@@ -25,12 +25,15 @@ func TestOpenAPICoversRoutes(t *testing.T) {
 		}
 		pat := strings.SplitN(line[i+len(`mux.HandleFunc("`):], `"`, 2)[0]
 		_, path, _ := strings.Cut(pat, " ")
+		if strings.HasPrefix(path, "/api/") {
+			path = "/api/v1/" + strings.TrimPrefix(path, "/api/") // the spec documents the /api/v1 alias
+		}
 		if !strings.Contains(string(spec), "\n  "+path+":") {
 			t.Errorf("route %q missing from openapi.yaml", pat)
 		}
 	}
 	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer", "sleep"} {
-		if !strings.Contains(string(spec), "\n  /api/players/{id}/"+a+":") {
+		if !strings.Contains(string(spec), "\n  /api/v1/players/{id}/"+a+":") {
 			t.Errorf("player action %s missing", a)
 		}
 	}
