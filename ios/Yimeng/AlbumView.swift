@@ -67,6 +67,7 @@ struct NDAlbumView: View {
     @State private var loading = true
     @State private var error: String?
     @State private var revealed = false
+    @State private var pull: CGFloat = 0
 
     private var shown: NDAlbum { detail ?? album }
 
@@ -74,6 +75,7 @@ struct NDAlbumView: View {
         ZStack(alignment: .top) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
+                    ScrollPullReader(space: "albumScroll", pull: $pull)
                     HStack {
                         Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
                         Spacer()
@@ -126,6 +128,7 @@ struct NDAlbumView: View {
                                     PlayerStore.shared.playAlbum(shown, songs: songs, startAt: i)
                                     withAnimation(.ui) { state.nowPlaying = true }
                                 }
+                                .songMenu(t)
                                 .opacity(revealed ? 1 : 0)
                                 .offset(y: revealed ? 0 : 16)
                                 .animation(.snappy(duration: 0.45).delay(revealed ? 0.12 + Double(i % 8) * 0.04 : 0), value: revealed)
@@ -139,7 +142,13 @@ struct NDAlbumView: View {
                     }
                     Color.clear.frame(height: 170)
                 }
+                .background(alignment: .top) {
+                    // Cover → ×2.8, blur 80 → soft colour field behind the header, fading to the page colour.
+                    CoverBloom(url: library.coverURL(shown, size: 300), height: 700, pull: pull)
+                        .offset(y: -180)
+                }
             }
+            .coordinateSpace(name: "albumScroll")
         }
         .background(Theme.base(scheme).ignoresSafeArea())
         .task(id: album.id) { await load() }

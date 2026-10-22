@@ -230,6 +230,16 @@ actor NavidromeClient {
         }
     }
 
+    func createPlaylist(name: String, songIds: [String]) async throws {
+        var q = ["name": name]
+        if let first = songIds.first { q["songId"] = first }
+        _ = try await rest("createPlaylist.view", query: q)
+    }
+
+    func addToPlaylist(_ playlistId: String, songIds: [String]) async throws {
+        for s in songIds { _ = try await rest("updatePlaylist.view", query: ["playlistId": playlistId, "songIdToAdd": s]) }
+    }
+
     func playlist(id: String) async throws -> [NDSong] {
         let obj = try await rest("getPlaylist.view", query: ["id": id])
         let e = (obj["playlist"] as? [String: Any])?["entry"]
@@ -274,6 +284,9 @@ actor NavidromeClient {
         if let i = a["duration"] as? Int { dur = i }
         else if let d = a["duration"] as? Double { dur = Int(d) }
         else { dur = nil }
+        func num(_ k: String) -> Int? { (a[k] as? Int) ?? (a[k] as? Double).map { Int($0) } }
+        func dbl(_ d: [String: Any]?, _ k: String) -> Double? { (d?[k] as? Double) ?? (d?[k] as? Int).map(Double.init) }
+        let rg = a["replayGain"] as? [String: Any]
         return NDSong(id: id,
                       title: title,
                       artist: (a["artist"] as? String) ?? "",
@@ -281,7 +294,15 @@ actor NavidromeClient {
                       albumId: a["albumId"] as? String,
                       coverId: a["coverArt"] as? String,
                       duration: dur,
-                      track: a["track"] as? Int)
+                      track: a["track"] as? Int,
+                      suffix: a["suffix"] as? String,
+                      contentType: a["contentType"] as? String,
+                      bitRate: num("bitRate"),
+                      samplingRate: num("samplingRate"),
+                      bitDepth: num("bitDepth"),
+                      channelCount: num("channelCount"),
+                      replayGain: rg.map { ReplayGainInfo(trackGain: dbl($0, "trackGain"), albumGain: dbl($0, "albumGain"),
+                                                          trackPeak: dbl($0, "trackPeak"), albumPeak: dbl($0, "albumPeak")) })
     }
 
     private func rest(_ method: String, query: [String: String]) async throws -> [String: Any] {

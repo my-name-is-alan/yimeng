@@ -41,6 +41,14 @@ struct NDSong: Identifiable, Hashable, Codable {
     let coverId: String?
     let duration: Int?
     let track: Int?
+    // OpenSubsonic audio details (optional; older cached payloads decode without them).
+    var suffix: String? = nil
+    var contentType: String? = nil
+    var bitRate: Int? = nil
+    var samplingRate: Int? = nil
+    var bitDepth: Int? = nil
+    var channelCount: Int? = nil
+    var replayGain: ReplayGainInfo? = nil
 
     var durationLabel: String {
         guard let d = duration else { return "" }
@@ -157,7 +165,9 @@ final class LibraryStore: ObservableObject {
     /// maxBitRate from 偏好设置 (0 = original, no transcoding).
     static func streamQuery(_ id: String) -> [String: String] {
         let br = UserDefaults.standard.integer(forKey: "ym.maxBitRate")
-        return br > 0 ? ["id": id, "maxBitRate": "\(br)"] : ["id": id]
+        // Transcoded: force MP3 (server default here is Ogg/Opus, which AVPlayer cannot play).
+        // 原始: ask for the untouched file so FLAC/ALAC/E-AC-3 reach AVPlayer bit-for-bit.
+        return br > 0 ? ["id": id, "maxBitRate": "\(br)", "format": "mp3"] : ["id": id, "format": "raw"]
     }
 
     func loadTotals() async {

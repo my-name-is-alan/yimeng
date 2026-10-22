@@ -27,6 +27,14 @@ final class PlayerStore: ObservableObject {
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published var coverURL: URL?
+    enum RepeatMode: String, Codable { case off, all, one }
+    @Published private(set) var shuffle = false
+    @Published private(set) var repeatMode: RepeatMode = .all
+    private var unshuffled: [NDSong]?
+    private var fadeTask: Task<Void, Never>?
+    private var fadingOut = false
+    private var preloaded: (id: String, asset: AVURLAsset)?
+    var upcoming: [NDSong] { index + 1 < queue.count ? Array(queue[(index + 1)...]) : [] }
 
     private var coverId: String?
     private var player: AVPlayer?
@@ -83,6 +91,88 @@ final class PlayerStore: ObservableObject {
         index = (index + d + queue.count) % queue.count
         coverURL = nil
         startCurrent(autoplay: true, seek: nil)
+    }
+
+    // MARK: Queue
+
+    func playNext(_ s: NDSong) {
+        guard song != nil else { play(songs: [s]); return }
+        queue.insert(s, at: min(index + 1, queue.count)); save()
+    }
+    func enqueue(_ s: NDSong) {
+        guard song != nil else { play(songs: [s]); return }
+        queue.append(s); save()
+    }
+    func jump(toUpcoming i: Int) {
+        let target = index + 1 + i
+        guard target < queue.count else { return }
+        index = target; coverURL = nil
+        startCurrent(autoplay: true, seek: nil)
+    }
+    func moveUpcoming(from: IndexSet, to: Int) {
+        var up = upcoming; up.move(fromOffsets: from, toOffset: to)
+        queue = Array(queue[...index]) + up; save()
+    }
+    func removeUpcoming(at: IndexSet) {
+        var up = upcoming; up.remove(atOffsets: at)
+        queue = Array(queue[...index]) + up; save()
+    }
+    func clearUpcoming() { guard !queue.isEmpty else { return }; queue = Array(queue[...index]); save() }
+    func toggleShuffle() {
+        if shuffle, let orig = unshuffled, let cur = song {
+            queue = orig; index = orig.firstIndex(of: cur) ?? 0; unshuffled = nil; shuffle = false
+        } else if !queue.isEmpty {
+            unshuffled = queue
+            queue = Array(queue[...index]) + upcoming.shuffled(); shuffle = true
+        }
+        save()
+    }
+    func cycleRepeat() { repeatMode = repeatMode == .all ? .one : repeatMode == .one ? .off : .all }
+
+    /// ReplayGain → AVPlayer.volume (≤ 1; system volume stays untouched, no DSP so passthrough is kept).
+    func targetVolume(for s: NDSong?) -> Float {
+        guard let s, AudioPrefs.replayGain > 0, let rg = s.replayGain else { return 1 }
+        let album = AudioPrefs.replayGain == 2
+        guard let g = (album ? rg.albumGain : rg.trackGain) ?? rg.trackGain else { return 1 }
+        var v = pow(10, (g + AudioPrefs.preamp) / 20)
+        if AudioPrefs.clipGuard, let peak = (album ? rg.albumPeak : rg.trackPeak) ?? rg.trackPeak, peak > 0 { v = min(v, 1 / peak) }
+        return Float(max(0, min(1, v)))
+    }
+    func applyGain() { if !fadingOut { player?.volume = targetVolume(for: song) } }
+
+    private func fade(to target: Float, over secs: Double) {
+        fadeTask?.cancel()
+        guard let p = player else { return }
+        let from = p.volume, steps = max(1, Int(secs * 20))
+        fadeTask = Task { @MainActor [weak p] in
+            for i in 1...steps {
+                try? await Task.sleep(for: .milliseconds(50))
+                if Task.isCancelled { return }
+                p?.volume = from + (target - from) * Float(i) / Float(steps)
+            }
+        }
+    }
+
+    private func advanceAtEnd() {
+        if repeatMode == .one { player?.seek(to: .zero); player?.play(); fadingOut = false; applyGain(); return }
+        if index + 1 >= queue.count && repeatMode == .off {
+            isPlaying = false; player?.pause(); player?.seek(to: .zero); elapsed = 0; syncApp(); pushNowPlaying(); return
+        }
+        skip(1)
+    }
+
+    private func preloadNext() {
+        guard AudioPrefs.gapless, index + 1 < queue.count || repeatMode == .all, !queue.isEmpty else { return }
+        let next = queue[(index + 1) % queue.count]
+        guard preloaded?.id != next.id, let url = LibraryStore.shared.streamURL(for: next.id) else { return }
+        let asset = Self.asset(url)
+        preloaded = (next.id, asset)
+        Task { _ = try? await asset.load(.isPlayable) }
+    }
+
+    private static func asset(_ url: URL) -> AVURLAsset {
+        let headers = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
+        return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
     }
 
     func clear() {
@@ -145,13 +235,18 @@ final class PlayerStore: ObservableObject {
         pendingSeek = nil
         guard let url = LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
         tearDownPlayer()
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-        let headers = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
-        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        AudioRoute.configureSession()
+        let asset: AVURLAsset = (preloaded?.id == s.id ? preloaded?.asset : nil) ?? Self.asset(url)
+        preloaded = nil
         let item = AVPlayerItem(asset: asset)
+        // Let iOS render multichannel / Atmos (spatial on AirPods, passthrough on AirPlay/HDMI) — no in-app downmix.
+        item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
         let p = AVPlayer(playerItem: item)
         player = p
+        fadingOut = false
+        let vol = targetVolume(for: s)
+        if AudioPrefs.crossfade > 0 && autoplay { p.volume = 0; fadeTask?.cancel() } else { p.volume = vol }
+        AudioRoute.shared.refresh()
         statusObs = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor in
                 guard let self, item.status == .readyToPlay else { return }
@@ -163,17 +258,27 @@ final class PlayerStore: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self, self.isPlaying else { return }
                 self.elapsed = t.seconds.isFinite ? t.seconds : 0
+                let left = self.duration - self.elapsed
+                if self.duration > 0, left < 20 { self.preloadNext() }
+                let cf = AudioPrefs.crossfade
+                if cf > 0, self.duration > cf * 2, left > 0, left <= cf, !self.fadingOut, self.repeatMode != .one {
+                    self.fadingOut = true
+                    self.fade(to: 0, over: left)
+                }
                 let now = Date().timeIntervalSinceReferenceDate
                 if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
             }
         }
         endObs = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.skip(1) }
+            Task { @MainActor in self?.advanceAtEnd() }
         }
         if let seek, seek > 1 {
             p.seek(to: CMTime(seconds: seek, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         }
-        if autoplay { p.play(); isPlaying = true } else { isPlaying = false }
+        if autoplay {
+            p.play(); isPlaying = true
+            if AudioPrefs.crossfade > 0 { fade(to: vol, over: min(AudioPrefs.crossfade, 4)) }
+        } else { isPlaying = false }
         syncApp()
         save()
         pushNowPlaying()

@@ -70,6 +70,7 @@ struct SongRowPlay: View {
                  accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) })) {
             PlayerStore.shared.play(songs: songs, startAt: i)
         }
+        .songMenu(s)
     }
 }
 

@@ -16,18 +16,14 @@ struct HomeLive: View {
     private var artists: [NDArtist] { home.data.artists }
     private var playlists: [NDPlaylist] { home.data.playlists }
     private var genres: [NDGenre] { home.data.genres }
-    @State private var page: Double = 0
-    @State private var drag: CGFloat = 0
-    @State private var dragging = false
-    @State private var lastInteraction = Date.distantPast
-    let timer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+    @State private var bannerState = BannerState()
 
     private var bannerURLs: [URL?] { banner.map { library.coverURL($0, size: 600) } }
 
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width - Theme.margin * 2
-            let p = page - Double(drag / max(w, 1))
+            let p = bannerState.position
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .firstTextBaseline) {
@@ -36,19 +32,15 @@ struct HomeLive: View {
                             Text(greeting).font(.system(size: 13)).opacity(0.7)
                         }
                         Spacer()
-                        AvatarView(size: 36).onTapGesture { state.tab = .me }
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
 
                     if !banner.isEmpty {
-                        carousel(width: w, progress: p).padding(.top, 16).motionIn(0.08, from: .scale)
-                        HStack(spacing: 6) {
-                            ForEach(0..<banner.count, id: \.self) { i in
-                                let wt = DiffusedBackdrop.weight(i, p, banner.count)
-                                Capsule().fill(Color.white).frame(width: 6 + 12 * wt, height: 6).opacity(0.4 + 0.6 * wt)
-                            }
-                        }.frame(maxWidth: .infinity).padding(.top, 12).motionIn(0.14, from: .fade)
+                        CurtainCarousel(albums: banner, width: w, st: $bannerState)
+                            .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0.08, from: .scale)
+                        BannerDots(count: banner.count, active: bannerState.active % max(banner.count, 1))
+                            .frame(maxWidth: .infinity).padding(.top, 12).motionIn(0.14, from: .fade)
                     } else if home.data.isEmpty {
                         // True first run (no cache): a soft doodle, never grey skeleton blocks.
                         FirstRunDoodle().padding(.top, 40)
@@ -120,10 +112,17 @@ struct HomeLive: View {
         }
         .background(Theme.base(scheme))
         .refreshable { await home.refresh(force: true) }
-        .task { await home.refresh() }
-        .onReceive(timer) { _ in
-            guard banner.count > 1, !dragging, Date().timeIntervalSince(lastInteraction) > 3 else { return }
-            withAnimation(.smooth(duration: 0.6)) { page = page.rounded() + 1 }
+        .task {
+            await home.refresh()
+            #if DEBUG
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {
+                if args[i + 1] == "album" { state.path.append(.ndAlbum(a)) }
+                if args[i + 1] == "np", let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty {
+                    PlayerStore.shared.playAlbum(al, songs: s); state.nowPlaying = true
+                }
+            }
+            #endif
         }
     }
 
@@ -156,53 +155,6 @@ struct HomeLive: View {
             }
         }
         .padding(.horizontal, Theme.margin).padding(.top, 28).padding(.bottom, 12)
-    }
-
-    func carousel(width w: CGFloat, progress p: Double) -> some View {
-        let n = banner.count
-        let base = Int(floor(p))
-        return ZStack(alignment: .leading) {
-            ForEach((base - 1)...(base + 2), id: \.self) { v in
-                let a = banner[((v % n) + n) % n]
-                let rel = Double(v) - p
-                ZStack(alignment: .bottomLeading) {
-                    CoverImage(url: library.coverURL(a, size: 800))
-                        .frame(width: w * 1.2, height: 200)
-                        .offset(x: -CGFloat(rel) * w * 0.18)
-                        .frame(width: w, height: 200).clipped()
-                    LinearGradient(colors: [.clear, .black.opacity(0.15), .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
-                    HStack(alignment: .bottom) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("为你推荐").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
-                            Text(a.name).font(.system(size: 20, weight: .bold)).foregroundStyle(.white).lineLimit(1)
-                            Text([a.artist, a.year.map(String.init) ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 13)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
-                        }
-                        Spacer()
-                        Button {
-                            Task { if let (al, s) = try? await library.fetchAlbum(id: a.id), !s.isEmpty { PlayerStore.shared.playAlbum(al, songs: s) } }
-                        } label: { PlayCircle() }.buttonStyle(.plain)
-                    }.padding(20)
-                }
-                .frame(width: w, height: 200)
-                .offset(x: CGFloat(rel) * w)
-                .onTapGesture { state.path.append(.ndAlbum(a)) }
-            }
-        }
-        .frame(width: w, height: 200, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(Rectangle())
-        .padding(.horizontal, Theme.margin)
-        .highPriorityGesture(DragGesture(minimumDistance: 8)
-            .onChanged { v in dragging = true; drag = v.translation.width }
-            .onEnded { v in
-                let projected = page - Double(v.predictedEndTranslation.width / w)
-                let current = page - Double(v.translation.width / w)
-                let target = max(page.rounded() - 1, min(page.rounded() + 1, projected.rounded()))
-                page = current; drag = 0
-                withAnimation(.interpolatingSpring(stiffness: 220, damping: 28)) { page = target }
-                dragging = false; lastInteraction = Date()
-            })
     }
 }
 

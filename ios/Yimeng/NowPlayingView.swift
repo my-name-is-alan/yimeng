@@ -37,6 +37,9 @@ struct NowPlayingView: View {
                     VStack(spacing: 0) {
                         topBar.motionIn(0.05, from: .top)
                         Spacer()
+                        if player.hasRealPlayback && !state.lyricsMode {
+                            VolumeRow().padding(.horizontal, Theme.margin + 8).padding(.bottom, 10).motionIn(0.26)
+                        }
                         controls.motionIn(0.3)
                     }
                 }
@@ -75,7 +78,11 @@ struct NowPlayingView: View {
         return VStack(alignment: track.layout.centered ? .center : .leading, spacing: 2) {
             Text(track.title).font(.system(size: 22, weight: .bold))
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
-            Text("\(track.genre) · \(track.bpm) BPM · FLAC 24/96").font(.system(size: 12)).opacity(0.55).padding(.top, 4)
+            if let s = player.song {
+                QualityBadge(song: s).padding(.top, 8)
+            } else {
+                Text("\(track.genre) · \(track.bpm) BPM").font(.system(size: 12)).opacity(0.55).padding(.top, 4)
+            }
             TimeBar(elapsed: elapsed, total: total ?? track.duration).padding(.top, 22)
         }
         .frame(width: width - 56, alignment: track.layout.centered ? .center : .leading)
@@ -126,7 +133,15 @@ struct NowPlayingView: View {
             Spacer()
             Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
             Spacer()
-            Button { showAmbience = true } label: { Image(systemName: "sparkles").font(.system(size: 20)).opacity(0.8) }
+            if player.hasRealPlayback {
+                Menu {
+                    Button { SheetCenter.shared.queue = true } label: { Label("播放列表", systemImage: "list.bullet") }
+                    Button { SheetCenter.shared.sound = true } label: { Label("音效设置", systemImage: "slider.horizontal.3") }
+                    Button { showAmbience = true } label: { Label("梦境氛围", systemImage: "sparkles") }
+                } label: { Image(systemName: "list.bullet").font(.system(size: 20)).opacity(0.85) }
+            } else {
+                Button { showAmbience = true } label: { Image(systemName: "sparkles").font(.system(size: 20)).opacity(0.8) }
+            }
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 22).frame(height: 64)

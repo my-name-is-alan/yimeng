@@ -37,7 +37,11 @@ struct SettingsView: View {
 
                 group("偏好设置", i: 2) {
                     pickerRow("waveform", "串流音质", selection: $maxBitRate,
-                              options: [(0, "原始"), (320, "320k"), (192, "192k"), (128, "128k")])
+                              options: [(0, "原始 · 无损"), (320, "320k"), (192, "192k"), (128, "128k")])
+                    divider
+                    Button { SheetCenter.shared.sound = true } label: {
+                        row("slider.horizontal.3", "音效设置", "过渡 · 回放增益 · 均衡器", chevron: true)
+                    }.buttonStyle(.plain)
                     divider
                     pickerRow("circle.lefthalf.filled", "外观", selection: $appearance,
                               options: [(0, "跟随系统"), (1, "浅色"), (2, "深色")])
@@ -185,6 +189,6 @@ enum Cache {
         if let items = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) {
             for i in items { try? FileManager.default.removeItem(at: i) }
         }
-        Task { await CoverCache.shared.clear() }
+        CoverCache.shared.clear()
     }
 }

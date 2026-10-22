@@ -200,6 +200,7 @@ struct Shell: View {
                 _ = await (h, s)
             }
         }
+        .modifier(GlobalSheets())
         .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
     }
 
@@ -303,6 +304,9 @@ struct MiniPlayer: View {
             Spacer()
             Button { state.setPlaying(!playing) } label: { Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 20)) }.buttonStyle(.plain)
             Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 18)) }.buttonStyle(.plain)
+            if player.hasRealPlayback {
+                Button { SheetCenter.shared.queue = true } label: { Image(systemName: "list.bullet").font(.system(size: 17)) }.buttonStyle(.plain)
+            }
         }
         .foregroundStyle(Theme.fg(scheme))
         .padding(.leading, 8).padding(.trailing, 16)

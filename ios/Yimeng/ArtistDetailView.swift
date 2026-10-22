@@ -100,7 +100,7 @@ struct ArtistDetailView: View {
                 Color.clear.frame(height: 190)
             }
         }
-        .background(alignment: .top) { RemoteBackdrop(urls: [heroURL], height: 700).ignoresSafeArea() }
+        .background(alignment: .top) { CoverBloom(url: heroURL, height: 700).ignoresSafeArea() }
         .background(Theme.base(scheme))
         .ignoresSafeArea(edges: .top)
         .task(id: artist.id) { await load() }
