@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 /// A–Z + # section keys. Chinese → pinyin via CFStringTransform (ToLatin, strip marks) → first letter.
 enum Initials {

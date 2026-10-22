@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import ImageIO
 
 /// Loads Navidrome cover art with the required User-Agent (AsyncImage is 403'd by the CDN/WAF).
@@ -19,8 +18,8 @@ struct CoverImage: View {
 /// cached copy is shown as placeholder, disk is read + decoded off main, network last (limited, cancellable).
 private struct CoverImageInner: View {
     let url: URL
-    @State private var image: UIImage?
-    @State private var stand: UIImage?
+    @State private var image: PlatformImage?
+    @State private var stand: PlatformImage?
     @State private var failed = false
     init(url: URL) {
         self.url = url
@@ -31,9 +30,9 @@ private struct CoverImageInner: View {
     var body: some View {
         ZStack {
             Color.gray.opacity(failed ? 0.25 : 0.12)
-            if image == nil, stand == nil, let h = CoreState.blurhash(for: url), let b = Blurhash.image(h) { Image(uiImage: b).resizable().scaledToFill() }
-            if image == nil, let stand { Image(uiImage: stand).resizable().scaledToFill() }
-            if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
+            if image == nil, stand == nil, let h = CoreState.blurhash(for: url), let b = Blurhash.image(h) { Image(platformImage: b).resizable().scaledToFill() }
+            if image == nil, let stand { Image(platformImage: stand).resizable().scaledToFill() }
+            if let image { Image(platformImage: image).resizable().scaledToFill().transition(.opacity) }
         }
         .task(id: url.absoluteString) {
             guard image == nil else { return }
@@ -84,8 +83,8 @@ final class CoverCache: @unchecked Sendable {
     static let shared = CoverCache()
     static let offlineScheme = "yimeng-cover"
     static let buckets = [64, 128, 192, 256, 300, 384, 512, 600, 768, 800, 1024]
-    private let mem: NSCache<NSString, UIImage> = {
-        let c = NSCache<NSString, UIImage>(); c.totalCostLimit = 96 * 1024 * 1024; return c
+    private let mem: NSCache<NSString, PlatformImage> = {
+        let c = NSCache<NSString, PlatformImage>(); c.totalCostLimit = 96 * 1024 * 1024; return c
     }()
     private let limiter = AsyncLimiter(6)
     /// Per-source namespace (ids are only unique within one server).
@@ -107,7 +106,7 @@ final class CoverCache: @unchecked Sendable {
 
     /// Rewrite `size=` to the bucket ≥ points × screen scale (≈3× on iPhone).
     static func sized(_ url: URL, points: CGFloat) -> URL {
-        let want = Int((points * min(3, UIScreen.main.scale)).rounded(.up))
+        let want = Int((points * min(3, YMPlatform.screenScale)).rounded(.up))
         // Core only accepts size ∈ {120, 300, 600, 1200} (400 invalid_query otherwise).
         let isCore = url.path.contains("/covers/") && !url.path.contains("/rest/")
         let px = isCore ? CoreClient.bucket(want) : (buckets.first { $0 >= want } ?? buckets.last!)
@@ -133,15 +132,20 @@ final class CoverCache: @unchecked Sendable {
     private func file(_ k: String) -> URL {
         dir.appendingPathComponent(k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? k)
     }
-    private func put(_ img: UIImage, _ k: String) {
-        let cost = Int(img.size.width * img.size.height * img.scale * img.scale * 4)
+    private func put(_ img: PlatformImage, _ k: String) {
+        #if canImport(UIKit)
+        let scale = img.scale
+        #else
+        let scale: CGFloat = 1
+        #endif
+        let cost = Int(img.size.width * img.size.height * scale * scale * 4)
         mem.setObject(img, forKey: k as NSString, cost: cost)
     }
 
-    func memory(_ url: URL) -> UIImage? { mem.object(forKey: Self.key(url) as NSString) }
+    func memory(_ url: URL) -> PlatformImage? { mem.object(forKey: Self.key(url) as NSString) }
 
     /// Any in-memory size of the same cover (largest first) — a no-flicker stand-in while the right size loads.
-    func memoryAnySize(_ url: URL) -> UIImage? {
+    func memoryAnySize(_ url: URL) -> PlatformImage? {
         guard let p = Self.parts(url) else { return nil }
         for s in Self.buckets.reversed() where s != p.size {
             if let m = mem.object(forKey: "\(p.id)_\(s)" as NSString) { return m }
@@ -150,7 +154,7 @@ final class CoverCache: @unchecked Sendable {
     }
 
     /// Sync memory → disk (used by backdrops that need a value during body evaluation).
-    func cached(_ url: URL) -> UIImage? {
+    func cached(_ url: URL) -> PlatformImage? {
         let k = Self.key(url)
         if let m = mem.object(forKey: k as NSString) { return m }
         if let d = try? Data(contentsOf: file(k)), let img = Self.decode(d, maxPixel: Self.parts(url)?.size ?? 0) {
@@ -160,11 +164,11 @@ final class CoverCache: @unchecked Sendable {
     }
 
     /// Async disk read + downsampled decode, off the main thread.
-    func disk(_ url: URL) async -> UIImage? {
+    func disk(_ url: URL) async -> PlatformImage? {
         let k = Self.key(url)
         if let m = mem.object(forKey: k as NSString) { return m }
         let f = file(k), px = Self.parts(url)?.size ?? 0
-        let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+        let img = await Task.detached(priority: .userInitiated) { () -> PlatformImage? in
             guard let d = try? Data(contentsOf: f) else { return nil }
             return Self.decode(d, maxPixel: px)
         }.value
@@ -172,7 +176,7 @@ final class CoverCache: @unchecked Sendable {
         return img
     }
 
-    func fetch(_ url: URL) async throws -> UIImage {
+    func fetch(_ url: URL) async throws -> PlatformImage {
         if let c = await disk(url) { return c }
         guard await limiter.acquire() else { throw CancellationError() }
         defer { limiter.release() }
@@ -194,14 +198,14 @@ final class CoverCache: @unchecked Sendable {
     }
 
     /// ImageIO thumbnail decode: never inflates a full-size bitmap, forces decode now (not at first draw on main).
-    static func decode(_ data: Data, maxPixel: Int) -> UIImage? {
+    static func decode(_ data: Data, maxPixel: Int) -> PlatformImage? {
         guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
         var opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                      kCGImageSourceCreateThumbnailWithTransform: true,
                                      kCGImageSourceShouldCacheImmediately: true]
         if maxPixel > 0 { opts[kCGImageSourceThumbnailMaxPixelSize] = maxPixel }
-        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return UIImage(data: data) }
-        return UIImage(cgImage: cg)
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return PlatformImage(data: data) }
+        return PlatformImage.from(cgImage: cg)
     }
 
     func clear() {
@@ -216,7 +220,7 @@ import CoreImage
 @MainActor
 final class RemoteDiffusion: ObservableObject {
     static let shared = RemoteDiffusion()
-    struct Entry { let image: UIImage; let color: Color }
+    struct Entry { let image: PlatformImage; let color: Color }
     /// Not @Published: lookups may fill it synchronously during body evaluation. `rev` signals async arrivals.
     private var store: [String: Entry] = [:]
     @Published private(set) var rev = 0
@@ -246,8 +250,8 @@ final class RemoteDiffusion: ObservableObject {
         }
     }
 
-    nonisolated static func diffuse(_ src: UIImage) -> Entry? {
-        guard let cg = src.cgImage else { return nil }
+    nonisolated static func diffuse(_ src: PlatformImage) -> Entry? {
+        guard let cg = src.ymCGImage else { return nil }
         let ci = CIImage(cgImage: cg)
         let scale = 96 / max(ci.extent.width, ci.extent.height)
         let small = ci.transformed(by: .init(scaleX: scale, y: scale))
@@ -257,7 +261,7 @@ final class RemoteDiffusion: ObservableObject {
         var px = [UInt8](repeating: 0, count: 4)
         ctx.render(avg, toBitmap: &px, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: CGColorSpaceCreateDeviceRGB())
         guard let out = ctx.createCGImage(blur, from: small.extent) else { return nil }
-        return Entry(image: UIImage(cgImage: out), color: Color(red: Double(px[0]) / 255, green: Double(px[1]) / 255, blue: Double(px[2]) / 255))
+        return Entry(image: PlatformImage.from(cgImage: out), color: Color(red: Double(px[0]) / 255, green: Double(px[1]) / 255, blue: Double(px[2]) / 255))
     }
 }
 
@@ -277,7 +281,7 @@ struct RemoteBackdrop: View {
                     if w > 0.001, let e = diff.entry(u) {
                         ZStack {
                             e.color
-                            Image(uiImage: e.image).resizable().interpolation(.medium).scaledToFill()
+                            Image(platformImage: e.image).resizable().interpolation(.medium).scaledToFill()
                                 .frame(width: geo.size.width, height: geo.size.width)
                                 .scaleEffect(2.6)
                                 .position(x: geo.size.width / 2, y: height * 0.4)

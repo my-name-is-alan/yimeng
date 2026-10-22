@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0074463A9BCF825A27989FB3 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		0456FF1C11536093E337FE2E /* CoreClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B36BEE64E0933D39F511EBDD /* CoreClientTests.swift */; };
 		0B40A130EB2F83FBEB9DC53A /* OFL-LXGWWenKai.txt in Resources */ = {isa = PBXBuildFile; fileRef = 74444C3DE3123F7866B6EEEB /* OFL-LXGWWenKai.txt */; };
 		0C467222F0AF212833502E34 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */; };
@@ -21,11 +22,14 @@
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		22FC0BB5F887D18045C1F1A0 /* RecognizeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8B62B755DBDA5C79962202 /* RecognizeTests.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
+		2BD0702E65355625D53F936E /* MacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 818C4D230DA1CA993CEA9965 /* MacApp.swift */; };
 		2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D025F1147743E7047E3D665 /* IPadTests.swift */; };
+		34DBA77997AEB2D1AA57E716 /* YMIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB39E595A80206049793F9BD /* YMIcons.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
 		37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */ = {isa = PBXBuildFile; fileRef = 80FCD065D95D1B20100769C5 /* fnos-login.json */; };
 		3910C3724D6C6B435A2F0F0A /* YMKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FB6A2259ED997A5DED8CDA /* YMKit.swift */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
+		3B4065A1022B0AEB5B794F1E /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
 		3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */; };
 		3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26134EFA3C10B18CD7770A97 /* LibraryCache.swift */; };
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -46,8 +50,12 @@
 		5F7DC5897731B0F4227472A9 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA6146350902AD251CEEB2 /* Common.swift */; };
 		624EB59700198E03AE55FA70 /* OfflineCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B17C29D0678533A1D4D8D128 /* OfflineCacheTests.swift */; };
 		6782CC163A5C14ACFC92037D /* Recognize.swift in Sources */ = {isa = PBXBuildFile; fileRef = D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */; };
+		69FBA168419376BD8349EEC4 /* YMLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A59FAB5D319D663FADD8481 /* YMLayout.swift */; };
 		6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */; };
+		6C33465DFDC80615AD4A81FC /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = B739A19692414FDD47DEAF21 /* Platform.swift */; };
+		6E3B27D1CC1F3267CB340F2E /* DreamData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673E45F12B4A88C9F60BEDEF /* DreamData.swift */; };
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
+		6EE8E70BA6FA461D72557CC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		6FE10BBA8C1BEFD2A0C2F8DF /* emby-auth.json in Resources */ = {isa = PBXBuildFile; fileRef = 54114807AFE972B4C5E9DE7D /* emby-auth.json */; };
 		71FFB9F15860FFEEFA6EA514 /* WidgetShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38117CBF2CE73D5321A9BDF2 /* WidgetShared.swift */; };
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
@@ -55,12 +63,14 @@
 		76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BD4E0C93F027C9E0B46E7 /* Stores.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0DA447B96C02C374E060E1 /* CoreV29.swift */; };
+		7BDBD153A50E2B87F4B1E8CF /* YMIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB39E595A80206049793F9BD /* YMIcons.swift */; };
 		81A2CEB572C553218B29556B /* Yueqian.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E1D191594AA3C9B06D6B1C /* Yueqian.swift */; };
 		875E3EF53D003C1B9CA5D998 /* CoreV31.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B229F1CDC38307B30739F1 /* CoreV31.swift */; };
 		876F76F65B3D8F8A2B7CE26E /* CoreBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A272403B835110F9DA3A860E /* CoreBackend.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		8E2244E63F7491AD7D68F714 /* ZCOOLKuaiLe-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4FF4BC6C0C352F47778E6963 /* ZCOOLKuaiLe-Regular.ttf */; };
 		95004421BB25025814B1211C /* fnos-expired.json in Resources */ = {isa = PBXBuildFile; fileRef = 56439C44803E5E2178CD3157 /* fnos-expired.json */; };
+		A497EDCA40B2FC4F8A3C900A /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = B739A19692414FDD47DEAF21 /* Platform.swift */; };
 		AC913D8D096240B2BA9F5FD5 /* CoreUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE81EDA4F41B8F0C14A4393 /* CoreUI.swift */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
 		AEC9E4D81F3A2346A3D5FDE0 /* jellyfin-lyrics.json in Resources */ = {isa = PBXBuildFile; fileRef = 91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */; };
@@ -76,6 +86,7 @@
 		C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72941A55FA85EAEF903A950A /* CoreV28.swift */; };
 		C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14B0D85AF014834401939FD /* FnosClient.swift */; };
 		C2912B6E871B28DFF296207C /* OFL-SourceHanSerif.txt in Resources */ = {isa = PBXBuildFile; fileRef = 98F0C3866E2A62B252C48EBE /* OFL-SourceHanSerif.txt */; };
+		C2C9FA61E6D1BBDCA1AFE9A6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
 		C39A8C9E18A03049A2A06D4E /* CoreModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF11FEF0B55F7446317FCA11 /* CoreModels.swift */; };
 		C5884E9066B97C410971BA40 /* Backend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FA085F7CB3FF5489991F9B5 /* Backend.swift */; };
 		C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EAA934AB97BEE0902D11F2 /* MeView.swift */; };
@@ -209,6 +220,7 @@
 		77F48F48AC5D21B981D4F21F /* LiveLyrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveLyrics.swift; sourceTree = "<group>"; };
 		7A59FAB5D319D663FADD8481 /* YMLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YMLayout.swift; sourceTree = "<group>"; };
 		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
+		818C4D230DA1CA993CEA9965 /* MacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacApp.swift; sourceTree = "<group>"; };
 		81F7B82EDBCFF2E3A3BB65FE /* OfflineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineTests.swift; sourceTree = "<group>"; };
 		82445EEABCC63CDF9736B076 /* RecognizeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeTests.swift; sourceTree = "<group>"; };
 		84FB6A2259ED997A5DED8CDA /* YMKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YMKit.swift; sourceTree = "<group>"; };
@@ -227,6 +239,7 @@
 		A04F0B78A6F11DF674B96708 /* RecognizeLiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecognizeLiveTests.swift; sourceTree = "<group>"; };
 		A14B0D85AF014834401939FD /* FnosClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClient.swift; sourceTree = "<group>"; };
 		A272403B835110F9DA3A860E /* CoreBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreBackend.swift; sourceTree = "<group>"; };
+		A47AEE6B7928E2EAED5DE92B /* YimengMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = YimengMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		A933C296DDC8B099629F5875 /* PadStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadStyleTests.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -236,10 +249,12 @@
 		B36BEE64E0933D39F511EBDD /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		B5CF7DEAD24E618638BD9983 /* HomeWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeWidgets.swift; sourceTree = "<group>"; };
 		B727C7B6B00ECD4C014811FE /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
+		B739A19692414FDD47DEAF21 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		BF11FEF0B55F7446317FCA11 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
 		BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPad.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
+		CB39E595A80206049793F9BD /* YMIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YMIcons.swift; sourceTree = "<group>"; };
 		CB7AA12279A810579DDAD711 /* GenreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreView.swift; sourceTree = "<group>"; };
 		D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recognize.swift; sourceTree = "<group>"; };
 		D481EB1947F216689FAC4AF5 /* CoreEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEvents.swift; sourceTree = "<group>"; };
@@ -306,6 +321,7 @@
 			children = (
 				416552256942BFE9A95705C8 /* Shared */,
 				A1698FBD18401288FE2B1498 /* Yimeng */,
+				CF4A76807B58BB3746F567D0 /* YimengMac */,
 				7F632480824F1FEF77789F46 /* YimengTests */,
 				2EB51112BB9C749BD6990279 /* YimengUITests */,
 				AB95D4DD651112BF89637B28 /* YimengWidgets */,
@@ -331,6 +347,7 @@
 			isa = PBXGroup;
 			children = (
 				F1B679B920A57BE24DC98F91 /* Yimeng.app */,
+				A47AEE6B7928E2EAED5DE92B /* YimengMac.app */,
 				9743CD154042418ED809DFA6 /* YimengTests.xctest */,
 				0835E14DC973DC92549A924A /* YimengUITests.xctest */,
 				184013605DC0F6EEC27F5170 /* YimengWidgets.appex */,
@@ -395,6 +412,7 @@
 				4DE567D22EA8CF7E92D96564 /* Offline.swift */,
 				5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */,
 				0962E95E6B55BCB808D64B49 /* Palette.swift */,
+				B739A19692414FDD47DEAF21 /* Platform.swift */,
 				1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */,
 				467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */,
 				D15E0BD118EDBEDDD83A2EE0 /* Recognize.swift */,
@@ -403,6 +421,7 @@
 				E6C097B69274838BB315DE62 /* WidgetsIntents.swift */,
 				575967C96AA037C6933C8F7B /* Yimeng.entitlements */,
 				03072A4E8BE3A7C8176E3047 /* YimengSim.entitlements */,
+				CB39E595A80206049793F9BD /* YMIcons.swift */,
 				84FB6A2259ED997A5DED8CDA /* YMKit.swift */,
 				7A59FAB5D319D663FADD8481 /* YMLayout.swift */,
 				39E1D191594AA3C9B06D6B1C /* Yueqian.swift */,
@@ -435,9 +454,35 @@
 			path = Fonts;
 			sourceTree = "<group>";
 		};
+		CF4A76807B58BB3746F567D0 /* YimengMac */ = {
+			isa = PBXGroup;
+			children = (
+				818C4D230DA1CA993CEA9965 /* MacApp.swift */,
+			);
+			path = YimengMac;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		4D7D10A99CC3B5ECA95F161E /* YimengMac */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8017CC7BE0CDF45033089D7C /* Build configuration list for PBXNativeTarget "YimengMac" */;
+			buildPhases = (
+				D0AA1F889915B89E77688158 /* Sources */,
+				DAB48489DF84E050F57009ED /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = YimengMac;
+			packageProductDependencies = (
+			);
+			productName = YimengMac;
+			productReference = A47AEE6B7928E2EAED5DE92B /* YimengMac.app */;
+			productType = "com.apple.product-type.application";
+		};
 		684AFA6F6859FAFB66C8BEAD /* Yimeng */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8758A0E49D7D83F3A03A3A59 /* Build configuration list for PBXNativeTarget "Yimeng" */;
@@ -543,6 +588,7 @@
 			targets = (
 				684AFA6F6859FAFB66C8BEAD /* Yimeng */,
 				829E2B72F0534C7CEFFD4D36 /* YimengWidgets */,
+				4D7D10A99CC3B5ECA95F161E /* YimengMac */,
 				BF4387F73AADECAF45257D71 /* YimengTests */,
 				82ACD182F8C48CDE957154E6 /* YimengUITests */,
 			);
@@ -569,6 +615,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DAB48489DF84E050F57009ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6EE8E70BA6FA461D72557CC2 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -678,6 +732,7 @@
 				B63594918797C956B748D45E /* Offline.swift in Sources */,
 				72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */,
 				6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */,
+				A497EDCA40B2FC4F8A3C900A /* Platform.swift in Sources */,
 				6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */,
 				44B2579B22172C9943151E90 /* PlaylistDetailView.swift in Sources */,
 				6782CC163A5C14ACFC92037D /* Recognize.swift in Sources */,
@@ -685,6 +740,7 @@
 				C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */,
 				D333CE70C2E9BFB4686D2D5B /* WidgetShared.swift in Sources */,
 				DFECE7933EB3CC46C86CFAD5 /* WidgetsIntents.swift in Sources */,
+				7BDBD153A50E2B87F4B1E8CF /* YMIcons.swift in Sources */,
 				3910C3724D6C6B435A2F0F0A /* YMKit.swift in Sources */,
 				72EB91E07758CB4B0B8C5563 /* YMLayout.swift in Sources */,
 				DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */,
@@ -700,6 +756,21 @@
 				71FFB9F15860FFEEFA6EA514 /* WidgetShared.swift in Sources */,
 				1019C65652F5758BB605EAAC /* YimengActivityAttributes.swift in Sources */,
 				FC7356BF1C281FDDAB7DD2E3 /* YimengWidgets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D0AA1F889915B89E77688158 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0074463A9BCF825A27989FB3 /* Doodle.swift in Sources */,
+				6E3B27D1CC1F3267CB340F2E /* DreamData.swift in Sources */,
+				3B4065A1022B0AEB5B794F1E /* EmptyStates.swift in Sources */,
+				2BD0702E65355625D53F936E /* MacApp.swift in Sources */,
+				6C33465DFDC80615AD4A81FC /* Platform.swift in Sources */,
+				C2C9FA61E6D1BBDCA1AFE9A6 /* Theme.swift in Sources */,
+				34DBA77997AEB2D1AA57E716 /* YMIcons.swift in Sources */,
+				69FBA168419376BD8349EEC4 /* YMLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -814,7 +885,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -872,6 +942,30 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng";
 			};
 			name = Debug;
+		};
+		4ECC3F7F79021A68B48490B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "译梦 · 梦中的涂鸦";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.3.6;
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.mac;
+				PRODUCT_NAME = "译梦";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
 		};
 		73B076DBB574412F57F7EC94 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -977,6 +1071,30 @@
 			};
 			name = Debug;
 		};
+		DD6B6D39D9ECA5252B58B05C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 9;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "译梦 · 梦中的涂鸦";
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.3.6;
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.mac;
+				PRODUCT_NAME = "译梦";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
 		F23BBEA73C58EA1E0AFB78ED /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1026,7 +1144,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -1059,6 +1176,15 @@
 			buildConfigurations = (
 				73B076DBB574412F57F7EC94 /* Debug */,
 				0EDE8356E1D087D6361BF793 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8017CC7BE0CDF45033089D7C /* Build configuration list for PBXNativeTarget "YimengMac" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DD6B6D39D9ECA5252B58B05C /* Debug */,
+				4ECC3F7F79021A68B48490B1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

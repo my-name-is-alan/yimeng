@@ -52,13 +52,13 @@ struct TrackRow: View {
                     .overlay {
                         if playing {
                             RoundedRectangle(cornerRadius: 7, style: .continuous).fill(.black.opacity(0.35))
-                            Image(systemName: "waveform").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                            YMIcon(glyph: .recognize, size: 15, weight: 1.8, color: .white)
                         }
                     }
             } else if let art {
                 Image(art).resizable().scaledToFill().frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
-                Group { if playing { Image(systemName: "waveform") } else { Text("\(index)") } }
+                Group { if playing { YMIcon(glyph: .recognize, size: 14, weight: 1.7) } else { Text("\(index)") } }
                     .font(.system(size: 15)).foregroundStyle(playing ? Theme.accent(scheme) : Theme.secondary(scheme)).frame(width: 24)
             }
             HStack {

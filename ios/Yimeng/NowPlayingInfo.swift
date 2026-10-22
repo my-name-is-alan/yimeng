@@ -1,6 +1,8 @@
 import Foundation
 import MediaPlayer
+#if canImport(UIKit)
 import UIKit
+#endif
 #if canImport(ActivityKit)
 import ActivityKit
 #endif

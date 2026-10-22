@@ -70,7 +70,7 @@ struct CollectionView: View {
                         Text("\(items.count) 张专辑 · 本地无损").font(.system(size: 13)).opacity(0.7)
                     }
                     Spacer()
-                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 16, weight: .semibold))
+                    YMIcon(glyph: .order, size: 16, weight: 1.8)
                         .frame(width: 36, height: 36).background(Circle().fill(Color.white.opacity(0.14)))
                 }
                 .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)

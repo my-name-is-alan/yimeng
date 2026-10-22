@@ -234,14 +234,14 @@ struct LibrarySearchView: View {
                     Spacer()
                     if NavidromeClient.core {
                         Button { recognizing = true } label: {
-                            Label("识曲", systemImage: "waveform").font(.system(size: 14, weight: .semibold))
+                            Label { Text("识曲").font(.system(size: 14, weight: .semibold)) } icon: { YMIcon(glyph: .recognize, size: 14, weight: 1.7) }
                                 .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(Theme.fill(scheme)))
                         }.buttonStyle(.plain).accessibilityIdentifier("search.recognize")
                     }
                 }
                 .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Theme.secondary(scheme))
+                    YMIcon(glyph: .search, size: 16, weight: 1.6).foregroundStyle(Theme.secondary(scheme))
                     TextField(liveOnly ? "搜索曲库…" : "艺人、专辑、歌曲", text: $q)
                         .font(.system(size: 16))
                         .onSubmit { Task { await runSearch() } }
@@ -327,7 +327,7 @@ struct LibrarySearchView: View {
                             HStack {
                                 Text(n).font(.system(size: 17)); Spacer()
                                 Text(c).font(.system(size: 15)).foregroundStyle(Theme.secondary(scheme))
-                                Image(systemName: "chevron.right").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+                                YMIcon(glyph: .chevron, size: 11, weight: 1.5).foregroundStyle(Theme.secondary(scheme))
                             }.frame(maxHeight: .infinity).overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
                         }.frame(height: 52).padding(.horizontal, Theme.margin).motionIn(stagger(i, base: 0.16))
                     }

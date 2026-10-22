@@ -1,6 +1,8 @@
 import SwiftUI
 import PhotosUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - D58 profile: /me, nickname, avatar upload
 
@@ -126,7 +128,7 @@ struct ProfileView: View {
             }.frame(maxWidth: .infinity).padding(.top, 16)
             YMSection(footer: "昵称最多 32 个字，留空则显示用户名。") {
                 HStack(spacing: 14) {
-                    YMIcon(name: "pencil")
+                    YMLeadingIcon(name: "pencil")
                     Text("昵称").font(.system(size: 16))
                     TextField(store.me?.username ?? "昵称", text: $name).multilineTextAlignment(.trailing).focused($nameFocus)
                         .submitLabel(.done).onSubmit { Task { await save() } }

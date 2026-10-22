@@ -64,7 +64,7 @@ struct HomeLive: View {
                                         Text("排行").font(.system(size: 17, weight: .bold))
                                         Text(CoreState.platforms(can: "charts").map { CoreOrigin.label($0.origin) }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
                                     }
-                                    Spacer(); Image(systemName: "chevron.right").opacity(0.5)
+                                    Spacer(); YMIcon(glyph: .chevron, size: 11, weight: 1.5).opacity(0.5)
                                 }.padding(14).background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.fill(scheme)))
                             }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 22)
                         }
@@ -227,7 +227,7 @@ struct HomeLive: View {
             Spacer()
             if more {
                 Button(action: action) {
-                    HStack(spacing: 2) { Text("更多"); Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)) }
+                    HStack(spacing: 2) { Text("更多"); YMIcon(glyph: .chevron, size: 11, weight: 1.5).font(.system(size: 11, weight: .semibold)) }
                         .font(.system(size: 14)).foregroundStyle(Theme.secondary(scheme))
                 }.buttonStyle(.plain)
             }

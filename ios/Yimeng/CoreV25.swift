@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Palette from cover (server colors first, else averaged from the image) → readable paper/ink
 

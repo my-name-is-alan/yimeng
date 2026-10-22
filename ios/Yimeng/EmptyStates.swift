@@ -117,6 +117,7 @@ struct EmptyState: View {
     }
 }
 
+#if os(iOS)
 /// Artist avatar: Navidrome artist image (UA cache) over a doodle monogram tinted by the artist id.
 struct ArtistAvatar: View {
     let artist: NDArtist
@@ -150,3 +151,4 @@ private struct ArtistImage: View {
             }
     }
 }
+#endif

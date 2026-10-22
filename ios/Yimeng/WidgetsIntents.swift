@@ -1,7 +1,9 @@
 import SwiftUI
 import AppIntents
 import WidgetKit
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Feeding the widgets (only when an App Group is compiled in; see YMShared)
 

@@ -1,5 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Edge swipe back everywhere (custom nav bars hide UINavigationBar, which disables the pop gesture)
 

@@ -38,16 +38,22 @@ struct CircleIconButton: View {
     let icon: String; var size: CGFloat = 44; var dark = false
     @Environment(\.colorScheme) var scheme
     var body: some View {
-        Image(systemName: icon).font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(dark ? .white : Theme.fg(scheme))
-            .frame(width: size, height: size)
-            .background(Circle().fill(dark ? Color.black.opacity(0.28) : Theme.fill(scheme)))
+        Group {
+            if let g = YMGlyph.from(systemName: icon) {
+                YMIcon(glyph: g, size: size * 0.42, weight: 1.8, color: dark ? .white : Theme.fg(scheme))
+            } else {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(dark ? .white : Theme.fg(scheme))
+            }
+        }
+        .frame(width: size, height: size)
+        .background(Circle().fill(dark ? Color.black.opacity(0.28) : Theme.fill(scheme)))
     }
 }
 struct PlayCircle: View {
     var size: CGFloat = 48
     var body: some View {
-        Image(systemName: "play.fill").font(.system(size: size * 0.4)).foregroundStyle(.black)
+        YMIcon(glyph: .play, size: size * 0.42, weight: 1.6, filled: true, color: .black)
             .frame(width: size, height: size).background(Circle().fill(.white))
     }
 }

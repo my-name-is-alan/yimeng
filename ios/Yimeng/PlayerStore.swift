@@ -2,7 +2,11 @@ import Foundation
 import AVFoundation
 import Combine
 import MediaPlayer
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Persisted playback snapshot (no credentials).
 struct PlaybackSnapshot: Codable {
@@ -61,7 +65,14 @@ final class PlayerStore: ObservableObject {
 
     init() {
         let nc = NotificationCenter.default
-        for n in [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification, UIApplication.willTerminateNotification] {
+        #if os(iOS)
+        let names: [Notification.Name] = [UIApplication.willResignActiveNotification, UIApplication.didEnterBackgroundNotification, UIApplication.willTerminateNotification]
+        #elseif os(macOS)
+        let names: [Notification.Name] = [NSApplication.willResignActiveNotification, NSApplication.willTerminateNotification]
+        #else
+        let names: [Notification.Name] = []
+        #endif
+        for n in names {
             lifecycle.append(nc.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.save() }
             })

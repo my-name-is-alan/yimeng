@@ -164,10 +164,7 @@ struct PadSidebar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                ZStack {
-                    Crayon(shape: WobblyCircle(), color: Theme.fg(scheme), width: 1.8).frame(width: 30, height: 30)
-                    Path { p in p.addPath(DoodlePaths.sparkle(center: CGPoint(x: 23, y: 7), r: 5)) }.stroke(Theme.accent(scheme), lineWidth: 1.4).frame(width: 30, height: 30)
-                }
+                YMBrandMark(size: 32)
                 Text("译梦").font(.system(size: 20, weight: .bold))
             }
             .padding(.leading, 8).padding(.bottom, 18).padding(.top, 8)
@@ -177,8 +174,7 @@ struct PadSidebar: View {
                     HStack(spacing: 12) {
                         ZStack {
                             if on { Crayon(shape: WobblyCircle(), color: Theme.accent(scheme), width: 1.6).frame(width: 34, height: 34) }
-                            Image(systemName: t.icon).font(.system(size: 16, weight: on ? .semibold : .regular))
-                                .foregroundStyle(on ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.75))
+                            YMIcon(glyph: t.glyph, size: 18, weight: on ? 2.0 : 1.6, active: on)
                         }.frame(width: 36, height: 36)
                         Text(t.rawValue).font(.system(size: 15, weight: on ? .semibold : .regular))
                             .foregroundStyle(on ? Theme.fg(scheme) : Theme.fg(scheme).opacity(0.75))
@@ -229,18 +225,18 @@ struct PlayerTransport: View {
     var body: some View {
         HStack {
             Button { PlayerStore.shared.cyclePlayMode() } label: {
-                Image(systemName: { switch player.playMode { case .loop: "repeat"; case .one: "repeat.1"; case .shuffle: "shuffle"; case .order: "arrow.right" } }())
+                YMIcon(glyph: { switch player.playMode { case .loop: YMGlyph.repeat; case .one: .repeatOne; case .shuffle: .shuffle; case .order: .order } }(), size: big ? 18 : 16, weight: 1.7)
                     .font(.system(size: 17)).opacity(0.8)
             }
             Spacer()
-            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: big ? 26 : 24)) }
+            Button { state.skip(-1) } label: { YMIcon(glyph: .previous, size: big ? 26 : 24, weight: 1.9, filled: true) }
             Spacer()
             Button { state.setPlaying(!(player.hasRealPlayback ? player.isPlaying : state.isPlaying)) } label: {
-                Image(systemName: (player.hasRealPlayback ? player.isPlaying : state.isPlaying) ? "pause.fill" : "play.fill").font(.system(size: big ? 24 : 22)).foregroundStyle(Color(white: 0.07))
+                YMIcon(glyph: (player.hasRealPlayback ? player.isPlaying : state.isPlaying) ? .pause : .play, size: big ? 24 : 22, weight: 1.9, filled: true, color: Color(white: 0.07))
                     .frame(width: big ? 56 : 48, height: big ? 56 : 48).background(Circle().fill(.white))
             }
             Spacer()
-            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: big ? 26 : 24)) }
+            Button { state.skip(1) } label: { YMIcon(glyph: .next, size: big ? 26 : 24, weight: 1.9, filled: true) }
             Spacer()
             Text(player.rate == 1 ? "1×" : String(format: "%g×", player.rate)).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.7)
                 .lineLimit(1).fixedSize().frame(minWidth: 24)
@@ -316,12 +312,12 @@ struct PadPlayerColumn: View {
     }
     private var controls: some View {
         HStack(spacing: 34) {
-            Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
+            Button { state.skip(-1) } label: { YMIcon(glyph: .previous, size: 24, weight: 1.9, filled: true) }
             Button { state.setPlaying(!player.isPlaying) } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 22)).foregroundStyle(Color(white: 0.07))
+                YMIcon(glyph: player.isPlaying ? .pause : .play, size: 22, weight: 1.9, filled: true, color: Color(white: 0.07))
                     .frame(width: 54, height: 54).background(Circle().fill(.white))
             }
-            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
+            Button { state.skip(1) } label: { YMIcon(glyph: .next, size: 24, weight: 1.9, filled: true) }
         }.buttonStyle(.plain)
     }
     private func pill(_ t: String, _ icon: String, on: Bool = false, _ a: @escaping () -> Void) -> some View {

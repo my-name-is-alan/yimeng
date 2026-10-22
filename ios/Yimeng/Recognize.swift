@@ -174,7 +174,7 @@ struct RecognizeSheet: View {
                 Circle().trim(from: 0, to: progress).stroke(lime, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90)).frame(width: 150, height: 150)
                 Button { if case .listening = store.phase { store.cancel() } else { store.start() } } label: {
-                    Image(systemName: icon).font(.system(size: 40, weight: .semibold)).foregroundStyle(scheme == .dark ? Color.black : .white)
+                    YMIcon(glyph: .recognize, size: 40, weight: 2.2, filled: true, color: scheme == .dark ? Color.black : .white)
                         .frame(width: 104, height: 104).background(Circle().fill(lime))
                 }
                 .accessibilityIdentifier("recognize.go")

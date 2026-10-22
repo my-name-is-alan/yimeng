@@ -150,7 +150,7 @@ struct SettingsView: View {
                 Button { if NavidromeClient.core { showProfile = true } else { editingName = true } } label: {
                     HStack(spacing: 6) {
                         Text(NavidromeClient.core ? (coreMe.displayName ?? library.user) : !nickname.isEmpty ? nickname : (NavidromeClient.emby && !library.embyUserName.isEmpty ? library.embyUserName : "设置昵称")).font(.system(size: 22, weight: .bold))
-                        Image(systemName: NavidromeClient.core ? "chevron.right" : "pencil").font(.system(size: 13)).opacity(0.6)
+                        YMIcon(glyph: NavidromeClient.core ? .chevron : .more, size: 12, weight: 1.5).opacity(0.6)
                     }
                 }.buttonStyle(.plain)
                 Text(library.connected ? "\(NavidromeClient.emby ? "\(library.embyProduct) · " + (library.embyUserName.isEmpty ? library.user : library.embyUserName) : library.user) @ \(library.host.replacingOccurrences(of: "https://", with: ""))" : "尚未连接音乐来源")
@@ -184,7 +184,7 @@ struct SettingsView: View {
     }
 
     func icon(_ s: String) -> some View {
-        Image(systemName: s).font(.system(size: 16, weight: .medium)).frame(width: 28)
+        YMLeadingIcon(name: s)
     }
 
     func row(_ ic: String, _ title: String, _ detail: String, chevron: Bool = false) -> some View {

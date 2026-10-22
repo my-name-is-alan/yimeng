@@ -306,7 +306,7 @@ private struct ArtistsList: View {
                         Text(ar.name).font(.system(size: 16)).lineLimit(1)
                         Spacer()
                         if let c = ar.albumCount { Text("\(c) 张").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)) }
-                        Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                        YMIcon(glyph: .chevron, size: 11, weight: 1.5).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                     }
                     .foregroundStyle(Theme.fg(scheme))
                     .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
@@ -343,7 +343,7 @@ private struct PlaylistsList: View {
                                     .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
                             }
                             Spacer()
-                            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                            YMIcon(glyph: .chevron, size: 11, weight: 1.5).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                         }
                         .foregroundStyle(Theme.fg(scheme))
                         .padding(.horizontal, Theme.margin).frame(height: 68).contentShape(Rectangle())

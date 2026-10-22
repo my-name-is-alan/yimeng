@@ -248,9 +248,9 @@ struct FMControls: View {
     var body: some View {
         if fm.active, let s = player.song {
             HStack(spacing: 34) {
-                Button { fm.like(); Haptics.success() } label: { Image(systemName: stars.isStarred(song: s.id) ? "heart.fill" : "heart") }
-                Button { fm.trash(); Haptics.tick() } label: { Image(systemName: "trash") }
-                Button { player.skip(1) } label: { Image(systemName: "forward.end") }
+                Button { fm.like(); Haptics.success() } label: { YMIcon(glyph: stars.isStarred(song: s.id) ? .heartFill : .heart, size: 18, weight: 1.7, filled: stars.isStarred(song: s.id)) }
+                Button { fm.trash(); Haptics.tick() } label: { YMIcon(glyph: .close, size: 16, weight: 1.7) }
+                Button { player.skip(1) } label: { YMIcon(glyph: .next, size: 18, weight: 1.8, filled: true) }
                 if let o = fm.origin { Text("\(CoreOrigin.label(o)) · 私人 FM").font(.system(size: 12)).opacity(0.6) }
             }
             .font(.system(size: 19, weight: .medium)).buttonStyle(.plain)
@@ -359,7 +359,7 @@ struct DailyMixCard: View {
             }.contentShape(Rectangle())
             }.buttonStyle(.plain)
             Button { PlayerStore.shared.play(songs: songs.filter { !$0.isUnplayable }, startAt: 0) } label: {
-                Image(systemName: "play.circle.fill").font(.system(size: 30))
+                YMIcon(glyph: .play, size: 28, weight: 2.0, filled: true)
             }.buttonStyle(.plain)
         }
     }

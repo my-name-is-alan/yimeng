@@ -102,6 +102,7 @@ enum DoodlePaths {
 
 // MARK: - Composition layer
 
+#if os(iOS)
 struct CoverSlot { let rect: CGRect; let radius: CGFloat }
 
 extension DreamLayout {
@@ -239,3 +240,4 @@ struct AuroraBands: View {
         }
     }
 }
+#endif

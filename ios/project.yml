@@ -71,6 +71,36 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         MARKETING_VERSION: "0.3.6"
         CURRENT_PROJECT_VERSION: "9"
+
+  YimengMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - YimengMac
+      - path: Yimeng/Platform.swift
+      - path: Yimeng/YMIcons.swift
+      - path: Yimeng/Theme.swift
+      - path: Yimeng/Doodle.swift
+      - path: Yimeng/EmptyStates.swift
+      - path: Yimeng/DreamData.swift
+      - path: Yimeng/YMLayout.swift
+      - path: Yimeng/Assets.xcassets
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.mac
+        PRODUCT_NAME: 译梦
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        INFOPLIST_KEY_NSHumanReadableCopyright: "译梦 · 梦中的涂鸦"
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGNING_ALLOWED: NO
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"
   YimengTests:
     type: bundle.unit-test
     platform: iOS
@@ -106,3 +136,9 @@ schemes:
       targets:
         - YimengTests
         - YimengUITests
+  YimengMac:
+    build:
+      targets:
+        YimengMac: all
+    run:
+      config: Debug

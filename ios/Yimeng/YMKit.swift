@@ -99,9 +99,15 @@ struct YMDivider: View {
     var body: some View { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
 }
 
-struct YMIcon: View {
+/// Settings-row leading mark — doodle glyph when we know the SF name, else the SF Symbol as a last resort.
+struct YMLeadingIcon: View {
     let name: String
-    var body: some View { Image(systemName: name).font(.system(size: 16, weight: .medium)).frame(width: 28) }
+    var body: some View {
+        Group {
+            if let g = YMGlyph.from(systemName: name) { YMIcon(glyph: g, size: 18, weight: 1.6) }
+            else { Image(systemName: name).font(.system(size: 16, weight: .medium)) }
+        }.frame(width: 28)
+    }
 }
 
 struct YMRow<Accessory: View>: View {
@@ -114,12 +120,12 @@ struct YMRow<Accessory: View>: View {
     @Environment(\.colorScheme) var scheme
     var body: some View {
         HStack(spacing: 14) {
-            if let icon { YMIcon(name: icon) }
+            if let icon { YMLeadingIcon(name: icon) }
             Text(title).font(.system(size: 16)).lineLimit(1).truncationMode(.middle).layoutPriority(1)
             Spacer(minLength: 8)
             if !detail.isEmpty { Text(detail).font(.system(size: 13)).foregroundStyle(detailColor ?? Theme.secondary(scheme)).lineLimit(1).truncationMode(.middle) }
             accessory()
-            if chevron { Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.secondary(scheme)) }
+            if chevron { YMIcon(glyph: .chevron, size: 11, weight: 1.6).foregroundStyle(Theme.secondary(scheme)) }
         }
         .frame(minHeight: 50).contentShape(Rectangle())
     }
@@ -169,7 +175,7 @@ struct YMToggleRow: View {
     init(icon: String? = nil, _ title: String, isOn: Binding<Bool>) { self.icon = icon; self.title = title; self._isOn = isOn }
     var body: some View {
         Toggle(isOn: $isOn) {
-            HStack(spacing: 14) { if let icon { YMIcon(name: icon) }; Text(title).font(.system(size: 16)) }
+            HStack(spacing: 14) { if let icon { YMLeadingIcon(name: icon) }; Text(title).font(.system(size: 16)) }
         }
         .toggleStyle(YMToggleStyle())
         .frame(minHeight: 50)
@@ -190,7 +196,7 @@ struct YMPickerRow<V: Hashable>: View {
     }
     var body: some View {
         HStack(spacing: 14) {
-            if let icon { YMIcon(name: icon) }
+            if let icon { YMLeadingIcon(name: icon) }
             Text(title).font(.system(size: 16))
             Spacer()
             Menu {
@@ -198,7 +204,7 @@ struct YMPickerRow<V: Hashable>: View {
             } label: {
                 HStack(spacing: 4) {
                     Text(options.first { $0.0 == selection }?.1 ?? "")
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
+                    YMIcon(glyph: .order, size: 10, weight: 1.4)
                 }
                 .font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.fg(scheme))
                 .padding(.horizontal, 12).frame(height: 30).background(Capsule().fill(Theme.fill(scheme)))
@@ -239,7 +245,7 @@ struct YMSliderRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 14) {
-                if let icon { YMIcon(name: icon) }
+                if let icon { YMLeadingIcon(name: icon) }
                 Text(title).font(.system(size: 16)); Spacer()
                 Text(value).font(.system(size: 13).monospacedDigit()).foregroundStyle(Theme.secondary(scheme))
             }

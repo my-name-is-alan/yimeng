@@ -193,6 +193,7 @@ extension View {
     }
 }
 
+#if os(iOS)
 @main
 struct YimengApp: App {
     @StateObject var state = AppState()
@@ -206,6 +207,8 @@ struct YimengApp: App {
         }
     }
 }
+
+#endif
 
 struct Shell: View {
     @State var glassRects: [CGRect] = []
@@ -392,7 +395,7 @@ struct Shell: View {
         let active = state.tab == t
         return Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
             VStack(spacing: 2) {
-                Image(systemName: t.icon).font(.system(size: 19))
+                YMIcon(glyph: t.glyph, size: 22, weight: 1.8, active: state.tab == t)
                     .overlay(alignment: .topTrailing) { if t == .me && acct.unread > 0 { UnreadBadge(n: acct.unread).offset(x: 10, y: -6) } }
                 Text(t.rawValue).font(.system(size: 10, weight: .semibold))
             }
@@ -420,10 +423,10 @@ struct MiniPlayer: View {
                 Text(t.artist).font(.system(size: 12)).opacity(0.7).lineLimit(1)
             }
             Spacer()
-            Button { state.setPlaying(!playing) } label: { Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 20)) }.buttonStyle(.plain)
-            Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 18)) }.buttonStyle(.plain)
+            Button { state.setPlaying(!playing) } label: { YMIcon(glyph: playing ? .pause : .play, size: 22, weight: 1.9, filled: true) }.buttonStyle(.plain)
+            Button { state.skip(1) } label: { YMIcon(glyph: .next, size: 20, weight: 1.8, filled: true) }.buttonStyle(.plain)
             if player.hasRealPlayback {
-                Button { SheetCenter.shared.queue = true } label: { Image(systemName: "list.bullet").font(.system(size: 17)) }.buttonStyle(.plain)
+                Button { SheetCenter.shared.queue = true } label: { YMIcon(glyph: .queue, size: 20, weight: 1.7) }.buttonStyle(.plain)
             }
         }
         .foregroundStyle(Theme.fg(scheme))

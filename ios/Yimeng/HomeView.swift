@@ -93,7 +93,7 @@ struct HomeView: View {
                             HStack(spacing: 12) {
                                 Image("ym_artist_coldplay").resizable().scaledToFill().frame(width: 56, height: 56).clipShape(Circle())
                                 VStack(alignment: .leading) { Text("Coldplay").font(.system(size: 16, weight: .semibold)); Text("本周 32 次播放").font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)) }
-                                Spacer(); Image(systemName: "chevron.right").foregroundStyle(Theme.secondary(scheme))
+                                Spacer(); YMIcon(glyph: .chevron, size: 11, weight: 1.5).foregroundStyle(Theme.secondary(scheme))
                             }.padding(.horizontal, Theme.margin).contentShape(Rectangle())
                         }.buttonStyle(.plain).motionIn(stagger(5)).scrollReveal()
                     }

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Size-aware layout shared by Home / library / album / artist / playlist. iPhone keeps the original values;
 /// the iPad content column publishes its width here (and re-renders on bucket change), so grids, covers and margins scale.
@@ -12,7 +11,7 @@ enum YMLayout {
     static func grid(spacing: CGFloat = 16) -> [GridItem] { Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns) }
     /// Grid tile edge, sized to the content column (iPad) or the screen (iPhone).
     @MainActor static func tile(spacing: CGFloat = 16) -> CGFloat {
-        let w = pad ? width : UIScreen.main.bounds.width
+        let w = pad ? width : YMPlatform.screenWidth
         let n = CGFloat(columns)
         return ((w - margin * 2 - spacing * (n - 1)) / n).rounded(.down)
     }

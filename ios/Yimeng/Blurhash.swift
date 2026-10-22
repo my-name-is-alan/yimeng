@@ -1,12 +1,14 @@
-import UIKit
+import Foundation
+import CoreGraphics
+import ImageIO
 
 /// Minimal BlurHash decoder (https://blurha.sh, MIT algorithm). 32×32 output, cached — it's a placeholder only.
 enum Blurhash {
     private static let chars = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#$%*+,-.:;=?@[]^_{|}~")
     private static let map: [Character: Int] = Dictionary(uniqueKeysWithValues: chars.enumerated().map { ($1, $0) })
-    private static let cache = NSCache<NSString, UIImage>()
+    private static let cache = NSCache<NSString, PlatformImage>()
 
-    static func image(_ hash: String, size: Int = 32) -> UIImage? {
+    static func image(_ hash: String, size: Int = 32) -> PlatformImage? {
         if let c = cache.object(forKey: hash as NSString) { return c }
         guard let img = decode(hash, w: size, h: size) else { return nil }
         cache.setObject(img, forKey: hash as NSString)
@@ -20,7 +22,7 @@ enum Blurhash {
     }
     private static func signPow(_ v: Float, _ e: Float) -> Float { copysignf(powf(abs(v), e), v) }
 
-    static func decode(_ hash: String, w: Int, h: Int) -> UIImage? {
+    static func decode(_ hash: String, w: Int, h: Int) -> PlatformImage? {
         let s = Array(hash)
         guard s.count >= 6, let size = b83(Substring(String(s[0]))) else { return nil }
         let ny = size / 9 + 1, nx = size % 9 + 1
@@ -51,6 +53,6 @@ enum Blurhash {
               let cg = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
                                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue), provider: prov, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
         else { return nil }
-        return UIImage(cgImage: cg)
+        return PlatformImage.from(cgImage: cg)
     }
 }
