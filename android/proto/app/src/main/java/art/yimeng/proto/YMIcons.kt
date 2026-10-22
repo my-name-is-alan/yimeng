@@ -115,12 +115,18 @@ object YMIconPaths {
         addRoundRect(RoundRect(0.56f, 0.18f, 0.72f, 0.82f, CornerRadius(0.04f)))
     }
 
+    // Previous = |◀ (back=true); Next = ▶| (back=false). Old mirror pointed the wrong way.
     private fun skip(back: Boolean): Path {
-        fun x(v: Float) = 0.5f + (v - 0.5f) * if (back) -1f else 1f
         return Path().apply {
-            moveTo(x(0.22f), 0.22f); lineTo(x(0.22f), 0.78f)
-            moveTo(x(0.30f), 0.50f); lineTo(x(0.78f), 0.18f)
-            lineTo(x(0.78f), 0.82f); close()
+            if (back) {
+                // |◀
+                moveTo(0.18f, 0.20f); lineTo(0.18f, 0.80f)
+                moveTo(0.82f, 0.18f); lineTo(0.38f, 0.50f); lineTo(0.82f, 0.82f); close()
+            } else {
+                // ▶|
+                moveTo(0.18f, 0.18f); lineTo(0.62f, 0.50f); lineTo(0.18f, 0.82f); close()
+                moveTo(0.82f, 0.20f); lineTo(0.82f, 0.80f)
+            }
         }
     }
 

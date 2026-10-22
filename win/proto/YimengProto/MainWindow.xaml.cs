@@ -50,6 +50,8 @@ public sealed partial class MainWindow : Window
     private string _status = "连接 Core…";
     private enum SkelTab { Home, Library, Collection, Search, Me }
     private SkelTab _tab = SkelTab.Home;
+    private CoreTrack? _now;
+    private bool _liked;
 
     public MainWindow()
     {
@@ -429,14 +431,15 @@ public sealed partial class MainWindow : Window
     private void SelectTab(SkelTab tab)
     {
         _tab = tab;
+        // Leaving full player when switching tabs (iOS-like)
+        PlayerPane.Visibility = Visibility.Collapsed;
+        MiniPlayerGlass.Visibility = Visibility.Visible;
         BuildSideNav();
-        HomePane.Visibility = tab == SkelTab.Home && PlayerPane.Visibility != Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        HomePane.Visibility = tab == SkelTab.Home ? Visibility.Visible : Visibility.Collapsed;
         LibraryPane.Visibility = tab == SkelTab.Library ? Visibility.Visible : Visibility.Collapsed;
         CollectionPane.Visibility = tab == SkelTab.Collection ? Visibility.Visible : Visibility.Collapsed;
         SearchPane.Visibility = tab == SkelTab.Search ? Visibility.Visible : Visibility.Collapsed;
         MePane.Visibility = tab == SkelTab.Me ? Visibility.Visible : Visibility.Collapsed;
-        if (PlayerPane.Visibility == Visibility.Visible) return;
-        MiniPlayerGlass.Visibility = Visibility.Visible;
         if (tab == SkelTab.Library) RenderLibrary();
         if (tab == SkelTab.Collection) RenderCollection();
         if (tab == SkelTab.Search) _ = RenderSearchAsync();
@@ -466,10 +469,12 @@ public sealed partial class MainWindow : Window
                     ?? _home?.RecentlyPlayed.FirstOrDefault();
         if (first != null)
         {
+            _now = first;
             MiniTitle.Text = first.Title;
             MiniArtist.Text = first.Artist;
             PlayerTitle.Text = first.Title;
             PlayerArtist.Text = first.Artist;
+            SetPlayerCover(first.CoverUrl);
         }
     }
 
@@ -530,25 +535,31 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void RenderCollection()
+    private async void RenderCollection()
     {
         CollectionStack.Children.Clear();
         CollectionStack.Children.Add(TitleBlock("典藏"));
-        CollectionStack.Children.Add(Muted("收藏骨架（/favorites）"));
-        foreach (var t in _home?.RecentlyPlayed.Take(6) ?? Array.Empty<CoreTrack>())
-            CollectionStack.Children.Add(TrackRow(t));
+        CollectionStack.Children.Add(Muted("收藏 / 点赞"));
+        var items = await CoreApi.FavoritesAsync();
+        if (items.Count == 0)
+            CollectionStack.Children.Add(DoodleEmptyPanel("还没有收藏", "点亮爱心，曲目会出现在这里"));
+        else
+            foreach (var t in items.Take(40))
+                CollectionStack.Children.Add(TrackRow(t));
     }
 
     private async Task RenderSearchAsync()
     {
         SearchStack.Children.Clear();
         SearchStack.Children.Add(TitleBlock("搜索"));
-        SearchStack.Children.Add(Muted("查询：梁博"));
-        var results = await CoreApi.SearchAsync("梁博");
+        // Empty-state screenshot probe: nonsense query → doodle empty (not spinner/error)
+        var probe = "____empty_probe____";
+        SearchStack.Children.Add(Muted($"查询：{probe}（空态示意）"));
+        var results = await CoreApi.SearchAsync(probe);
         foreach (var t in results.Take(20))
             SearchStack.Children.Add(TrackRow(t));
         if (results.Count == 0)
-            SearchStack.Children.Add(Muted(CoreApi.LastError ?? "无结果"));
+            SearchStack.Children.Add(DoodleEmptyPanel("没有找到相关内容", "换个关键词试试，或去曲库逛逛"));
     }
 
     private void RenderMe()
@@ -744,14 +755,62 @@ public sealed partial class MainWindow : Window
 
     private void OpenTrack(CoreTrack t)
     {
+        _now = t;
         MiniTitle.Text = t.Title;
         MiniArtist.Text = t.Artist;
         PlayerTitle.Text = t.Title;
         PlayerArtist.Text = t.Artist;
+        SetPlayerCover(t.CoverUrl);
+        PlayerProgress.Value = 0.35;
+        UpdatePlayerTime(0.35);
         ShowPlayer();
     }
 
-    private void OpenPlayer_Click(object sender, PointerRoutedEventArgs e) => ShowPlayer();
+    private void SetPlayerCover(string? url)
+    {
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            try
+            {
+                PlayerCoverBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0x20, 0x18, 0x14));
+                PlayerCoverBorder.Child = new Image
+                {
+                    Stretch = Stretch.UniformToFill,
+                    Source = new BitmapImage(new Uri(url)),
+                };
+                return;
+            }
+            catch { }
+        }
+        var fb = new CanvasControl { Width = 88, Height = 88, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        fb.Draw += BrandMark_Draw;
+        PlayerCoverBorder.Child = fb;
+        PlayerCoverBorder.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0xFF, 0x7A, 0x1A));
+    }
+
+    private void PlayerProgress_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        => UpdatePlayerTime(e.NewValue);
+
+    private void UpdatePlayerTime(double p)
+    {
+        int dur = 242;
+        int pos = (int)(Math.Clamp(p, 0, 1) * dur);
+        static string Fmt(int s) => $"{s / 60}:{s % 60:D2}";
+        if (PlayerPos != null) PlayerPos.Text = Fmt(pos);
+        if (PlayerDur != null) PlayerDur.Text = Fmt(dur);
+    }
+
+    private void PlayerLike_Click(object sender, PointerRoutedEventArgs e)
+    {
+        _liked = !_liked;
+        if (sender is CanvasControl c) c.Invalidate();
+    }
+
+    private void OpenPlayer_Click(object sender, PointerRoutedEventArgs e)
+    {
+        if (_now != null) SetPlayerCover(_now.CoverUrl);
+        ShowPlayer();
+    }
     private void ClosePlayer_Click(object sender, PointerRoutedEventArgs e) => ShowHome();
 
     private void ShowHome()
@@ -805,6 +864,36 @@ public sealed partial class MainWindow : Window
 
     private void GlyphMe_Draw(CanvasControl sender, CanvasDrawEventArgs args)
         => DrawGlyph(sender, args, YMGlyph.Me, ink: Color.FromArgb(191, 255, 255, 255));
+
+    private UIElement DoodleEmptyPanel(string title, string subtitle)
+    {
+        var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 36, 0, 0) };
+        var canvas = new CanvasControl { Width = 240, Height = 160, HorizontalAlignment = HorizontalAlignment.Center };
+        canvas.Draw += (s, e) =>
+        {
+            var ds = e.DrawingSession;
+            var ink = Color.FromArgb(140, 255, 255, 255);
+            // RectF is left,top,right,bottom
+            using var frame = DoodlePaths.Frame(s, new DoodlePaths.RectF(36, 24, 204, 136), 7, 2.2f);
+            using var cloud = DoodlePaths.Cloud(s, new Vector2(40, 80), 150);
+            using var moon = DoodlePaths.Moon(s, new Vector2(200, 40), 16);
+            using var spark = DoodlePaths.Sparkle(s, new Vector2(130, 30), 8);
+            ds.DrawGeometry(frame, Color.FromArgb(80, 255, 255, 255), 1.8f);
+            ds.DrawGeometry(cloud, ink, 2.0f);
+            ds.DrawGeometry(moon, ink, 2.0f);
+            ds.DrawGeometry(spark, ink, 2.0f);
+        };
+        panel.Children.Add(canvas);
+        panel.Children.Add(new TextBlock { Text = title, Foreground = new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)), FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center });
+        panel.Children.Add(new TextBlock { Text = subtitle, Foreground = new SolidColorBrush(Color.FromArgb(100, 255, 255, 255)), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Center });
+        return panel;
+    }
+
+    private void GlyphHeart_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Heart, filled: _liked, ink: _liked ? Color.FromArgb(255, 255, 107, 138) : Colors.White);
+
+    private void GlyphQueue_Draw(CanvasControl sender, CanvasDrawEventArgs args)
+        => DrawGlyph(sender, args, YMGlyph.Queue, ink: Colors.White);
 
     private void BrandMark_Draw(CanvasControl sender, CanvasDrawEventArgs args)
     {

@@ -73,24 +73,39 @@
             <Grid x:Name="CoverHost" MinHeight="280" MaxHeight="420">
               <canvas:CanvasControl x:Name="DoodleCanvas" Draw="DoodleCanvas_Draw"
                                    CreateResources="DoodleCanvas_CreateResources" IsHitTestVisible="False"/>
-              <Border Width="240" Height="240" CornerRadius="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+              <Border x:Name="PlayerCoverBorder" Width="240" Height="240" CornerRadius="18"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"
                       Background="#FFFF7A1A" BorderBrush="#33FFFFFF" BorderThickness="1">
-                <canvas:CanvasControl Width="88" Height="88" Draw="BrandMark_Draw"
+                <canvas:CanvasControl x:Name="PlayerCoverFallback" Width="88" Height="88" Draw="BrandMark_Draw"
                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
             </Grid>
-            <StackPanel Grid.Row="1" Spacing="6" Margin="0,20,0,0">
+            <StackPanel Grid.Row="1" Spacing="6" Margin="0,16,0,0">
               <TextBlock x:Name="PlayerTitle" Text="—" Foreground="White" FontSize="24" FontWeight="Bold" HorizontalAlignment="Center"/>
               <TextBlock x:Name="PlayerArtist" Text="—" Foreground="#B3FFFFFF" FontSize="15" HorizontalAlignment="Center"/>
-              <Grid Margin="0,16,0,0" Height="4">
-                <Border Background="#33FFFFFF" CornerRadius="2"/>
-                <Border Background="#FFC8F542" CornerRadius="2" Width="160" HorizontalAlignment="Left"/>
+              <Slider x:Name="PlayerProgress" Minimum="0" Maximum="1" Value="0.35" StepFrequency="0.001"
+                      Margin="0,14,0,0" Height="28"
+                      Foreground="#FFC8F542" Background="#33FFFFFF"
+                      ValueChanged="PlayerProgress_ValueChanged"/>
+              <Grid>
+                <TextBlock x:Name="PlayerPos" Text="1:24" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Left"/>
+                <TextBlock x:Name="PlayerDur" Text="4:02" Foreground="#80FFFFFF" FontSize="11" HorizontalAlignment="Right"/>
               </Grid>
-              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="32" Margin="0,20,0,0">
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="28" Margin="0,16,0,0">
+                <canvas:CanvasControl Width="22" Height="22" Draw="GlyphHeart_Draw" PointerPressed="PlayerLike_Click"/>
                 <canvas:CanvasControl Width="26" Height="26" Draw="GlyphPrev_Draw"/>
                 <canvas:CanvasControl Width="40" Height="40" Draw="GlyphPauseBig_Draw"/>
                 <canvas:CanvasControl Width="26" Height="26" Draw="GlyphNext_Draw"/>
+                <canvas:CanvasControl Width="22" Height="22" Draw="GlyphQueue_Draw"/>
               </StackPanel>
+              <Border Margin="0,20,0,0" Padding="16" CornerRadius="14" Background="#10FFFFFF">
+                <StackPanel Spacing="6">
+                  <TextBlock Text="歌词" Foreground="#73FFFFFF" FontSize="11"/>
+                  <TextBlock Text="这一路走来不容易" Foreground="#8CFFFFFF" FontSize="14" HorizontalAlignment="Center"/>
+                  <TextBlock Text="你和我曾并肩前进" Foreground="#FFC8F542" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                  <TextBlock Text="梦还在心中不曾熄灭" Foreground="#8CFFFFFF" FontSize="14" HorizontalAlignment="Center"/>
+                </StackPanel>
+              </Border>
             </StackPanel>
           </Grid>
         </Grid>

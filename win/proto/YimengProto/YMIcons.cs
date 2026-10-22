@@ -125,14 +125,22 @@ public static class YMIconPaths
         return CanvasGeometry.CreateGroup(rc, new[] { a, c });
     }
 
+    // Previous = |◀ (back=true); Next = ▶| (back=false).
     static CanvasGeometry Skip(ICanvasResourceCreator rc, bool back)
     {
-        float flip = back ? -1f : 1f;
-        float X(float v) => 0.5f + (v - 0.5f) * flip;
         using var b = new CanvasPathBuilder(rc);
-        b.BeginFigure(X(0.22f), 0.22f); b.AddLine(X(0.22f), 0.78f); b.EndFigure(CanvasFigureLoop.Open);
-        b.BeginFigure(X(0.30f), 0.50f); b.AddLine(X(0.78f), 0.18f); b.AddLine(X(0.78f), 0.82f);
-        b.EndFigure(CanvasFigureLoop.Closed);
+        if (back)
+        {
+            b.BeginFigure(0.18f, 0.20f); b.AddLine(0.18f, 0.80f); b.EndFigure(CanvasFigureLoop.Open);
+            b.BeginFigure(0.82f, 0.18f); b.AddLine(0.38f, 0.50f); b.AddLine(0.82f, 0.82f);
+            b.EndFigure(CanvasFigureLoop.Closed);
+        }
+        else
+        {
+            b.BeginFigure(0.18f, 0.18f); b.AddLine(0.62f, 0.50f); b.AddLine(0.18f, 0.82f);
+            b.EndFigure(CanvasFigureLoop.Closed);
+            b.BeginFigure(0.82f, 0.20f); b.AddLine(0.82f, 0.80f); b.EndFigure(CanvasFigureLoop.Open);
+        }
         return CanvasGeometry.CreatePath(b);
     }
 

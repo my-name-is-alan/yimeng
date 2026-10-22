@@ -132,20 +132,40 @@ object CoreApi {
         }
     }
 
+    private fun absCover(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+        if (raw.startsWith("/")) return baseUrl.trimEnd('/') + raw
+        return raw
+    }
+
+    private fun coverFrom(o: JSONObject): String? {
+        val direct = o.optString("cover_url")
+        if (direct.isNotBlank()) return absCover(direct)
+        when (val cover = o.opt("cover")) {
+            is String -> if (cover.isNotBlank()) return absCover(cover)
+            is JSONObject -> {
+                val u = cover.optString("url").ifEmpty { cover.optString("large") }
+                if (u.isNotBlank()) return absCover(u)
+            }
+        }
+        return null
+    }
+
     private fun parseTrack(o: JSONObject): CoreTrack = CoreTrack(
         id = o.optString("id"),
         title = o.optString("title").ifEmpty { "未知曲目" },
         artist = o.optString("artist_name").ifEmpty {
             o.optJSONArray("artists")?.optJSONObject(0)?.optString("name").orEmpty()
         },
-        coverUrl = o.optString("cover_url").ifEmpty { o.optString("cover") }.ifEmpty { null },
+        coverUrl = coverFrom(o),
         origin = o.optString("origin").ifEmpty { null },
     )
 
     private fun parsePlaylist(o: JSONObject): CorePlaylist = CorePlaylist(
         id = o.optString("id"),
         name = o.optString("name").ifEmpty { o.optString("title") },
-        coverUrl = o.optString("cover_url").ifEmpty { null },
+        coverUrl = coverFrom(o),
         origin = o.optString("origin").ifEmpty { null },
     )
 
@@ -202,12 +222,29 @@ object CoreApi {
 
     suspend fun search(q: String): List<CoreTrack> = withContext(Dispatchers.IO) {
         if (q.isBlank()) return@withContext emptyList()
+        // Proto empty-state probe: never hits network (online fuzzy always returns hits)
+        if (q.startsWith("____") || q == "∅") return@withContext emptyList()
         val enc = java.net.URLEncoder.encode(q, "UTF-8")
         val o = getJson("/api/v1/search?q=$enc&online=1") ?: return@withContext emptyList()
-        val tracks = o.optJSONObject("tracks")?.optJSONArray("items")
-            ?: o.optJSONArray("tracks")
-            ?: JSONArray()
-        (0 until tracks.length()).map { parseTrack(tracks.getJSONObject(it)) }
+        val out = LinkedHashMap<String, CoreTrack>()
+        fun addArr(a: JSONArray?) {
+            if (a == null) return
+            for (i in 0 until a.length()) {
+                val tr = parseTrack(a.getJSONObject(i))
+                if (tr.id.isNotBlank()) out.putIfAbsent(tr.id, tr)
+            }
+        }
+        addArr(o.optJSONObject("tracks")?.optJSONArray("items"))
+        addArr(o.optJSONArray("tracks"))
+        // online platforms nest results under online[].result.tracks
+        val online = o.optJSONArray("online")
+        if (online != null) {
+            for (i in 0 until online.length()) {
+                val res = online.getJSONObject(i).optJSONObject("result")
+                addArr(res?.optJSONArray("tracks"))
+            }
+        }
+        out.values.toList()
     }
 
     suspend fun favorites(): List<CoreTrack> = withContext(Dispatchers.IO) {

@@ -2,6 +2,8 @@ package art.yimeng.proto.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 // offset via layout.*
@@ -16,6 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -185,19 +193,25 @@ private fun LibraryPage(home: HomePayload?, onPlay: (CoreTrack) -> Unit) {
 @Composable
 private fun CollectionPage(onPlay: (CoreTrack) -> Unit) {
     var items by remember { mutableStateOf<List<CoreTrack>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         items = CoreApi.favorites()
         err = CoreApi.lastError
+        loaded = true
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("典藏", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Text("收藏 / 点赞", color = Color.White.copy(0.45f), fontSize = 12.sp, modifier = Modifier.padding(bottom = 14.dp))
-        if (items.isEmpty()) {
-            Text(err ?: "暂无收藏曲目", color = Color.White.copy(0.55f))
-            Spacer(Modifier.height(12.dp))
-            Text("（骨架：接 Core /favorites）", color = Color.White.copy(0.35f), fontSize = 12.sp)
-        } else items.forEach { TrackRow(it) { onPlay(it) } }
+        when {
+            !loaded -> Text("加载中…", color = Color.White.copy(0.45f))
+            items.isEmpty() && err == null -> DoodleEmptyState(
+                title = "还没有收藏",
+                subtitle = "点亮爱心，曲目会出现在这里",
+            )
+            items.isEmpty() -> Text(err ?: "加载失败", color = Color.White.copy(0.55f))
+            else -> items.forEach { TrackRow(it) { onPlay(it) } }
+        }
     }
 }
 
@@ -206,7 +220,16 @@ private fun SearchPage(onPlay: (CoreTrack) -> Unit) {
     var q by remember { mutableStateOf("梁博") }
     var results by remember { mutableStateOf<List<CoreTrack>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
+    var searched by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    fun runSearch(query: String) {
+        scope.launch {
+            busy = true
+            results = CoreApi.search(query)
+            busy = false
+            searched = true
+        }
+    }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("搜索", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
@@ -221,32 +244,32 @@ private fun SearchPage(onPlay: (CoreTrack) -> Unit) {
                 color = Color.White.copy(if (q.isEmpty()) 0.4f else 0.9f),
                 fontSize = 15.sp,
                 modifier = Modifier.weight(1f).clickable {
-                    // cycle demo queries for skeleton screenshots
                     q = when (q) {
                         "梁博" -> "陈粒"
-                        "陈粒" -> "A-LIN"
+                        "陈粒" -> "____empty_probe____"
+                        "____empty_probe____" -> "梁博"
                         else -> "梁博"
                     }
-                    scope.launch {
-                        busy = true
-                        results = CoreApi.search(q)
-                        busy = false
-                    }
+                    runSearch(q)
                 },
             )
-            Text("搜", color = Lime, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable {
-                scope.launch {
-                    busy = true
-                    results = CoreApi.search(q)
-                    busy = false
-                }
-            })
+            Text("搜", color = Lime, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { runSearch(q) })
         }
         Spacer(Modifier.height(12.dp))
         if (busy) Text("搜索中…", color = Color.White.copy(0.5f))
         Column(Modifier.verticalScroll(rememberScrollState())) {
             results.forEach { TrackRow(it) { onPlay(it) } }
-            if (!busy && results.isEmpty()) Text("点「搜」或点查询词切换", color = Color.White.copy(0.4f), fontSize = 13.sp)
+            if (!busy && searched && results.isEmpty()) {
+                DoodleEmptyState(
+                    title = "没有找到相关内容",
+                    subtitle = "换个关键词试试，或去曲库逛逛",
+                )
+            } else if (!busy && !searched) {
+                DoodleEmptyState(
+                    title = "搜点什么吧",
+                    subtitle = "歌曲、歌手、专辑 · 点查询词或「搜」",
+                )
+            }
         }
     }
 }
@@ -275,9 +298,17 @@ private fun MePage(status: String) {
 
 @Composable
 private fun PlayerPage(track: CoreTrack, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    var progress by remember(track.id) { mutableFloatStateOf(0.35f) }
+    var liked by remember(track.id) { mutableStateOf(false) }
+    val durationSec = 242
+    val posSec = (progress * durationSec).toInt()
+    fun fmt(s: Int) = "%d:%02d".format(s / 60, s % 60)
     Box(modifier.background(Base)) {
-        DreamField(DreamMock.orange, Modifier.fillMaxSize(), realPlayback = true, lastBeatAgoSec = 0.15f)
-        Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        DreamField(DreamMock.cloud, Modifier.fillMaxSize(), realPlayback = true, lastBeatAgoSec = 0.15f)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(
                     Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(0.1f)).clickable(onClick = onBack).padding(8.dp, 6.dp),
@@ -287,30 +318,114 @@ private fun PlayerPage(track: CoreTrack, onBack: () -> Unit, modifier: Modifier 
                     Spacer(Modifier.width(4.dp))
                     Text("返回", color = Color.White.copy(0.85f), fontSize = 13.sp)
                 }
+                Spacer(Modifier.weight(1f))
+                YMIcon(
+                    if (liked) YMGlyph.HeartFill else YMGlyph.Heart,
+                    size = 22.dp,
+                    filled = liked,
+                    color = if (liked) Color(0xFFFF6B8A) else Color.White.copy(0.85f),
+                    modifier = Modifier.clickable { liked = !liked },
+                )
+                Spacer(Modifier.width(16.dp))
+                YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.85f))
             }
-            Spacer(Modifier.height(12.dp))
-            Box(Modifier.size(280.dp), contentAlignment = Alignment.Center) {
-                DoodleLayer(DreamMock.orange, Modifier.fillMaxSize(), intensity = 0.7f)
-                CoverImage(track.coverUrl, Modifier.size(220.dp).clip(RoundedCornerShape(18.dp)), fallback = Color(0xFFFF7A1A))
+            Spacer(Modifier.height(8.dp))
+            // Cover + DoodlePaths.frame (Cloud motif draws frame around the slot)
+            Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+                DoodleLayer(DreamMock.cloud, Modifier.fillMaxSize(), intensity = 0.75f)
+                CoverImage(track.coverUrl, Modifier.size(200.dp).clip(RoundedCornerShape(16.dp)), fallback = Color(0xFFFF7A1A))
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
             Text(track.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(track.artist, color = Color.White.copy(0.7f), fontSize = 14.sp)
+            Spacer(Modifier.height(16.dp))
+            // Scrubbable progress
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(28.dp)
+                    .pointerInput(track.id) {
+                        detectTapGestures { offset ->
+                            progress = (offset.x / size.width).coerceIn(0f, 1f)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(0.2f))) {
+                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Lime))
+                }
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = ((progress * 1000).toInt().coerceIn(0, 1000) / 1000f * 1f).let { /* thumb */ 0.dp })
+                        .fillMaxWidth(progress)
+                        .wrapContentWidth(Alignment.End),
+                ) {
+                    Box(Modifier.size(12.dp).clip(CircleShape).background(Lime))
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(fmt(posSec), color = Color.White.copy(0.5f), fontSize = 11.sp)
+                Text(fmt(durationSec), color = Color.White.copy(0.5f), fontSize = 11.sp)
+            }
             Spacer(Modifier.height(18.dp))
-            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(0.2f))) {
-                Box(Modifier.fillMaxWidth(0.35f).fillMaxHeight().background(Lime))
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("1:24", color = Color.White.copy(0.5f), fontSize = 11.sp)
-                Text("4:02", color = Color.White.copy(0.5f), fontSize = 11.sp)
-            }
-            Spacer(Modifier.height(22.dp))
+            // Prev left · Pause · Next right (glyphs fixed in YMIcons.skip)
             Row(horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
                 YMIcon(YMGlyph.Previous, size = 26.dp, filled = true, color = Color.White)
                 YMIcon(YMGlyph.Pause, size = 40.dp, filled = true, color = Color.White)
                 YMIcon(YMGlyph.Next, size = 26.dp, filled = true, color = Color.White)
             }
+            Spacer(Modifier.height(28.dp))
+            // Lyrics area below cover/controls
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(0.06f))
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("歌词", color = Color.White.copy(0.45f), fontSize = 11.sp, modifier = Modifier.align(Alignment.Start))
+                Spacer(Modifier.height(10.dp))
+                Text("这一路走来不容易", color = Color.White.copy(0.55f), fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("你和我曾并肩前进", color = Lime, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Text("梦还在心中不曾熄灭", color = Color.White.copy(0.55f), fontSize = 14.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("哪怕风雨再大也要唱下去", color = Color.White.copy(0.35f), fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(40.dp))
         }
+    }
+}
+
+@Composable
+private fun DoodleEmptyState(title: String, subtitle: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Canvas(Modifier.size(220.dp, 160.dp)) {
+            val ink = Color.White.copy(0.55f)
+            val stroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
+            val cloud = DoodlePaths.cloud(Offset(28f, 70f), 150f)
+            val moon = DoodlePaths.moon(Offset(size.width - 48f, 36f), 18f)
+            val spark = DoodlePaths.sparkle(Offset(size.width * 0.55f, 28f), 8f)
+            val frame = DoodlePaths.frame(
+                Rect(40f, 30f, size.width - 40f, size.height - 20f),
+                seed = 7u,
+                jitter = 2.2f,
+            )
+            drawPath(frame, ink.copy(0.35f), style = stroke)
+            drawPath(cloud, ink, style = stroke)
+            drawPath(moon, ink, style = stroke)
+            drawPath(spark, ink, style = stroke)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(title, color = Color.White.copy(0.75f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text(subtitle, color = Color.White.copy(0.4f), fontSize = 13.sp)
     }
 }
 

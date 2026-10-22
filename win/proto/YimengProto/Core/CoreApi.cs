@@ -114,18 +114,65 @@ public static class CoreApi
         return JsonDocument.Parse(text);
     }
 
+    static string? AbsCover(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return raw;
+        if (raw.StartsWith('/')) return BaseUrl.TrimEnd('/') + raw;
+        return raw;
+    }
+
+    static string? CoverFrom(JsonElement o)
+    {
+        if (o.TryGetProperty("cover_url", out var cu) && cu.ValueKind == JsonValueKind.String)
+        {
+            var s = cu.GetString();
+            if (!string.IsNullOrWhiteSpace(s)) return AbsCover(s);
+        }
+        if (o.TryGetProperty("cover", out var cover))
+        {
+            if (cover.ValueKind == JsonValueKind.String)
+                return AbsCover(cover.GetString());
+            if (cover.ValueKind == JsonValueKind.Object && cover.TryGetProperty("url", out var u))
+                return AbsCover(u.GetString());
+        }
+        return null;
+    }
+
+    static string ArtistFrom(JsonElement o)
+    {
+        if (o.TryGetProperty("artist_name", out var a) && a.ValueKind == JsonValueKind.String)
+        {
+            var s = a.GetString();
+            if (!string.IsNullOrWhiteSpace(s)) return s!;
+        }
+        if (o.TryGetProperty("artists", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var x in arr.EnumerateArray())
+            {
+                if (x.TryGetProperty("name", out var n))
+                {
+                    var s = n.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) return s!;
+                }
+            }
+        }
+        return "";
+    }
+
     static CoreTrack ParseTrack(JsonElement o) => new(
         o.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
         o.TryGetProperty("title", out var t) ? t.GetString() ?? "未知" : "未知",
-        o.TryGetProperty("artist_name", out var a) ? a.GetString() ?? "" : "",
-        o.TryGetProperty("cover_url", out var c) ? c.GetString() : null,
+        ArtistFrom(o),
+        CoverFrom(o),
         o.TryGetProperty("origin", out var org) ? org.GetString() : null
     );
 
     static CorePlaylist ParsePl(JsonElement o) => new(
         o.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
         o.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
-        o.TryGetProperty("cover_url", out var c) ? c.GetString() : null,
+        CoverFrom(o),
         o.TryGetProperty("origin", out var org) ? org.GetString() : null
     );
 
@@ -178,15 +225,46 @@ public static class CoreApi
     {
         var list = new List<CoreTrack>();
         if (string.IsNullOrWhiteSpace(q)) return list;
+        if (q.StartsWith("____") || q == "∅") return list; // empty-state probe
         var enc = Uri.EscapeDataString(q);
         using var doc = await GetDocAsync($"/api/v1/search?q={enc}&online=1");
         if (doc == null) return list;
         var root = doc.RootElement;
-        JsonElement tracks = default;
+        var seen = new HashSet<string>();
+        void AddArr(JsonElement arr)
+        {
+            if (arr.ValueKind != JsonValueKind.Array) return;
+            foreach (var x in arr.EnumerateArray())
+            {
+                var tr = ParseTrack(x);
+                if (string.IsNullOrEmpty(tr.Id) || !seen.Add(tr.Id)) continue;
+                list.Add(tr);
+            }
+        }
         if (root.TryGetProperty("tracks", out var t))
-            tracks = t.ValueKind == JsonValueKind.Object && t.TryGetProperty("items", out var items) ? items : t;
-        if (tracks.ValueKind == JsonValueKind.Array)
-            foreach (var x in tracks.EnumerateArray()) list.Add(ParseTrack(x));
+        {
+            if (t.ValueKind == JsonValueKind.Object && t.TryGetProperty("items", out var items)) AddArr(items);
+            else AddArr(t);
+        }
+        if (root.TryGetProperty("online", out var online) && online.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var o in online.EnumerateArray())
+            {
+                if (o.TryGetProperty("result", out var res) && res.TryGetProperty("tracks", out var ot))
+                    AddArr(ot);
+            }
+        }
+        return list;
+    }
+
+    public static async Task<List<CoreTrack>> FavoritesAsync()
+    {
+        var list = new List<CoreTrack>();
+        using var doc = await GetDocAsync("/api/v1/favorites?type=track&limit=40");
+        if (doc == null) return list;
+        var root = doc.RootElement;
+        if (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+            foreach (var x in items.EnumerateArray()) list.Add(ParseTrack(x));
         return list;
     }
 }
