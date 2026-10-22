@@ -49,6 +49,7 @@ export async function dashboard(main, { cleanup }) {
       const [s, health, players, logs] = await Promise.all([get("/system"), get("/library/health").catch(() => null), get("/players").catch(() => ({ items: [] })),
         isAdmin() ? get(`/system/logs${qs({ level: "info", limit: 12 })}`).catch(() => ({ items: [] })) : { items: [] }]);
       state.system = s;
+      if (!s.library) { statsBox.replaceChildren(h("p", { class: "muted" }, `Core ${s.version} · API ${s.api_version}。详细状态仅管理员可见。`)); return; }
       const L = s.library;
       statsBox.replaceChildren(stat("曲目", fmtNum(L.tracks), "首", true), stat("专辑", fmtNum(L.albums)), stat("艺人", fmtNum(L.artists)), stat("总时长", Math.round(L.duration_ms / 3600000), "小时"),
         stat("占用空间", fmtBytes(L.bytes)), stat("无损占比", L.files ? Math.round((L.lossless_files / L.files) * 100) : 0, "%"), stat("播放次数", fmtNum(L.plays)), stat("歌单", fmtNum(L.playlists)));

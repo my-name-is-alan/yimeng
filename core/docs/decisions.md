@@ -437,3 +437,15 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - **Automatic backups:** policy `{enabled, keep 1..60}` in settings (`GET/PUT /system/backups/policy`, admin). A backup is taken when the last automatic one is older than the interval (default 24h, checked every ≤10 min). Only automatic backups rotate; manual and pre-migration backups are never deleted by rotation.
   - Backups contain library.db including the encrypted Vault entries. `master.key` is never included.
 - **Restore from the admin UI:** `POST /system/backups/{name}/restore {confirm: name}` (admin; the confirm field must repeat the name). The backup is validated and staged → 202 `restart_required`; it is applied at the next Core start, keeping the current DB as `.pre-restore-*`.
+
+## D57 — Platform logins are server-wide (user decision)
+- Platform logins (NetEase, QQ, Spotify, …) and their caches are deliberately one per Core, not per 译梦 account. Every account sees the same platform playlists ("mine"), recommendations and charts.
+- Per-account (D49) data is unchanged: library history, scrobbles, prefs, source-switch and playback settings, local playlists, players and alerts.
+- Only admins can link or unlink platform accounts. This is documented in the openapi info block; no code change.
+
+## Docs/API cleanups (designer review)
+- openapi.yaml must parse as YAML. A test now enforces this (an unquoted colon in the /scrobble description had broken it).
+- Cover `size` must be one of 120|300|600|1200; any other value returns 400.
+- `/playlists` `cursor` and `groups` are marked deprecated and are still returned.
+- `GET /system` for non-admins returns only `{version, api_version}`.
+- `limit` is clamped to 500.

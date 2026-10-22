@@ -8,6 +8,11 @@ info:
     `POST /api/pair/request`. Media routes (`/api/stream/*`, `*/cover`) also
     accept `?access_token=` because `<audio>`/`<img>` cannot set headers.
     Errors use `{ "error": "<kind>", "message": "..." }`.
+
+    Platform logins are server-wide by design (D57): one NetEase/QQ/Spotify login
+    per Core, shared by every 译梦 account. All accounts therefore see the same
+    platform playlists, recommendations and charts (`/sources`, `/playlists?scope=mine|recommend|…`,
+    `/online/*`). Library data, history, prefs, local playlists and players stay per account.
     Optional TLS (`YIMENG_TLS_CERT`/`YIMENG_TLS_KEY`), trusted proxies
     (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
     (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
@@ -434,11 +439,11 @@ paths:
     get:
       tags: [media]
       summary: Album cover image (optional sized thumbnail)
-      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
+      description: Without size/format the original is served. With size (long edge, one of 120|300|600|1200; anything else → 400) a resized thumbnail is cached.
       security: [{ bearer: [] }, { queryToken: [] }]
       parameters:
         - $ref: "#/components/parameters/Id"
-        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: size, in: query, schema: { type: integer, enum: [120, 300, 600, 1200], default: 600 }, description: "Long edge in px; must be one of 120, 300, 600, 1200 — any other value returns 400" }
         - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
       responses:
         "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
@@ -500,11 +505,11 @@ paths:
     get:
       tags: [media]
       summary: Track cover (embedded or folder art) (optional sized thumbnail)
-      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
+      description: Without size/format the original is served. With size (long edge, one of 120|300|600|1200; anything else → 400) a resized thumbnail is cached.
       security: [{ bearer: [] }, { queryToken: [] }]
       parameters:
         - $ref: "#/components/parameters/Id"
-        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: size, in: query, schema: { type: integer, enum: [120, 300, 600, 1200], default: 600 }, description: "Long edge in px; must be one of 120, 300, 600, 1200 — any other value returns 400" }
         - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
       responses:
         "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
@@ -1068,7 +1073,7 @@ paths:
     post:
       tags: [history]
       summary: Record a play reported by a client that played the track itself
-      description: Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is, per account (D49). Online ids (netease:…, qq:…) are accepted: a snapshot of the track (title, artists, album, cover, duration) is stored so history / 最近播放 / 常听 keep working.
+      description: "Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is, per account (D49). Online ids (netease:…, qq:…) are accepted: a snapshot of the track (title, artists, album, cover, duration) is stored so history / 最近播放 / 常听 keep working."
       requestBody:
         required: true
         content:
@@ -1197,10 +1202,10 @@ paths:
       parameters:
         - { name: scope, in: query, schema: { type: string, enum: [local, all, online, mine, recommend, discover, charts] } }
         - { name: origin, in: query, schema: { type: string } }
-        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 }, description: "Values above 500 are clamped to 500" }
         - { name: cursor, in: query, schema: { type: string } }
       responses:
-        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } }, total: { type: integer }, next_cursor: { type: string, nullable: true } } } } } }
+        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } }, total: { type: integer }, next_cursor: { type: string, nullable: true }, cursor: { type: string, nullable: true, deprecated: true, description: "Deprecated — echo of the request cursor; use next_cursor. Still returned for now." }, groups: { type: array, items: { type: object }, deprecated: true, description: "Deprecated — per-platform grouping for scope=mine|recommend|discover|charts. Still returned for now; prefer the flat items list." } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [playlists]
@@ -1304,7 +1309,7 @@ paths:
       tags: [system]
       summary: Version, library stats, scan state, ffmpeg/loudness caps, root diagnostics
       description: |
-        Non-admin callers get a redacted view (D49): root paths/errors, scan job, diagnostics, DB/backup/device figures and go_version are blanked.
+        Non-admin callers get only `{version, api_version}` (no os, uptime, library stats or diagnostics). Everything below applies to admins.
         Available to every paired device. Reports version/uptime, library counts, latest scan,
         per-root reachability and free space, database size, transcoder formats and cache size,
         loudness analysis queue, backup freshness, and self-diagnostics (permission errors,
@@ -1924,7 +1929,7 @@ paths:
           application/json:
             schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string } } }
       responses:
-        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/RefreshSession" } } } }
         "401": { description: invalid_refresh_token }
   /api/v1/server/info:
     get:
@@ -2174,7 +2179,7 @@ components:
     queryToken: { type: apiKey, in: query, name: access_token }
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string } }
-    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+    Limit: { name: limit, in: query, description: "Page size; values above 500 are clamped to 500 (not an error). Values < 1 return 400.", schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
     Offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
     Order: { name: order, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
     Q: { name: q, in: query, description: "Case-insensitive (ASCII) substring filter", schema: { type: string, maxLength: 200 } }
@@ -2188,7 +2193,7 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
-    Session:
+    RefreshSession:
       type: object
       properties:
         access_token: { type: string, description: "yma_… short-lived (15 min)" }
@@ -2516,10 +2521,9 @@ components:
     Track:
       type: object
       properties:
-        entitlement: { type: string, enum: [full, preview, unavailable], description: "Online snapshots only: last known state on the platform (D51). Playback still auto-switches (D50)." }
+        entitlement: { type: string, enum: [full, preview, unavailable], description: "Online tracks: full, preview (non-VIP plays the official preview only) or unavailable; for snapshots the last known platform state (D51). Playback still auto-switches (D50)." }
         alternatives: { type: array, items: { $ref: "#/components/schemas/Alternative" }, description: "Detail of a not-fully-playable online track only (D50)" }
         playable: { type: boolean, description: "false = cannot be played (see unplayable_reason)" }
-        entitlement: { type: string, enum: [full, preview, unavailable], description: "online tracks; non-VIP plays official preview only" }
         unplayable_reason: { type: string, nullable: true }
         preview: { type: object, nullable: true, description: "{start_ms, end_ms} of the official preview" }
         has_lyrics: { type: boolean }

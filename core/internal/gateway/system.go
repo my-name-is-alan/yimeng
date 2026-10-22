@@ -107,7 +107,9 @@ func (d Deps) getSystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if me, _ := DeviceFrom(r.Context()); !me.Admin {
-		redactSystem(&in) // D49: no host paths/ops detail for non-admins
+		// non-admins only learn what they need for compatibility checks
+		writeJSON(w, http.StatusOK, map[string]any{"version": in.Version, "api_version": APIVersion})
+		return
 	}
 	writeJSON(w, http.StatusOK, in)
 }

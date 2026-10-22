@@ -127,8 +127,9 @@ func TestPerAccountIsolation(t *testing.T) {
 	}
 
 	// system: non-admins get no host paths
-	if _, b := e.do("GET", "/api/system", "", bob); strings.Contains(string(b), `"path":"/`) {
-		t.Errorf("system leaks paths to user: %s", b)
+	if _, b := e.do("GET", "/api/system", "", bob); strings.Contains(string(b), `"path":"/`) || strings.Contains(string(b), "uptime") ||
+		strings.Contains(string(b), `"library"`) || strings.Contains(string(b), `"os"`) || !strings.Contains(string(b), `"api_version":"`+APIVersion+`"`) {
+		t.Errorf("system leaks detail to user: %s", b)
 	}
 }
 
