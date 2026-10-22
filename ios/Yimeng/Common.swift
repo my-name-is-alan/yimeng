@@ -61,8 +61,8 @@ struct TrackRow: View {
             }
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 16)).foregroundStyle(playing ? Theme.accent(scheme) : Theme.fg(scheme))
-                    if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)) }
+                    Text(title).font(.system(size: 16)).foregroundStyle(playing ? Theme.accent(scheme) : Theme.fg(scheme)).lineLimit(1).truncationMode(.middle)
+                    if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1) }
                 }
                 Spacer()
                 Text(trailing).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))

@@ -378,7 +378,7 @@ struct QueueSheet: View {
             CoverImage(url: LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120), points: 40)
                 .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(s.title).font(.system(size: 15, weight: playing ? .semibold : .regular)).lineLimit(1)
+                Text(s.title).font(.system(size: 15, weight: playing ? .semibold : .regular)).lineLimit(1).truncationMode(.middle)
                 Text(s.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()

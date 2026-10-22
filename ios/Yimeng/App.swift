@@ -328,7 +328,7 @@ struct MiniPlayer: View {
         HStack(spacing: 12) {
             cover
             VStack(alignment: .leading, spacing: 1) {
-                Text(t.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(t.title).font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Text(t.artist).font(.system(size: 12)).opacity(0.7).lineLimit(1)
             }
             Spacer()

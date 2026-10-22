@@ -60,7 +60,7 @@ struct NowPlayingMoreSheet: View {
             CoverImage(url: LibraryStore.shared.coverArtURL(id: song.coverId ?? song.albumId, size: 200), points: 56)
                 .frame(width: 56, height: 56).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text(song.title).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                Text(song.title).font(.system(size: 16, weight: .semibold)).lineLimit(1).truncationMode(.middle)
                 Text(song.artist).font(.system(size: 13)).opacity(0.6).lineLimit(1)
                 QualityBadge(song: song)
             }

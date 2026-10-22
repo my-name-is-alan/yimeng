@@ -102,7 +102,7 @@ struct NowPlayingView: View {
     func info(slot: CoverSlot, width: CGFloat, elapsed: TimeInterval, total: TimeInterval? = nil) -> some View {
         let k = width / 402
         return VStack(alignment: track.layout.centered ? .center : .leading, spacing: 2) {
-            Text(track.title).font(.system(size: 22, weight: .bold)).lineLimit(1)
+            Text(track.title).font(.system(size: 22, weight: .bold)).lineLimit(1).truncationMode(.middle)
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
             if let s = player.song {
                 QualityBadge(song: s).padding(.top, 8)
