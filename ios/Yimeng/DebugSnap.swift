@@ -29,8 +29,7 @@ extension DebugSnap {
             PlayerStore.shared.play(songs: songs, startAt: 0)
             for i in 0..<12 {
                 try? await Task.sleep(for: .seconds(2))
-                let e = EffectsEngine.shared
-                NetLog.logger.info("FXTEST t\(i * 2) engine=\(e.active) ch=\(e.channels) pos=\(String(format: "%.1f", e.active ? e.currentTime : PlayerStore.shared.elapsed), privacy: .public) playing=\(PlayerStore.shared.isPlaying)")
+                                NetLog.logger.info("FXTEST t\(i * 2) fx=\(FXStore.shared.s.on) pos=\(String(format: "%.1f", PlayerStore.shared.elapsed), privacy: .public) playing=\(PlayerStore.shared.isPlaying)")
                 if i == 5 { FXStore.shared.s.on = false; NetLog.logger.info("FXTEST → OFF") }
                 if i == 8 { FXStore.shared.s.on = true; NetLog.logger.info("FXTEST → ON") }
             }

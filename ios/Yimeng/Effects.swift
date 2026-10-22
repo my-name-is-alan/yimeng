@@ -1,11 +1,13 @@
 import AVFoundation
 import AudioToolbox
+import Accelerate
+import MediaToolbox
 import SwiftUI
 
 // MARK: - Settings
 
 /// 音效 (ViPER-style) settings. OFF → AVPlayer passthrough (bit-perfect, Dolby/Atmos untouched).
-/// ON → AVAudioEngine path: player → 12-band AVAudioUnitEQ (10 graphic + bass shelf + vocal presence) → peak limiter.
+/// ON → MTAudioProcessingTap on the streaming AVPlayerItem: preamp → 12 biquads (10 graphic + bass shelf + vocal) → limiter.
 struct FXSettings: Codable, Equatable {
     var on = false
     var preset = "平直"
@@ -55,134 +57,171 @@ final class FXStore: ObservableObject {
         didSet {
             guard s != oldValue else { return }
             s.save()
-            EffectsEngine.shared.apply(s)
+            FXParams.shared.set(s)
             if s.on != oldValue.on { PlayerStore.shared.effectsToggled() }
         }
     }
+    /// Set when the current track can't take effects (e.g. E-AC-3 / Atmos → passthrough).
+    @Published var note: String?
     func pick(_ p: FXSettings.Preset) { var n = s; n.preset = p.name; n.bands = p.bands; n.bass = p.bass; n.vocal = p.vocal; s = n }
 }
 
-// MARK: - Engine
+// MARK: - Tap DSP (streaming)
 
-/// AVAudioEngine playback for the effects path. The stream is fetched to a local file first (AVAudioFile needs
-/// random access), decoded by AudioToolbox, and scheduled from any frame — so switching in/out keeps position.
-/// The graph runs in the file's own processing format, so 5.1/7.1 layouts stay intact through EQ + limiter
-/// (both process every channel); only the final mixer → output step adapts to the hardware route.
-@MainActor
-final class EffectsEngine {
-    static let shared = EffectsEngine()
-    private let engine = AVAudioEngine()
-    private let node = AVAudioPlayerNode()
-    private let eq = AVAudioUnitEQ(numberOfBands: 12)
-    private let limiter = AVAudioUnitEffect(audioComponentDescription: AudioComponentDescription(
-        componentType: kAudioUnitType_Effect, componentSubType: kAudioUnitSubType_PeakLimiter,
-        componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
-    private var file: AVAudioFile?
-    private var startFrame: AVAudioFramePosition = 0
-    private var gen = 0
-    private(set) var active = false
-    private(set) var channels: AVAudioChannelCount = 0
-    var onEnd: (() -> Void)?
+/// Effects on the *streaming* AVPlayer: an MTAudioProcessingTap on the item's audioMix receives decoded PCM,
+/// we run preamp → 12 biquads (vDSP_biquad, per channel, any channel count) → look-ahead-free peak limiter.
+/// Toggling = attach / detach the audioMix on the live item (no restart). OFF = no audioMix = passthrough.
+final class FXParams: @unchecked Sendable {
+    static let shared = FXParams()
+    private let lock = NSLock()
+    private var _s = FXSettings.load()
+    private(set) var version = 0
+    func set(_ s: FXSettings) { lock.lock(); _s = s; version &+= 1; lock.unlock() }
+    func get() -> (FXSettings, Int) { lock.lock(); defer { lock.unlock() }; return (_s, version) }
 
-    private let session: URLSession = {
-        let c = URLSessionConfiguration.default
-        c.httpAdditionalHeaders = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
-        c.timeoutIntervalForRequest = 60
-        return URLSession(configuration: c)
-    }()
-    private var dir: URL {
-        let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("fx", isDirectory: true).appendingPathComponent(MusicSources.activeId, isDirectory: true)
-        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d
-    }
-
-    private init() {
-        engine.attach(node); engine.attach(eq); engine.attach(limiter)
-        apply(FXSettings.load())
-    }
-
-    /// Local copy of the track (cached; keeps the newest 12).
-    func fetch(_ url: URL, id: String, suffix: String?) async throws -> URL {
-        let f = dir.appendingPathComponent("\(id).\(suffix ?? "bin")")
-        if FileManager.default.fileExists(atPath: f.path) { return f }
-        let (tmp, resp) = try await session.download(from: url)
-        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-        try? FileManager.default.removeItem(at: f)
-        try FileManager.default.moveItem(at: tmp, to: f)
-        prune()
-        return f
-    }
-    private func prune() {
-        let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
-        let sorted = items.sorted {
-            ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) >
-            ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
+    /// RBJ cookbook biquads normalised for vDSP: [b0, b1, b2, a1, a2] per section.
+    static func coefficients(_ s: FXSettings, sampleRate fs: Double) -> [Double] {
+        var out: [Double] = []
+        func peak(_ f: Double, _ g: Double, _ bw: Double) {
+            guard g != 0, f < fs * 0.45 else { return }
+            let A = pow(10, g / 40), w = 2 * .pi * f / fs, sn = sin(w), cs = cos(w)
+            let al = sn * sinh(log(2) / 2 * bw * w / sn)
+            let a0 = 1 + al / A
+            out += [(1 + al * A) / a0, (-2 * cs) / a0, (1 - al * A) / a0, (-2 * cs) / a0, (1 - al / A) / a0]
         }
-        for u in sorted.dropFirst(12) { try? fm.removeItem(at: u) }
-    }
-
-    /// Open + wire the graph in the file's format (keeps channel count/layout).
-    func load(_ local: URL) throws {
-        stop()
-        let f = try AVAudioFile(forReading: local)
-        let fmt = f.processingFormat
-        engine.disconnectNodeOutput(node); engine.disconnectNodeOutput(eq); engine.disconnectNodeOutput(limiter)
-        engine.connect(node, to: eq, format: fmt)
-        engine.connect(eq, to: limiter, format: fmt)
-        engine.connect(limiter, to: engine.mainMixerNode, format: fmt)
-        file = f; channels = fmt.channelCount
-        engine.prepare()
-    }
-
-    var duration: Double { file.map { Double($0.length) / $0.processingFormat.sampleRate } ?? 0 }
-
-    func play(from t: Double) throws {
-        guard let file else { return }
-        gen += 1; let g = gen
-        node.stop()
-        let sr = file.processingFormat.sampleRate
-        startFrame = max(0, min(file.length - 1, AVAudioFramePosition(t * sr)))
-        let count = AVAudioFrameCount(file.length - startFrame)
-        node.scheduleSegment(file, startingFrame: startFrame, frameCount: count, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            Task { @MainActor in if let self, g == self.gen { self.onEnd?() } }
+        func lowShelf(_ f: Double, _ g: Double) {
+            guard g != 0 else { return }
+            let A = pow(10, g / 40), w = 2 * .pi * f / fs, sn = sin(w), cs = cos(w)
+            let al = sn / 2 * sqrt(2.0), sA = 2 * sqrt(A) * al
+            let a0 = (A + 1) + (A - 1) * cs + sA
+            out += [A * ((A + 1) - (A - 1) * cs + sA) / a0, 2 * A * ((A - 1) - (A + 1) * cs) / a0,
+                    A * ((A + 1) - (A - 1) * cs - sA) / a0, -2 * ((A - 1) + (A + 1) * cs) / a0,
+                    ((A + 1) + (A - 1) * cs - sA) / a0]
         }
-        if !engine.isRunning { try engine.start() }
-        node.play()
-        active = true
+        for (i, f) in FXSettings.freqs.enumerated() { peak(Double(f), s.bands[i], 1.0) }
+        lowShelf(80, s.bass)
+        peak(2800, s.vocal, 1.4)
+        return out
     }
-    func pause() { node.pause() }
-    func resume() { if !engine.isRunning { try? engine.start() }; node.play() }
-    var volume: Float { get { node.volume } set { node.volume = newValue } }
+}
 
-    var currentTime: Double {
-        guard let file, let nt = node.lastRenderTime, let pt = node.playerTime(forNodeTime: nt) else {
-            return file.map { Double(startFrame) / $0.processingFormat.sampleRate } ?? 0
+/// Per-tap state (lives in the tap's storage; touched only on the render thread after prepare).
+final class FXTapState {
+    var channels = 0
+    var interleaved = false
+    var sampleRate = 44100.0
+    var supported = false
+    var version = -1
+    var setup: vDSP_biquad_Setup?
+    var sections = 0
+    var delays: [[Float]] = []
+    var preamp: Float = 1
+    var limiterOn = true
+    var gain: Float = 1          // limiter gain, smoothed
+
+    func refresh() {
+        let (s, v) = FXParams.shared.get()
+        guard v != version else { return }
+        version = v
+        if let setup { vDSP_biquad_DestroySetup(setup) }
+        let c = FXParams.coefficients(s, sampleRate: sampleRate)
+        sections = c.count / 5
+        setup = sections > 0 ? c.withUnsafeBufferPointer { vDSP_biquad_CreateSetup($0.baseAddress!, vDSP_Length(sections)) } : nil
+        delays = Array(repeating: Array(repeating: 0, count: 2 * sections + 2), count: max(channels, 1))
+        preamp = Float(pow(10, s.effectivePreamp / 20))
+        limiterOn = s.limiter
+    }
+
+    func process(_ abl: UnsafeMutableAudioBufferListPointer, frames n: Int) {
+        guard supported, n > 0 else { return }
+        refresh()
+        // Gather channel pointers + strides (non-interleaved: one buffer per channel; interleaved: stride = channels).
+        var ch: [(UnsafeMutablePointer<Float>, Int)] = []
+        for b in abl {
+            guard let d = b.mData?.assumingMemoryBound(to: Float.self) else { continue }
+            let k = Int(b.mNumberChannels)
+            if k <= 1 { ch.append((d, 1)) } else { for c in 0..<k { ch.append((d + c, k)) } }
         }
-        return Double(startFrame + pt.sampleTime) / file.processingFormat.sampleRate
-    }
-
-    func stop() {
-        gen += 1
-        node.stop()
-        if engine.isRunning { engine.stop() }
-        file = nil; active = false
-    }
-
-    /// Live parameter update (no glitch: AU parameters are ramped by the unit).
-    func apply(_ s: FXSettings) {
-        for (i, f) in FXSettings.freqs.enumerated() {
-            let b = eq.bands[i]
-            b.filterType = .parametric; b.frequency = f; b.bandwidth = 1.0
-            b.gain = Float(s.bands[i]); b.bypass = false
+        if ch.count != delays.count { delays = Array(repeating: Array(repeating: 0, count: 2 * sections + 2), count: ch.count) }
+        var pre = preamp
+        for (i, (p, st)) in ch.enumerated() {
+            vDSP_vsmul(p, st, &pre, p, st, vDSP_Length(n))
+            if let setup { delays[i].withUnsafeMutableBufferPointer { vDSP_biquad(setup, $0.baseAddress!, p, st, p, st, vDSP_Length(n)) } }
         }
-        let bass = eq.bands[10]
-        bass.filterType = .lowShelf; bass.frequency = 80; bass.gain = Float(s.bass); bass.bypass = s.bass == 0
-        let voc = eq.bands[11]
-        voc.filterType = .parametric; voc.frequency = 2800; voc.bandwidth = 1.4; voc.gain = Float(s.vocal); voc.bypass = s.vocal == 0
-        eq.globalGain = Float(max(-24, min(24, s.effectivePreamp)))
-        limiter.bypass = !s.limiter
+        guard limiterOn else { return }
+        // Block peak limiter (64-frame blocks, instant attack, ~80 ms release), ceiling −0.3 dBFS, linked channels.
+        let ceil: Float = 0.966, rel = Float(exp(-64.0 / (0.08 * sampleRate)))
+        var f = 0
+        while f < n {
+            let m = min(64, n - f)
+            var peak: Float = 0
+            for (p, st) in ch { var mx: Float = 0; vDSP_maxmgv(p + f * st, st, &mx, vDSP_Length(m)); peak = max(peak, mx) }
+            let target: Float = peak * gain > ceil ? ceil / max(peak, 1e-9) : 1
+            let g0 = gain
+            gain = target < gain ? target : min(1, target - (target - gain) * rel)
+            var start = g0, step = (gain - g0) / Float(m)
+            if target < g0 { start = gain; step = 0 }       // attack: clamp the whole block
+            if start != 1 || step != 0 {
+                for (p, st) in ch { vDSP_vrampmul(p + f * st, st, &start, &step, p + f * st, st, vDSP_Length(m)); start -= step * Float(m) }
+            }
+            f += m
+        }
+    }
+    deinit { if let setup { vDSP_biquad_DestroySetup(setup) } }
+}
+
+enum FXTap {
+    /// Formats the tap can't see as PCM (bitstreamed / spatial Dolby): keep passthrough.
+    static func unsupported(_ s: NDSong?) -> Bool {
+        let x = ((s?.suffix ?? "") + " " + (s?.contentType ?? "")).lowercased()
+        return ["eac3", "ec3", "ac3", "ac-3", "e-ac-3", "atmos", "truehd", "mlp", "dts"].contains { x.contains($0) }
+    }
+
+    /// Build an audioMix with our tap for the item's first audio track.
+    static func makeMix(for item: AVPlayerItem) async -> AVAudioMix? {
+        guard let track = try? await item.asset.loadTracks(withMediaType: .audio).first else { return nil }
+        var cb = MTAudioProcessingTapCallbacks(
+            version: kMTAudioProcessingTapCallbacksVersion_0, clientInfo: nil,
+            init: { _, _, storageOut in
+                storageOut.pointee = Unmanaged.passRetained(FXTapState()).toOpaque()
+            },
+            finalize: { tap in
+                Unmanaged<FXTapState>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
+            },
+            prepare: { tap, _, fmt in
+                let st = Unmanaged<FXTapState>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
+                let f = fmt.pointee
+                st.channels = Int(f.mChannelsPerFrame)
+                st.sampleRate = f.mSampleRate
+                st.interleaved = f.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
+                st.supported = f.mFormatID == kAudioFormatLinearPCM && f.mFormatFlags & kAudioFormatFlagIsFloat != 0 && f.mBitsPerChannel == 32
+                st.version = -1
+                NetLog.logger.info("FX tap prepare ch=\(st.channels) sr=\(Int(st.sampleRate)) float=\(st.supported) interleaved=\(st.interleaved)")
+            },
+            unprepare: nil,
+            process: { tap, frames, _, abl, framesOut, flagsOut in
+                guard MTAudioProcessingTapGetSourceAudio(tap, frames, abl, flagsOut, nil, framesOut) == noErr else { return }
+                let st = Unmanaged<FXTapState>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
+                st.process(UnsafeMutableAudioBufferListPointer(abl), frames: Int(framesOut.pointee))
+            })
+        var tapOut: MTAudioProcessingTap?
+        guard MTAudioProcessingTapCreate(kCFAllocatorDefault, &cb, kMTAudioProcessingTapCreationFlag_PostEffects, &tapOut) == noErr,
+              let tap = tapOut else { return nil }
+        let p = AVMutableAudioMixInputParameters(track: track)
+        p.audioTapProcessor = tap
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = [p]
+        return mix
+    }
+
+    /// Attach / detach on the live item — no rebuild, position untouched.
+    @MainActor static func apply(on: Bool, item: AVPlayerItem?, song: NDSong?) async -> Bool {
+        guard let item else { return false }
+        guard on else { item.audioMix = nil; return true }
+        if unsupported(song) { item.audioMix = nil; return false }
+        guard let mix = await makeMix(for: item) else { item.audioMix = nil; return false }
+        item.audioMix = mix
+        return true
     }
 }
 
@@ -207,7 +246,7 @@ struct EffectsPanel: View {
             if fx.s.on {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle").font(.system(size: 12))
-                    Text("音效开启时由 App 内解码处理：直通、杜比全景声空间音频与无缝预加载暂不可用。多声道（5.1 / 7.1）会保留声道逐声道处理，最终按当前输出设备混音。")
+                    Text(fx.note ?? "音效开启时直通与杜比全景声空间音频不可用（仍为边下边播）。多声道（5.1 / 7.1）逐声道处理。")
                         .font(.system(size: 12))
                 }
                 .foregroundStyle(Theme.secondary(scheme))

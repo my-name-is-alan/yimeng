@@ -24,6 +24,10 @@ targets:
         INFOPLIST_KEY_UIBackgroundModes: "audio"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGNING_ALLOWED: NO
+        # Simulator: ad-hoc sign with entitlements so Keychain works (unsigned → errSecMissingEntitlement -34018).
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Yimeng/Yimeng.entitlements
         MARKETING_VERSION: "0.3.4"
         CURRENT_PROJECT_VERSION: "7"
   YimengWidgets:
@@ -49,6 +53,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGNING_ALLOWED: NO
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         SKIP_INSTALL: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         MARKETING_VERSION: "0.3.4"

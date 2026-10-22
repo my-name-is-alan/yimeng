@@ -122,7 +122,7 @@ struct SignalPathSheet: View {
                                   song.samplingRate.map { String(format: "%.1f kHz", Double($0) / 1000) },
                                   song.channelCount.map { "\($0) 声道" }, song.bitRate.map { "\($0) kbps" }].compactMap { $0 }.joined(separator: " · "))
             step("arrow.triangle.2.circlepath", "串流", transcoded ? "服务器转码为 MP3 ≤ \(AudioPrefs.maxBitRate) kbps" : "原始文件（format=raw，未转码）")
-            step("waveform", "处理", AudioPrefs.eqOn ? "音效开启 · AVAudioEngine · 非直通" : (AudioPrefs.replayGain > 0 ? "仅回放增益（音量）" : "无处理"))
+            step("waveform", "处理", AudioPrefs.eqOn ? "音效开启 · 实时处理 · 非直通" : (AudioPrefs.replayGain > 0 ? "仅回放增益（音量）" : "无处理"))
             step("hifispeaker", "输出", "\(route.name) · \(Int(route.sampleRate)) Hz · \(route.channels) 声道")
             HStack(spacing: 6) {
                 Circle().fill(passthrough ? Theme.lime : Color.orange).frame(width: 7, height: 7)
@@ -380,7 +380,7 @@ struct SoundSettingsView: View {
             Section {
                 EffectsPanel()
             } footer: {
-                Text("关闭音效 = 原始直通（AVPlayer，FLAC / 杜比不经处理）；开启 = AVAudioEngine 解码 + 12 段 EQ + 峰值限制。切换时保持播放进度。")
+                Text("关闭音效 = 原始直通（AVPlayer，FLAC / 杜比不经处理）；开启 = 边下边播 + 实时 12 段 EQ + 峰值限制。切换无需重启播放。")
             }
             Section {
                 Picker("串流音质", selection: $maxBitRate) {
