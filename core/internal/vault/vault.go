@@ -76,3 +76,20 @@ type scoped struct {
 func (s scoped) Source() string                              { return s.source }
 func (s scoped) Get(ctx context.Context) (Credential, error) { return s.v.Get(ctx, s.source) }
 func (s scoped) Put(ctx context.Context, c Credential) error { return s.v.Put(ctx, s.source, c) }
+
+// Secrets adapts a Vault to a simple key/value secret store (one field).
+type Secrets struct{ V Vault }
+
+func (s Secrets) PutSecret(ctx context.Context, key, value string) error {
+	return s.V.Put(ctx, key, Credential{Method: LoginPassword, Fields: map[string]string{"secret": value}})
+}
+
+func (s Secrets) GetSecret(ctx context.Context, key string) (string, error) {
+	c, err := s.V.Get(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	return c.Fields["secret"], nil
+}
+
+func (s Secrets) DeleteSecret(ctx context.Context, key string) error { return s.V.Delete(ctx, key) }

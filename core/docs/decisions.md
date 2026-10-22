@@ -484,3 +484,42 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - Avatars: `PUT/DELETE /me/avatar`, admin `PUT/DELETE /users/{id}/avatar`, and `GET /users/{id}/avatar` for any signed-in device.
   - Uploads must be JPEG, PNG or WebP (checked by decoding), at most 1 MiB and 4096 px. They are stored in the DB (migration 0026), so they are included in backups.
   - `server/info` `platforms[].avatar_url` is the platform account avatar, shown to any authenticated caller.
+
+## D59 — Standard APIs for third-party developers: OpenSubsonic + scoped API keys
+
+**Context.** Other developers should be able to build apps for 译梦 without our
+private pairing flow. Two audiences: existing Subsonic clients (Symfonium, DSub,
+Feishin, play:Sub…) and new apps/scripts that want the richer JSON API.
+
+**Decision.**
+- **OpenSubsonic at `/rest/*`** (XML default, `f=json`; GET or form POST).
+  Extensions advertised: `apiKeyAuthentication`, `formPost`, `songLyrics`.
+  Added getOpenSubsonicExtensions, getArtist, create/update/deletePlaylist,
+  star/unstar/getStarred2, scrobble, getLyricsBySongId, getUser,
+  save/getPlayQueue; playlists show the real owner; everything is per account (D49).
+- **Credentials** (`api_credentials`, migration 0027), created/revoked by the user
+  in 设备 → 开发者:
+  - *API key* `yk_…` (SHA-256 hash stored) — Bearer on `/api/v1` and `apiKey=` on `/rest`.
+  - *App password* (24 chars) for Subsonic `u`+`t`+`s`. Token auth needs the
+    plaintext on the server, so it is stored encrypted in the vault
+    (`apppw:<id>`), never in the clear and never the login password. Plaintext
+    `p=` only if `allow_plain` was chosen for that app password (default off).
+  - Optional expiry; `last_used_at` tracked; revocation deletes the vault secret.
+- **Scopes**: `read` (always), `playback`, `library-write`, `admin` (admin accounts
+  only, and an admin's key is admin only with that scope). Keys can never reach
+  credential, device, session, pairing or Last.fm-key endpoints. App passwords
+  only work on `/rest`.
+- **Lockout**: 10 failed Subsonic password attempts per user+IP per 15 min → locked,
+  reported through security alerts (D54); global rate limits still apply.
+- **Entitlement honesty**: online tracks that are preview-only or unavailable are
+  left out of Subsonic listings; `stream` sends `X-Yimeng-Full-Only` internally so a
+  preview resolution is refused (403 `preview_only`) instead of a silent 30 s clip.
+  No unblock / cross-platform grabbing / DRM bypass.
+- **CORS**: allow-list (`cors_origins` runtime setting, seeded from
+  `YIMENG_CORS_ORIGINS`), preflight handled, never `Allow-Credentials`.
+- **Versioning**: `/api/v1` = major; `X-Yimeng-API-Version` = minor (now 1.2).
+  Within v1 only additive changes; removals deprecated ≥1 minor first; a breaking
+  change means `/api/v2` next to v1.
+
+**Rejected.** Accepting the account login password over Subsonic (MD5 token auth
+would require storing it reversibly); OAuth (too heavy for a home NAS for now).

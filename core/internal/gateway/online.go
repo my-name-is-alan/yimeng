@@ -832,6 +832,11 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			w.Header().Set("X-Yimeng-Entitlement", "full")
 			return false // fall through to local streaming
 		}
+		if res.Entitlement == online.EntPreview && r.Header.Get("X-Yimeng-Full-Only") == "1" {
+			// Subsonic clients can't render a preview window: refuse honestly (D59).
+			writeErr(w, http.StatusForbidden, "preview_only", "only a preview of this track is available")
+			return true
+		}
 		if res.Entitlement == online.EntUnavailable || res.URL == "" {
 			msg := res.Reason
 			if msg == "" {

@@ -1,8 +1,7 @@
 // Package subsonic implements a Subsonic-compatible /rest API surface so
 // third-party clients (Symfonium, play:Sub, …) can browse and stream the
-// yimeng library. Auth uses the paired device token as the Subsonic password
-// (u=any, p=ymd_… or enc:hex). Token+salt (t/s) is not supported because Core
-// stores only SHA-256 hashes of tokens.
+// yimeng library. Auth (D59): OpenSubsonic apiKey, or u + t/s with a
+// per-account app password (never the login password); see auth.go.
 package subsonic
 
 import (
@@ -35,6 +34,12 @@ type envelope struct {
 	Playlist      *playlistDetail `xml:"playlist,omitempty" json:"playlist,omitempty"`
 	Lyrics        *lyrics         `xml:"lyrics,omitempty" json:"lyrics,omitempty"`
 	License       *license        `xml:"license,omitempty" json:"license,omitempty"`
+	Extensions    []extension     `xml:"openSubsonicExtensions,omitempty" json:"openSubsonicExtensions,omitempty"`
+	Artist        *artistDetail   `xml:"artist,omitempty" json:"artist,omitempty"`
+	Starred2      *starred2       `xml:"starred2,omitempty" json:"starred2,omitempty"`
+	LyricsList    *lyricsList     `xml:"lyricsList,omitempty" json:"lyricsList,omitempty"`
+	User          *user           `xml:"user,omitempty" json:"user,omitempty"`
+	PlayQueue     *playQueue      `xml:"playQueue,omitempty" json:"playQueue,omitempty"`
 }
 
 type subErr struct {

@@ -41,32 +41,55 @@ type Handler struct {
 	LyricsFetcher library.LyricsFetcher
 	Version       string
 	Stream        http.HandlerFunc // optional: if set, stream.view delegates here after auth
+
+	// D59 wiring (all optional).
+	UserData   UserData
+	WithDevice func(context.Context, auth.Device) context.Context
+	Decorate   func(context.Context, []library.Track) // fills Entitlement on online tracks
+	ClientIP   func(*http.Request) string
+	OnAuthFail func(ctx context.Context, user, ip string, locked bool)
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
-	add := func(name string, fn func(http.ResponseWriter, *http.Request, auth.Device)) {
-		mux.HandleFunc("GET /rest/"+name, withAuth(h.Auth, fn))
-		mux.HandleFunc("POST /rest/"+name, withAuth(h.Auth, fn))
-		mux.HandleFunc("GET /rest/"+name+".view", withAuth(h.Auth, fn))
-		mux.HandleFunc("POST /rest/"+name+".view", withAuth(h.Auth, fn))
+	add := func(name, scope string, fn func(http.ResponseWriter, *http.Request, auth.Device)) {
+		hf := h.withAuth(scope, fn)
+		for _, m := range []string{"GET", "POST"} {
+			mux.HandleFunc(m+" /rest/"+name, hf)
+			mux.HandleFunc(m+" /rest/"+name+".view", hf)
+		}
 	}
-	add("ping", h.ping)
-	add("getLicense", h.getLicense)
-	add("getMusicFolders", h.getMusicFolders)
-	add("getIndexes", h.getIndexes)
-	add("getArtists", h.getArtists)
-	add("getAlbumList2", h.getAlbumList2)
-	add("getAlbumList", h.getAlbumList2)
-	add("getAlbum", h.getAlbum)
-	add("getSong", h.getSong)
-	add("search3", h.search3)
-	add("search2", h.search3)
-	add("getPlaylists", h.getPlaylists)
-	add("getPlaylist", h.getPlaylist)
-	add("getLyrics", h.getLyrics)
-	add("getCoverArt", h.getCoverArt)
-	add("stream", h.stream)
-	add("download", h.stream)
+	R, P, W := auth.ScopeRead, auth.ScopePlayback, auth.ScopeWrite
+	add("ping", R, h.ping)
+	add("getLicense", R, h.getLicense)
+	add("getOpenSubsonicExtensions", R, h.getExtensions)
+	add("getMusicFolders", R, h.getMusicFolders)
+	add("getIndexes", R, h.getIndexes)
+	add("getArtists", R, h.getArtists)
+	add("getArtist", R, h.getArtist)
+	add("getAlbumList2", R, h.getAlbumList2)
+	add("getAlbumList", R, h.getAlbumList2)
+	add("getAlbum", R, h.getAlbum)
+	add("getSong", R, h.getSong)
+	add("search3", R, h.search3)
+	add("search2", R, h.search3)
+	add("getPlaylists", R, h.getPlaylists)
+	add("getPlaylist", R, h.getPlaylist)
+	add("createPlaylist", W, h.createPlaylist)
+	add("updatePlaylist", W, h.updatePlaylist)
+	add("deletePlaylist", W, h.deletePlaylist)
+	add("star", W, h.star(true))
+	add("unstar", W, h.star(false))
+	add("getStarred2", R, h.getStarred2)
+	add("getStarred", R, h.getStarred2)
+	add("scrobble", P, h.scrobble)
+	add("getLyrics", R, h.getLyrics)
+	add("getLyricsBySongId", R, h.getLyricsBySongID)
+	add("getCoverArt", R, h.getCoverArt)
+	add("getUser", R, h.getUser)
+	add("savePlayQueue", P, h.savePlayQueue)
+	add("getPlayQueue", P, h.getPlayQueue)
+	add("stream", P, h.stream)
+	add("download", P, h.stream)
 }
 
 func (h *Handler) ping(w http.ResponseWriter, r *http.Request, _ auth.Device) {
@@ -179,7 +202,7 @@ func (h *Handler) getAlbum(w http.ResponseWriter, r *http.Request, _ auth.Device
 		return
 	}
 	det := &albumDetail{album: mapAlbum(a)}
-	for _, t := range tracks.Items {
+	for _, t := range h.visible(r.Context(), tracks.Items) {
 		det.Song = append(det.Song, mapSong(t))
 	}
 	writeOK(w, r, h.Version, func(e *envelope) { e.Album = det })
@@ -194,6 +217,10 @@ func (h *Handler) getSong(w http.ResponseWriter, r *http.Request, _ auth.Device)
 	}
 	if err != nil {
 		writeErr(w, r, 0, err.Error())
+		return
+	}
+	if v := h.visible(r.Context(), []library.Track{t}); len(v) == 0 {
+		writeErr(w, r, 70, "song not available on this server (preview-only or unavailable)")
 		return
 	}
 	writeOK(w, r, h.Version, func(e *envelope) { s := mapSong(t); e.Song = &s })
@@ -228,7 +255,7 @@ func (h *Handler) search3(w http.ResponseWriter, r *http.Request, _ auth.Device)
 	for _, a := range al.Items {
 		res.Album = append(res.Album, mapAlbum(a))
 	}
-	for _, t := range tr.Items {
+	for _, t := range h.visible(ctx, tr.Items) {
 		res.Song = append(res.Song, mapSong(t))
 	}
 	writeOK(w, r, h.Version, func(e *envelope) { e.SearchResult3 = res })
@@ -248,7 +275,7 @@ func (h *Handler) getPlaylists(w http.ResponseWriter, r *http.Request, _ auth.De
 	for _, p := range list {
 		out.Playlist = append(out.Playlist, playlist{
 			ID: p.ID, Name: p.Name, SongCount: p.TrackCount,
-			Duration: int(p.DurationMs / 1000), Public: false, Owner: "yimeng",
+			Duration: int(p.DurationMs / 1000), Public: false, Owner: h.ownerName(r.Context()),
 		})
 	}
 	writeOK(w, r, h.Version, func(e *envelope) { e.Playlists = out })
@@ -271,9 +298,9 @@ func (h *Handler) getPlaylist(w http.ResponseWriter, r *http.Request, _ auth.Dev
 	}
 	det := &playlistDetail{playlist: playlist{
 		ID: page.ID, Name: page.Name, SongCount: page.TrackCount,
-		Duration: int(page.DurationMs / 1000), Public: false, Owner: "yimeng",
+		Duration: int(page.DurationMs / 1000), Public: false, Owner: h.ownerName(r.Context()),
 	}}
-	for _, t := range page.Tracks.Items {
+	for _, t := range h.visible(r.Context(), page.Tracks.Items) {
 		det.Entry = append(det.Entry, mapSong(t))
 	}
 	writeOK(w, r, h.Version, func(e *envelope) { e.Playlist = det })
@@ -359,6 +386,12 @@ func (h *Handler) stream(w http.ResponseWriter, r *http.Request, _ auth.Device) 
 		// Rewrite path so the gateway stream handler sees /api/stream/{id}
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/api/stream/" + id
+		r2.SetPathValue("id", id)
+		r2.Header.Set("X-Yimeng-Full-Only", "1") // never hand a preview clip to a Subsonic client
+		if q := r.URL.Query(); q.Get("format") == "raw" || q.Get("format") == "" {
+			q.Del("format")
+			r2.URL.RawQuery = q.Encode()
+		}
 		h.Stream(w, r2)
 		return
 	}

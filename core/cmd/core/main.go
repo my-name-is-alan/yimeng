@@ -156,7 +156,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	rcStore := &runtimecfg.Store{DB: database}
 	rcCur, err := rcStore.Load(ctx, runtimecfg.Settings{WatchMode: cfg.WatchMode, RescanInterval: cfg.RescanInterval.String(),
 		MusicBrainzEnabled: cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz"), MusicBrainzContact: cfg.MusicBrainz.Contact, FillPerMinute: 20,
-		TimeZone: os.Getenv("YIMENG_TZ")})
+		TimeZone: os.Getenv("YIMENG_TZ"), CORSOrigins: splitList(os.Getenv("YIMENG_CORS_ORIGINS"))})
 	if err != nil {
 		return err
 	}
@@ -384,6 +384,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	authSvc := auth.New(database, cfg.PairCodeTTL, log)
+	authSvc.Secrets = vault.Secrets{V: vlt} // app passwords (D59)
 	authSvc.SetSigningKey(signSeed)
 	clear(signSeed)
 	if v := strings.TrimSpace(os.Getenv("YIMENG_ADMIN_RESET")); v == "1" || strings.EqualFold(v, "true") {
@@ -578,4 +579,14 @@ func containsCI(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func splitList(v string) []string {
+	out := []string{}
+	for _, x := range strings.Split(v, ",") {
+		if x = strings.TrimSpace(x); x != "" {
+			out = append(out, x)
+		}
+	}
+	return out
 }

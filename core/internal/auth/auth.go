@@ -50,6 +50,10 @@ type Device struct {
 	Admin      bool      `json:"admin"`
 	UserID     string    `json:"user_id,omitempty"` // set for username/password sessions
 	Username   string    `json:"username,omitempty"`
+	// Developer credentials (D59): Via = "api_key" | "app_password", with
+	// the credential's scopes. Empty for paired devices and sessions.
+	Via    string   `json:"via,omitempty"`
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 type codeEntry struct {
@@ -64,6 +68,9 @@ type window struct {
 }
 
 type Service struct {
+	// Secrets stores app-password plaintext encrypted (D59); optional.
+	Secrets SecretStore
+
 	db  *sql.DB
 	ttl time.Duration
 	now func() time.Time
@@ -286,6 +293,9 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 
 // Authenticate resolves a bearer token to its device.
 func (s *Service) Authenticate(ctx context.Context, token string) (Device, error) {
+	if strings.HasPrefix(token, apiKeyPrefix) {
+		return s.AuthenticateAPIKey(ctx, token)
+	}
 	if strings.HasPrefix(token, accessPrefix) {
 		id, ok := s.verifyAccess(token)
 		if !ok {

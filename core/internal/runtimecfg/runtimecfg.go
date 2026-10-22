@@ -33,6 +33,7 @@ type Settings struct {
 	FillSources        []string `json:"fill_sources"`    // ordered; empty = background fill off
 	FillPerMinute      int      `json:"fill_per_minute"` // 1..120
 	TimeZone           string   `json:"time_zone"`       // IANA zone for reports (D55); default Asia/Shanghai
+	CORSOrigins        []string `json:"cors_origins"`    // D59: allowed browser origins for /api and /rest ("*" = any); empty = none
 }
 
 // DefaultTimeZone is used when neither YIMENG_TZ nor the setting is set.
@@ -81,6 +82,23 @@ func (s *Settings) Validate() error {
 	if _, err := time.LoadLocation(s.TimeZone); err != nil {
 		return fmt.Errorf("%w: time_zone must be an IANA zone such as Asia/Shanghai", ErrInvalid)
 	}
+	origins := []string{}
+	for _, o := range s.CORSOrigins {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o == "" {
+			continue
+		}
+		if o != "*" {
+			u, err := url.Parse(o)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" {
+				return fmt.Errorf("%w: cors_origins entries must be like https://app.example.com or *", ErrInvalid)
+			}
+		}
+		if len(origins) < 50 {
+			origins = append(origins, o)
+		}
+	}
+	s.CORSOrigins = origins
 	s.MusicBrainzContact = strings.TrimSpace(s.MusicBrainzContact)
 	if s.MusicBrainzContact != "" {
 		_, e1 := mail.ParseAddress(s.MusicBrainzContact)
@@ -140,6 +158,9 @@ func (st *Store) Load(ctx context.Context, def Settings) (Settings, error) {
 		if json.Unmarshal([]byte(raw), &saved) == nil && saved.TimeZone == "" {
 			saved.TimeZone = def.TimeZone // saved before D55: take YIMENG_TZ / default
 		}
+		if saved.CORSOrigins == nil {
+			saved.CORSOrigins = def.CORSOrigins // saved before D59: take YIMENG_CORS_ORIGINS
+		}
 		if saved.Validate() == nil {
 			cur = saved
 		}
@@ -171,6 +192,7 @@ func (st *Store) Get() Settings {
 	defer st.mu.Unlock()
 	c := st.cur
 	c.FillSources = append([]string{}, c.FillSources...)
+	c.CORSOrigins = append([]string{}, c.CORSOrigins...)
 	return c
 }
 

@@ -61,3 +61,24 @@ No secrets are recorded here.
 
 - Optional `ReadTimeout` per route. A global one would break long uploads and streams.
 - Optional per-account `/stats`.
+
+## D59 developer API review (2026-10-22)
+
+- **Secrets.** API keys are stored only as SHA-256 hashes and shown once. App
+  passwords must be reversible for Subsonic MD5 token auth; they live encrypted in
+  the vault (master key) and are random 24-char values unique per app, so a leak
+  does not reveal the login password and is revocable on its own. Plaintext `p=` is
+  refused unless the user opted in per app password. Credential lists show only a prefix.
+- **Least privilege.** Scope check runs in `requireAuth` before any handler. Default
+  deny for credential/device/session/pairing/Last.fm-key endpoints. `admin` scope
+  needs an admin account; an admin's key without it is treated as a member.
+- **Brute force.** Per user+IP lockout (10 / 15 min) on Subsonic password auth plus
+  the global rate limiter; failures and lockouts feed security alerts.
+  `apiKey`+`u` together → error 43 (spec), no fallback chaining.
+- **Isolation.** Every credential resolves to its owner's account context (D49);
+  tests cover cross-account list/revoke and playlists.
+- **CORS.** Exact-origin allow-list, validated (http/https origin only); no
+  credentials mode, so a malicious page cannot ride a cookie (there are none anyway).
+- **Accepted risk.** MD5 token auth is weak by design of Subsonic; recommend apiKey
+  to client authors. Legacy `p=ymd_…` device tokens still work for old setups.
+- **Follow-ups.** Per-key rate limits; OAuth device flow for public apps.

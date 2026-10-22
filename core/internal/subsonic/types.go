@@ -23,6 +23,65 @@ type artist struct {
 	Name       string `xml:"name,attr" json:"name"`
 	AlbumCount int    `xml:"albumCount,attr,omitempty" json:"albumCount,omitempty"`
 	CoverArt   string `xml:"coverArt,attr,omitempty" json:"coverArt,omitempty"`
+	Starred    string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
+}
+
+type artistDetail struct {
+	artist
+	Album []album `xml:"album" json:"album"`
+}
+
+type extension struct {
+	Name     string `xml:"name,attr" json:"name"`
+	Versions []int  `xml:"versions" json:"versions"`
+}
+
+type starred2 struct {
+	Artist []artist `xml:"artist" json:"artist"`
+	Album  []album  `xml:"album" json:"album"`
+	Song   []song   `xml:"song" json:"song"`
+}
+
+type lyricsList struct {
+	StructuredLyrics []structuredLyrics `xml:"structuredLyrics" json:"structuredLyrics"`
+}
+type structuredLyrics struct {
+	Lang          string      `xml:"lang,attr" json:"lang"`
+	Synced        bool        `xml:"synced,attr" json:"synced"`
+	DisplayArtist string      `xml:"displayArtist,attr,omitempty" json:"displayArtist,omitempty"`
+	DisplayTitle  string      `xml:"displayTitle,attr,omitempty" json:"displayTitle,omitempty"`
+	Line          []lyricLine `xml:"line" json:"line"`
+}
+type lyricLine struct {
+	Start *int64 `xml:"start,attr,omitempty" json:"start,omitempty"`
+	Value string `xml:",chardata" json:"value"`
+}
+
+type user struct {
+	Username            string `xml:"username,attr" json:"username"`
+	ScrobblingEnabled   bool   `xml:"scrobblingEnabled,attr" json:"scrobblingEnabled"`
+	AdminRole           bool   `xml:"adminRole,attr" json:"adminRole"`
+	SettingsRole        bool   `xml:"settingsRole,attr" json:"settingsRole"`
+	DownloadRole        bool   `xml:"downloadRole,attr" json:"downloadRole"`
+	UploadRole          bool   `xml:"uploadRole,attr" json:"uploadRole"`
+	PlaylistRole        bool   `xml:"playlistRole,attr" json:"playlistRole"`
+	CoverArtRole        bool   `xml:"coverArtRole,attr" json:"coverArtRole"`
+	CommentRole         bool   `xml:"commentRole,attr" json:"commentRole"`
+	PodcastRole         bool   `xml:"podcastRole,attr" json:"podcastRole"`
+	StreamRole          bool   `xml:"streamRole,attr" json:"streamRole"`
+	JukeboxRole         bool   `xml:"jukeboxRole,attr" json:"jukeboxRole"`
+	ShareRole           bool   `xml:"shareRole,attr" json:"shareRole"`
+	VideoConversionRole bool   `xml:"videoConversionRole,attr" json:"videoConversionRole"`
+	Folder              []int  `xml:"folder" json:"folder"`
+}
+
+type playQueue struct {
+	Current   string `xml:"current,attr,omitempty" json:"current,omitempty"`
+	Position  int64  `xml:"position,attr" json:"position"`
+	Username  string `xml:"username,attr" json:"username"`
+	Changed   string `xml:"changed,attr" json:"changed"`
+	ChangedBy string `xml:"changedBy,attr" json:"changedBy"`
+	Entry     []song `xml:"entry" json:"entry"`
 }
 
 type albumList2 struct {
@@ -38,6 +97,7 @@ type album struct {
 	Duration  int    `xml:"duration,attr,omitempty" json:"duration,omitempty"`
 	Year      int    `xml:"year,attr,omitempty" json:"year,omitempty"`
 	Genre     string `xml:"genre,attr,omitempty" json:"genre,omitempty"`
+	Starred   string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
 }
 
 type albumDetail struct {
@@ -66,6 +126,7 @@ type song struct {
 	Path        string `xml:"path,attr,omitempty" json:"path,omitempty"`
 	Type        string `xml:"type,attr,omitempty" json:"type,omitempty"`
 	IsDir       bool   `xml:"isDir,attr" json:"isDir"`
+	Starred     string `xml:"starred,attr,omitempty" json:"starred,omitempty"`
 }
 
 type searchResult3 struct {

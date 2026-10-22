@@ -7,6 +7,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/lastfm"
 	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
+	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"io"
 	"log/slog"
@@ -101,6 +102,7 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
+	a.Secrets = vault.Secrets{V: vlt}
 	lfm := &lastfm.Service{DB: d, Vault: vlt}
 	ud := &userdata.Store{DB: d, OnPlay: func(ctx context.Context, uid string, p userdata.Play) { lfm.Enqueue(ctx, uid, p.TrackID, p.PlayedAt) }}
 	rc := &runtimecfg.Store{DB: d}
@@ -123,7 +125,8 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 			Features: map[string]bool{"backup": true, "lyrics": true, "history": true, "playlists": true}},
 		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS),
 		UserEdits: sc, Logs: testRing, LyricsSearch: testLyricsSearch, Matcher: fakeMatcher{},
-		Runtime: map[string]any{"watch_mode": "auto"}}
+		Runtime:  map[string]any{"watch_mode": "auto"},
+		Subsonic: &subsonic.Handler{Auth: a, Library: &app.Library{Scanner: sc, BG: context.Background()}, Playlists: sc, Version: "test"}}
 	if mut != nil {
 		mut(&deps, d, sc)
 	}

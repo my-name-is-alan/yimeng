@@ -479,11 +479,13 @@ function serverSettingsSec(sec, srv, reload) {
   }));
   draw();
   const tz = h("input", { class: "input", value: st.time_zone || "Asia/Shanghai", placeholder: "Asia/Shanghai", style: { maxWidth: "200px" }, "aria-label": "时区" });
+  const cors = h("input", { class: "input", value: (st.cors_origins || []).join(", "), placeholder: "https://app.example.com", style: { maxWidth: "320px" }, "aria-label": "允许的跨域来源" });
   const perMin = h("input", { class: "input", type: "number", min: 1, max: 120, value: st.fill_per_minute, style: { width: "90px" }, "aria-label": "每分钟请求上限" });
   const row = (label, ...c) => h("div", { class: "row wrap", style: { alignItems: "center", gap: "12px", marginBottom: "12px" } }, h("span", { style: { minWidth: "120px", color: "var(--fg-2)", fontSize: "13.5px" } }, label), ...c);
   const save = h("button", { class: "btn primary sm", onclick: async () => {
     const body = { watch_mode: watch.value, rescan_interval: rescan.value, musicbrainz_enabled: mb.checked, musicbrainz_contact: contact.value.trim(),
-      fill_sources: order.filter((x) => on.has(x)), fill_per_minute: Number(perMin.value) || st.fill_per_minute, time_zone: tz.value.trim() || "Asia/Shanghai" };
+      fill_sources: order.filter((x) => on.has(x)), fill_per_minute: Number(perMin.value) || st.fill_per_minute, time_zone: tz.value.trim() || "Asia/Shanghai",
+      cors_origins: cors.value.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean) };
     if (body.musicbrainz_enabled && !body.musicbrainz_contact) return toast("启用 MusicBrainz 需要填写联系邮箱", "err");
     save.disabled = true;
     try { await put("/settings/server", body); toast("已保存，立即生效"); reload(); } catch (e) { errToast(e); } finally { save.disabled = false; }
@@ -491,6 +493,7 @@ function serverSettingsSec(sec, srv, reload) {
   return sec("运行设置", "修改后立即生效，无需重启 Core。", 
     row("文件监听", watch), row("定时重扫", rescan),
     row("时区", tz, h("span", { class: "dim", style: { fontSize: "12.5px" } }, "听歌报告等统计默认使用（IANA 名称，如 Asia/Shanghai；环境变量 YIMENG_TZ）")),
+    row("跨域来源 (CORS)", cors, h("span", { class: "dim", style: { fontSize: "12.5px" } }, "允许哪些网页 App 从浏览器调用 API，逗号分隔；留空为不允许（YIMENG_CORS_ORIGINS）")),
     row("MusicBrainz 补全", mb, contact),
     h("div", { style: { margin: "6px 0 12px" } }, h("div", { style: { fontWeight: 600, marginBottom: "4px" } }, "后台补全缺失信息"),
       h("p", { class: "muted", style: { margin: "0 0 10px", fontSize: "13px" } }, "只为本地曲目补全空缺的 ISRC、年份、流派和专辑封面，不覆盖已有标签或你的手动修改，也不修改音频文件。勾选并排序要使用的来源（越靠前越优先）；全部不勾选即关闭。"),

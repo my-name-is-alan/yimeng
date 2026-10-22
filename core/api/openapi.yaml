@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.17.0
+  version: 0.18.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -17,8 +17,22 @@ info:
     (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
     (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
     with `Retry-After` when exceeded. `/healthz` is not rate-limited.
-    Optional Subsonic-compatible `/rest/*.view` (disable with `YIMENG_SUBSONIC=false`):
-    password = paired device token (`ymd_…`); token+salt (t/s) is not supported.
+    Optional OpenSubsonic-compatible `/rest/*` (disable with `YIMENG_SUBSONIC=false`), see D59
+    and `docs/developer-api.md`.
+
+    **Developer API (D59).** Third-party apps use a personal API key
+    (`Authorization: Bearer yk_…`) created under 设备/开发者. Keys carry scopes:
+    `read` (all GET/HEAD), `playback` (players, queue, scrobble, rooms, stream),
+    `library-write` (other writes: playlists, favorites, edits),
+    `admin` (users, system, settings, sources, plugins; admin accounts only).
+    A key without the needed scope gets `403 insufficient_scope`. Keys can never
+    manage credentials, devices, sessions or Last.fm secrets.
+    **Versioning:** the path prefix `/api/v1` is the major version; every response
+    carries `X-Yimeng-API-Version` (minor). Within v1 changes are additive only;
+    removals are announced with `deprecated: true` for at least one minor version first.
+    **CORS:** browser origins must be listed in the runtime setting `cors_origins`
+    (or `YIMENG_CORS_ORIGINS`, comma-separated); credentials are bearer tokens, so
+    `Access-Control-Allow-Credentials` is never sent.
 servers:
   - url: http://localhost:8741
   - url: http://nas.local:8741
@@ -30,7 +44,9 @@ tags:
   - name: sources
     description: StreamSource account management (credentials never leave the vault)
   - name: subsonic
-    description: Subsonic-compatible /rest API
+    description: OpenSubsonic-compatible /rest API
+  - name: developer
+    description: Personal API keys and Subsonic app passwords (D59)
   - name: system
   - name: pairing
   - name: library
@@ -1673,19 +1689,101 @@ paths:
   /rest/ping.view:
     get:
       tags: [subsonic]
-      summary: Subsonic ping (full /rest surface is Subsonic-compatible; see README)
+      summary: OpenSubsonic ping (the whole /rest surface follows the Subsonic 1.16.1 / OpenSubsonic spec)
       description: |
-        Auth with `u` (ignored) + `p=<device token>` or `p=enc:<hex>`, or Bearer.
-        Also getLicense, getMusicFolders, getIndexes, getArtists, getAlbumList2,
-        getAlbum, getSong, search3, getPlaylists, getPlaylist, getLyrics,
-        getCoverArt, stream, download. Responses are Subsonic XML or `f=json`.
+        Every endpoint answers at `/rest/<name>` and `/rest/<name>.view`, GET or POST
+        (form body; `formPost` extension). Responses are XML, or JSON with `f=json`;
+        errors are HTTP 200 with `status="failed"` and a Subsonic error code.
+
+        Endpoints: ping, getLicense, getOpenSubsonicExtensions, getMusicFolders,
+        getIndexes, getArtists, getArtist, getAlbum, getSong, getAlbumList2 (getAlbumList),
+        search3 (search2), getPlaylists, getPlaylist, createPlaylist, updatePlaylist,
+        deletePlaylist, star, unstar, getStarred2 (getStarred), scrobble, stream, download,
+        getCoverArt, getLyrics, getLyricsBySongId, getUser, savePlayQueue, getPlayQueue.
+
+        Auth (one of):
+        - `apiKey=yk_…` (extension apiKeyAuthentication; sending `u` too → error 43, bad key → 44)
+        - `u` + `t=md5(app_password + s)` + `s` with a per-account **app password**
+          (never the login password)
+        - `u` + `p=<app password>` / `p=enc:<hex>` only if that app password has
+          `allow_plain` (default off → error 41)
+        - legacy: `p=<ymd_ device token>` or `Authorization: Bearer`
+        10 failures per user+IP in 15 min lock that pair out (error 40) and raise a security alert.
+        Scopes: browsing = read; stream/download/scrobble/play queue = playback;
+        playlist writes and stars = library-write (missing → error 50).
+        Online tracks that are preview-only or unavailable are omitted from listings;
+        `stream` of a preview-only track is refused (HTTP 403 `preview_only`) — no 30 s clips, no DRM bypass.
       parameters:
+        - { name: apiKey, in: query, schema: { type: string } }
         - { name: u, in: query, schema: { type: string } }
-        - { name: p, in: query, schema: { type: string }, description: "ymd_ device token" }
+        - { name: t, in: query, schema: { type: string }, description: "md5(app_password + s), hex" }
+        - { name: s, in: query, schema: { type: string } }
+        - { name: p, in: query, schema: { type: string }, description: "app password (only if allow_plain) or ymd_ device token" }
+        - { name: v, in: query, schema: { type: string } }
+        - { name: c, in: query, schema: { type: string } }
         - { name: f, in: query, schema: { type: string, enum: [xml, json, jsonp] } }
       security: []
       responses:
         "200": { description: "subsonic-response envelope" }
+
+  /api/v1/developer/credentials:
+    get:
+      tags: [developer]
+      summary: List my API keys and app passwords (secrets are never returned)
+      description: "Admins may pass `all=1` to list every account's credentials. Not callable with an API key."
+      parameters:
+        - { name: all, in: query, schema: { type: string, enum: ["1"] } }
+      responses:
+        "200":
+          description: Credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/DevCredential" } }
+                  scopes: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [developer]
+      summary: Create an API key (`yk_…`) or a Subsonic app password; the secret is returned once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name]
+              properties:
+                kind: { type: string, enum: [api_key, app_password] }
+                name: { type: string, maxLength: 64 }
+                scopes: { type: array, items: { type: string, enum: [read, playback, library-write, admin] }, description: "`read` is always added; `admin` only for admin accounts. App passwords default to read+playback+library-write." }
+                allow_plain: { type: boolean, default: false, description: "app_password only: accept plaintext `p=` (legacy clients)" }
+                expires_in_days: { type: integer, minimum: 0, maximum: 3650, description: "0 = never" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  credential: { $ref: "#/components/schemas/DevCredential" }
+                  secret: { type: string, description: "Shown only once" }
+                  note: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/developer/credentials/{id}:
+    delete:
+      tags: [developer]
+      summary: Revoke a credential (owner, or any as admin); takes effect immediately
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/sources:
     get:
@@ -2299,6 +2397,7 @@ components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
     queryToken: { type: apiKey, in: query, name: access_token }
+    apiKey: { type: http, scheme: bearer, bearerFormat: "yk_<40 chars>", description: "Personal API key with scopes (D59); send as Bearer" }
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string } }
     Limit: { name: limit, in: query, description: "Page size; values above 500 are clamped to 500 (not an error). Values < 1 return 400.", schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
@@ -2315,6 +2414,20 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    DevCredential:
+      type: object
+      properties:
+        id: { type: string }
+        user_id: { type: string }
+        username: { type: string, description: "Only in admin all=1 listings" }
+        kind: { type: string, enum: [api_key, app_password] }
+        name: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prefix: { type: string, description: "First characters of the secret, for recognition" }
+        allow_plain: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, "null"], format: date-time }
+        expires_at: { type: [string, "null"], format: date-time }
     RefreshSession:
       type: object
       properties:
@@ -2457,6 +2570,7 @@ components:
         fill_sources: { type: array, items: { type: string, enum: [spotify, netease, qq, kugou, musicbrainz] }, description: "ordered; empty = background fill off (default)" }
         fill_per_minute: { type: integer, minimum: 1, maximum: 120 }
         time_zone: { type: string, example: Asia/Shanghai, description: "IANA zone used for reports (D55); seeded from YIMENG_TZ, default Asia/Shanghai" }
+        cors_origins: { type: array, items: { type: string }, example: ["https://app.example.com"], description: "D59: browser origins allowed to call /api and /rest (`*` = any); seeded from YIMENG_CORS_ORIGINS; empty = no CORS" }
     ServerSettingsResponse:
       type: object
       properties:

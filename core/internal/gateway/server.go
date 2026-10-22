@@ -302,6 +302,15 @@ func NewRouter(d Deps) http.Handler {
 	}
 	if d.Subsonic != nil {
 		d.Subsonic.Stream = d.stream
+		d.Subsonic.WithDevice = withDevice
+		d.Subsonic.ClientIP = clientIP
+		d.Subsonic.Decorate = d.markEntitlement
+		if d.UserData != nil && d.Subsonic.UserData == nil {
+			d.Subsonic.UserData = d.UserData
+		}
+		if d.Alerts != nil {
+			d.Subsonic.OnAuthFail = d.Alerts.LoginFailed
+		}
 		d.Subsonic.Mount(mux)
 	}
 	if d.Backup != nil {
@@ -316,7 +325,13 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("PUT /api/system/backups/policy", d.adminOnly(d.putBackupPolicy))
 	}
 
+	mux.HandleFunc("GET /api/developer/credentials", d.listCredentials)
+	mux.HandleFunc("POST /api/developer/credentials", d.createCredential)
+	mux.HandleFunc("DELETE /api/developer/credentials/{id}", d.revokeCredential)
+
 	h := securityHeaders(d.requireAuth(mux))
+	h = apiVersionHeader(h)
+	h = d.cors(h)
 	h = rateLimit(d.RateLimits, h)
 	h = realIP(d.TrustedProxies, h)
 	h = apiV1Alias(h)
@@ -404,6 +419,9 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 		if err != nil {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="yimeng", error="invalid_token"`)
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked device token")
+			return
+		}
+		if !checkScope(w, r, dev) {
 			return
 		}
 		noteDevice(r.Context(), dev.ID)
