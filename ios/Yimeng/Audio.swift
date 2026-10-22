@@ -511,13 +511,14 @@ struct SoundSettingsView: View {
             } header: { Text("音质") } footer: {
                 Text("「原始」请求未转码文件（FLAC / ALAC / 杜比 E-AC-3），由 iOS 直接解码；多声道与杜比全景声交给 AirPods、AirPlay 或 HDMI 输出。")
             }
-            Section("过渡") {
+            Section {
                 Toggle("无缝播放（预加载下一首）", isOn: $gapless)
                 VStack(alignment: .leading) {
                     HStack { Text("淡入淡出"); Spacer(); Text(crossfade == 0 ? "关" : "\(Int(crossfade)) 秒").foregroundStyle(.secondary) }
                     Slider(value: $crossfade, in: 0...12, step: 1)
                 }
-            }
+            } header: { Text("过渡") } footer: { Text("无缝播放在淡入淡出为「关」时生效：下一首提前排入播放队列，首尾零间隙。") }
+            Section { NavigationLink("离线缓存") { OfflineSettingsView() } }
             Section {
                 Picker("回放增益", selection: $rgMode) { Text("关").tag(0); Text("单曲").tag(1); Text("专辑").tag(2) }
                     .pickerStyle(.segmented)

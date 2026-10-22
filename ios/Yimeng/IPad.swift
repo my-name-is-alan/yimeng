@@ -351,6 +351,18 @@ enum PadDebug {
             if let d = PlatformStore.shared.dailies.first { PlayerStore.shared.play(songs: d.tracks.filter { !$0.isUnplayable }) }
             if a.contains("-thenPause") { try? await Task.sleep(for: .seconds(3)); if PlayerStore.shared.isPlaying { PlayerStore.shared.toggle() } }
         }
+        if a.contains("-gaplessTest") {
+            // Seek near the end; log the hand-off so the gap (wall clock between last tick and the next song's first tick) is visible.
+            try? await Task.sleep(for: .seconds(6))
+            let p = PlayerStore.shared, first = p.song?.id ?? ""
+            NSLog("[ym] GAPLESS start id=%@ dur=%.1f cached=%d", first, p.duration, OfflineCache.shared.isCached(first) ? 1 : 0)
+            if p.duration > 10 { p.seek(to: p.duration - 4) }
+            for _ in 0..<40 {
+                try? await Task.sleep(for: .milliseconds(250))
+                if p.song?.id != first { NSLog("[ym] GAPLESS switched to=%@ elapsed=%.2f playing=%d", p.song?.id ?? "-", p.elapsed, p.isPlaying ? 1 : 0); break }
+            }
+        }
+        if a.contains("-soundSheet") { try? await Task.sleep(for: .seconds(2)); SheetCenter.shared.sound = true }
         if a.contains("-padFull") { try? await Task.sleep(for: .seconds(3)); state.padFull = true }
     }
 }

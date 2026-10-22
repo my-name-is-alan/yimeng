@@ -43,6 +43,8 @@ final class PlayerStore: ObservableObject {
     private var fadeTask: Task<Void, Never>?
     private var fadingOut = false
     private var preloaded: (id: String, asset: AVURLAsset)?
+    /// Gapless: the next item already enqueued on the AVQueuePlayer (no crossfade), adopted at item end without a gap.
+    private var queuedNext: (id: String, item: AVPlayerItem)?
     var upcoming: [NDSong] { index + 1 < queue.count ? Array(queue[(index + 1)...]) : [] }
 
     private var coverId: String?
@@ -273,6 +275,12 @@ final class PlayerStore: ObservableObject {
 
     private func advanceAtEnd() {
         if sleepAfterTrack { sleepAfterTrack = false; isPlaying = false; player?.pause(); syncApp(); pushNowPlaying(); SheetCenter.shared.say("定时关闭：本首已播完"); return }
+        if repeatMode == .one, queuedNext != nil { queuedNext = nil; startCurrent(autoplay: true, seek: nil); return }
+        if let q = queuedNext, !queue.isEmpty, queue[(index + 1) % queue.count].id == q.id, repeatMode != .one,
+           (player as? AVQueuePlayer)?.items().contains(q.item) == true || player?.currentItem === q.item {
+            index = (index + 1) % queue.count; coverURL = nil
+            startCurrent(autoplay: true, seek: nil, adopt: q.item); return
+        }
         if repeatMode == .one { player?.seek(to: .zero); player?.play(); fadingOut = false; applyGain(); return }
         if index + 1 >= queue.count && repeatMode == .off {
             isPlaying = false; player?.pause(); player?.seek(to: .zero); elapsed = 0; syncApp(); pushNowPlaying(); return
@@ -283,20 +291,31 @@ final class PlayerStore: ObservableObject {
     private func preloadNext() {
         guard AudioPrefs.gapless, index + 1 < queue.count || repeatMode == .all, !queue.isEmpty else { return }
         let next = queue[(index + 1) % queue.count]
-        guard preloaded?.id != next.id, let url = LibraryStore.shared.streamURL(for: next.id) else { return }
+        guard preloaded?.id != next.id, queuedNext?.id != next.id,
+              let url = OfflineCache.shared.file(for: next.id) ?? LibraryStore.shared.streamURL(for: next.id) else { return }
         let asset = Self.asset(url)
+        if AudioPrefs.crossfade == 0, repeatMode != .one, !sleepAfterTrack, let qp = player as? AVQueuePlayer {
+            // True gapless: AVQueuePlayer starts decoding the next item early and plays it back-to-back.
+            let item = AVPlayerItem(asset: asset)
+            item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
+            if qp.canInsert(item, after: nil) { qp.insert(item, after: nil); queuedNext = (next.id, item); attachFX(item, next); return }
+        }
         preloaded = (next.id, asset)
         Task { _ = try? await asset.load(.isPlayable) }
     }
 
     private static func asset(_ url: URL) -> AVURLAsset {
+        if url.isFileURL { return AVURLAsset(url: url) }   // offline cache: original bytes, no network
+        return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": mediaHeaders(for: url)])
+    }
+    static func mediaHeaders(for url: URL) -> [String: String] {
         var headers = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
         // 飞牛: stream auth is the music-token cookie; AVPlayer sends these headers on every Range request.
         if NavidromeClient.fnos, !LibraryStore.shared.fnosToken.isEmpty {
             headers["Cookie"] = FnosClient.cookieHeader(root: LibraryStore.shared.fnosRoot, token: LibraryStore.shared.fnosToken); headers["X-Music-API"] = "v1"
         }
         if NavidromeClient.core { headers.merge(CoreState.mediaHeaders(for: url)) { _, b in b } }
-        return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        return headers
     }
 
     /// Account/server switch: stop and forget the visible queue without deleting any saved queue.
@@ -358,7 +377,7 @@ final class PlayerStore: ObservableObject {
         AppStateBridge.current?.applyNDSong(s, coverURL: coverURL, playing: isPlaying)
     }
 
-    private func startCurrent(autoplay: Bool, seek: TimeInterval?) {
+    private func startCurrent(autoplay: Bool, seek: TimeInterval?, adopt: AVPlayerItem? = nil) {
         #if DEBUG
         // Sim verification: `-autopause N` pauses N s after the first track starts (exercises Emby Stopped + resume point).
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-autopause"), i + 1 < ProcessInfo.processInfo.arguments.count,
@@ -376,17 +395,30 @@ final class PlayerStore: ObservableObject {
         duration = TimeInterval(s.duration ?? 0)
         elapsed = seek ?? 0
         pendingSeek = nil
-        guard let url = LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
-        tearDownPlayer()
-        AudioRoute.configureSession()
-        let asset: AVURLAsset = (preloaded?.id == s.id ? preloaded?.asset : nil) ?? Self.asset(url)
-        preloaded = nil
-        let item = AVPlayerItem(asset: asset)
-        // Let iOS render multichannel / Atmos (spatial on AirPods, passthrough on AirPlay/HDMI) — no in-app downmix.
-        item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
-        let p = AVPlayer(playerItem: item)
-        player = p
-        attachFX(item, s)   // FX off → analysis-only tap (beat breathing); bitstream → none
+        // Offline cache first (works with no network); else stream. Playback never waits on a download.
+        let local = OfflineCache.shared.file(for: s.id)
+        guard let url = local ?? LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
+        let p: AVPlayer, item: AVPlayerItem
+        if let adopt, let cur = player as? AVQueuePlayer {
+            // Gapless hand-off: the queue player is already on (or about to start) the next item.
+            if let l = embyLive { embyReport(.stopped, id: l.id, pos: l.pos, paused: false); embyLive = nil }
+            detachObservers()
+            if cur.currentItem !== adopt { cur.advanceToNextItem() }
+            p = cur; item = adopt
+            queuedNext = nil; preloaded = nil
+        } else {
+            tearDownPlayer()
+            AudioRoute.configureSession()
+            let asset: AVURLAsset = (preloaded?.id == s.id && local == nil ? preloaded?.asset : nil) ?? Self.asset(url)
+            preloaded = nil
+            item = AVPlayerItem(asset: asset)
+            // Let iOS render multichannel / Atmos (spatial on AirPods, passthrough on AirPlay/HDMI) — no in-app downmix.
+            item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
+            p = AVQueuePlayer(playerItem: item)
+            player = p
+            attachFX(item, s)   // FX off → analysis-only tap (beat breathing); bitstream → none
+        }
+        OfflineCache.shared.played(s)
         fadingOut = false
         let vol = targetVolume(for: s)
         if AudioPrefs.crossfade > 0 && autoplay { p.volume = 0; fadeTask?.cancel() } else { p.volume = vol }
@@ -509,13 +541,17 @@ final class PlayerStore: ObservableObject {
 
     private func tearDownPlayer() {
         if let l = embyLive { embyReport(.stopped, id: l.id, pos: l.pos, paused: true); embyLive = nil }
+        detachObservers()
+        player?.pause()
+        player = nil
+        queuedNext = nil
+    }
+    private func detachObservers() {
         if let timeObs, let player { player.removeTimeObserver(timeObs) }
         timeObs = nil
         if let endObs { NotificationCenter.default.removeObserver(endObs) }
         endObs = nil
         statusObs = nil
-        player?.pause()
-        player = nil
     }
 
     private func pushNowPlaying() {
