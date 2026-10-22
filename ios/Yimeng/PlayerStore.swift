@@ -90,7 +90,7 @@ final class PlayerStore: ObservableObject {
         }
         guard let player else { return }
         if isPlaying { player.pause(); isPlaying = false; save() }
-        else { player.play(); isPlaying = true }
+        else { player.defaultRate = rate; player.play(); isPlaying = true }
         syncApp()
         pushNowPlaying()
     }
@@ -136,6 +136,73 @@ final class PlayerStore: ObservableObject {
         }
         save()
     }
+    // MARK: Play mode / rate / sleep / history
+
+    enum PlayMode: String, CaseIterable { case loop = "列表循环", one = "单曲循环", shuffle = "随机播放", order = "顺序播放" }
+    var playMode: PlayMode { shuffle ? .shuffle : repeatMode == .one ? .one : repeatMode == .off ? .order : .loop }
+    func cyclePlayMode() {
+        switch playMode {
+        case .loop: repeatMode = .one
+        case .one: repeatMode = .all; if !shuffle { toggleShuffle() }
+        case .shuffle: toggleShuffle(); repeatMode = .off
+        case .order: repeatMode = .all
+        }
+        objectWillChange.send()
+    }
+
+    /// Playback speed. AVPlayer time-stretches (pitch kept); the effects tap sits after decode so it works at any rate.
+    @Published private(set) var rate: Float = 1
+    func setRate(_ r: Float) {
+        rate = r
+        player?.defaultRate = r
+        if isPlaying { player?.rate = r }
+    }
+
+    /// 定时关闭: fixed time, or stop when the current track ends.
+    @Published private(set) var sleepAt: Date?
+    @Published private(set) var sleepAfterTrack = false
+    private var sleepTask: Task<Void, Never>?
+    func setSleep(minutes: Int?) {
+        sleepTask?.cancel(); sleepAt = nil; sleepAfterTrack = false
+        guard let minutes else { return }
+        if minutes == 0 { sleepAfterTrack = true; return }
+        let at = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepAt = at
+        sleepTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, at.timeIntervalSinceNow - 4)))
+            guard let self, !Task.isCancelled else { return }
+            self.fade(to: 0, over: 4)
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self.sleepFire()
+        }
+    }
+    private func sleepFire() {
+        if isPlaying { toggle() }
+        sleepAt = nil; sleepAfterTrack = false
+        applyGain()
+        SheetCenter.shared.say("定时关闭：已暂停")
+    }
+
+    /// 播放历史 (per source, newest first, ≤ 100).
+    @Published private(set) var history: [NDSong] = PlayerStore.loadHistory()
+    private static var historyKey: String { "ym.history.v1." + MusicSources.activeId }
+    private static func loadHistory() -> [NDSong] {
+        (UserDefaults.standard.data(forKey: historyKey)).flatMap { try? JSONDecoder().decode([NDSong].self, from: $0) } ?? []
+    }
+    private func record(_ s: NDSong) {
+        history.removeAll { $0.id == s.id }
+        history.insert(s, at: 0)
+        if history.count > 100 { history.removeLast(history.count - 100) }
+        if let d = try? JSONEncoder().encode(history) { UserDefaults.standard.set(d, forKey: Self.historyKey) }
+    }
+    func reloadHistory() { history = Self.loadHistory() }
+    func clearHistory() { history = []; UserDefaults.standard.removeObject(forKey: Self.historyKey) }
+    func removeHistory(at o: IndexSet) {
+        history.remove(atOffsets: o)
+        if let d = try? JSONEncoder().encode(history) { UserDefaults.standard.set(d, forKey: Self.historyKey) }
+    }
+
     func cycleRepeat() { repeatMode = repeatMode == .all ? .one : repeatMode == .one ? .off : .all }
 
     /// ReplayGain → AVPlayer.volume (≤ 1; system volume stays untouched, no DSP so passthrough is kept).
@@ -168,6 +235,7 @@ final class PlayerStore: ObservableObject {
     }
 
     private func advanceAtEnd() {
+        if sleepAfterTrack { sleepAfterTrack = false; isPlaying = false; player?.pause(); syncApp(); pushNowPlaying(); SheetCenter.shared.say("定时关闭：本首已播完"); return }
         if repeatMode == .one { player?.seek(to: .zero); player?.play(); fadingOut = false; applyGain(); return }
         if index + 1 >= queue.count && repeatMode == .off {
             isPlaying = false; player?.pause(); player?.seek(to: .zero); elapsed = 0; syncApp(); pushNowPlaying(); return
@@ -290,6 +358,8 @@ final class PlayerStore: ObservableObject {
         if let seek, seek > 1 {
             p.seek(to: CMTime(seconds: seek, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         }
+        p.defaultRate = rate
+        record(s)
         if autoplay {
             p.play(); isPlaying = true
             if AudioPrefs.crossfade > 0 { fade(to: vol, over: min(AudioPrefs.crossfade, 4)) }

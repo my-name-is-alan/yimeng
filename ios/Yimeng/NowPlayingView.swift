@@ -8,6 +8,7 @@ struct NowPlayingView: View {
     @ObservedObject private var player = PlayerStore.shared
     @ObservedObject private var stars = StarStore.shared
     @State private var showAmbience = false
+    @State private var showMore = false
     @State private var start = Date().addingTimeInterval(-72)
     var track: DreamTrack { state.track }
 
@@ -51,9 +52,7 @@ struct NowPlayingView: View {
                 VStack(spacing: 0) {
                         topBar.motionIn(0.05, from: .top)
                         Spacer()
-                        if player.hasRealPlayback && !state.lyricsMode {
-                            VolumeRow().padding(.horizontal, Theme.margin + 8).padding(.bottom, 10).motionIn(0.26)
-                        }
+                        actionRow.padding(.horizontal, Theme.margin + 6).padding(.bottom, 14).motionIn(0.26)
                     controls.motionIn(0.3)
                 }
             }
@@ -62,7 +61,17 @@ struct NowPlayingView: View {
         }
         #if DEBUG
         .task { if ProcessInfo.processInfo.arguments.contains("-np-sheet") { try? await Task.sleep(for: .seconds(4)); showAmbience = true } }
+        .task { if ProcessInfo.processInfo.arguments.contains("-np-more") { try? await Task.sleep(for: .seconds(5)); showMore = true } }
         #endif
+        .sheet(isPresented: $showMore) {
+            if let s = player.song {
+                NowPlayingMoreSheet(song: s) { showAmbience = true }.environmentObject(state)
+                    .presentationDetents([.height(620), .large])
+                    .presentationBackground(Color(white: 0.085))
+                    .presentationCornerRadius(28)
+                    .presentationDragIndicator(.visible)
+            }
+        }
         .sheet(isPresented: $showAmbience) {
             AmbienceSheet().environmentObject(state)
                 .presentationDetents([.height(330)])
@@ -135,10 +144,36 @@ struct NowPlayingView: View {
             .background(Circle().fill(Color.white.opacity(0.14)))
     }
 
+    /// Small quiet action row: 歌词 · 音效 · 加到歌单 · 播放列表 · ⋯
+    var actionRow: some View {
+        HStack {
+            act("quote.bubble", on: state.lyricsMode) { withAnimation(.smooth(duration: 0.45)) { state.lyricsMode.toggle() } }
+            Spacer()
+            act("slider.horizontal.3", on: FXStore.shared.s.on) { SheetCenter.shared.sound = true }
+            Spacer()
+            act("text.badge.plus") { if let s = player.song { SheetCenter.shared.addToPlaylist = s } }
+            Spacer()
+            act("list.bullet") { SheetCenter.shared.queue = true }
+            Spacer()
+            act("ellipsis") { if player.hasRealPlayback { showMore = true } else { showAmbience = true } }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func act(_ icon: String, on: Bool = false, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 17)).opacity(on ? 1 : 0.78)
+                .frame(width: 40, height: 34)
+                .overlay(alignment: .bottom) { if on { Circle().fill(Theme.lime).frame(width: 4, height: 4).offset(y: 2) } }
+                .contentShape(Rectangle())
+        }
+    }
+
     var controls: some View {
         HStack {
-            Button { withAnimation(.smooth(duration: 0.45)) { state.lyricsMode.toggle() } } label: {
-                Image(systemName: "quote.bubble").font(.system(size: 20)).opacity(state.lyricsMode ? 1 : 0.8)
+            Button { PlayerStore.shared.cyclePlayMode() } label: {
+                Image(systemName: { switch player.playMode { case .loop: "repeat"; case .one: "repeat.1"; case .shuffle: "shuffle"; case .order: "arrow.right" } }())
+                    .font(.system(size: 17)).opacity(0.8)
             }
             Spacer()
             Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
@@ -150,15 +185,8 @@ struct NowPlayingView: View {
             Spacer()
             Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 24)) }
             Spacer()
-            if player.hasRealPlayback {
-                Menu {
-                    Button { SheetCenter.shared.queue = true } label: { Label("播放列表", systemImage: "list.bullet") }
-                    Button { SheetCenter.shared.sound = true } label: { Label("音效设置", systemImage: "slider.horizontal.3") }
-                    Button { showAmbience = true } label: { Label("梦境氛围", systemImage: "sparkles") }
-                } label: { Image(systemName: "list.bullet").font(.system(size: 20)).opacity(0.85) }
-            } else {
-                Button { showAmbience = true } label: { Image(systemName: "sparkles").font(.system(size: 20)).opacity(0.8) }
-            }
+            Text(player.rate == 1 ? "1×" : String(format: "%g×", player.rate)).font(.system(size: 13, weight: .medium).monospacedDigit()).opacity(0.7)
+                .lineLimit(1).fixedSize().frame(minWidth: 24)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 22).frame(height: 64)

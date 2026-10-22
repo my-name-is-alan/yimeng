@@ -129,6 +129,7 @@ final class SourceStore: ObservableObject {
         active = kind
         MusicSources.activeId = kind.rawValue
         UserDefaults.standard.set(kind.rawValue, forKey: Self.activeKey)
+        PlayerStore.shared.reloadHistory()
         await activeSource.activate()
     }
 

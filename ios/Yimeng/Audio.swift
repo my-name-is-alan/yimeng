@@ -288,7 +288,10 @@ struct GlobalSheets: ViewModifier {
     @ObservedObject private var c = SheetCenter.shared
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $c.queue) { QueueSheet().presentationDetents([.medium, .large]).presentationCornerRadius(28) }
+            .sheet(isPresented: $c.queue) {
+                QueueSheet().presentationDetents([.medium, .large]).presentationCornerRadius(28)
+                    .presentationBackground(Color(white: 0.085)).environment(\.colorScheme, .dark)
+            }
             .sheet(isPresented: $c.sound) { NavigationStack { SoundSettingsView() } .presentationCornerRadius(28) }
             .sheet(item: $c.addToPlaylist) { s in AddToPlaylistSheet(song: s).presentationDetents([.medium, .large]).presentationCornerRadius(28) }
             .overlay(alignment: .top) {
@@ -322,59 +325,74 @@ extension View { func songMenu(_ s: NDSong) -> some View { modifier(SongMenu(son
 struct QueueSheet: View {
     @ObservedObject private var player = PlayerStore.shared
     @Environment(\.dismiss) var dismiss
+    @State private var tab = 0
     var body: some View {
         NavigationStack {
-            List {
-                if let s = player.song {
-                    Section("正在播放") { row(s, playing: true) }
+            VStack(spacing: 0) {
+                Picker("", selection: $tab) { Text("正在播放").tag(0); Text("播放历史").tag(1) }
+                    .pickerStyle(.segmented).padding(.horizontal, 20).padding(.vertical, 8)
+                HStack {
+                    if tab == 0 {
+                        Button { withAnimation(.spring(response: 0.3)) { player.cyclePlayMode() } } label: {
+                            Label(player.playMode.rawValue, systemImage: modeIcon).font(.system(size: 13, weight: .medium))
+                        }
+                        Text("· \(player.upcoming.count) 首待播").font(.system(size: 12)).foregroundStyle(.secondary)
+                    } else {
+                        Text("\(player.history.count) 首").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(tab == 0 ? "清空队列" : "清空历史") { tab == 0 ? player.clearUpcoming() : player.clearHistory() }
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .disabled(tab == 0 ? player.upcoming.isEmpty : player.history.isEmpty)
                 }
-                Section {
-                    if player.upcoming.isEmpty {
-                        Text("队列里没有更多歌曲了").font(.system(size: 14)).foregroundStyle(.secondary)
-                    }
-                    ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
-                        row(s, playing: false)
-                            .contentShape(Rectangle())
-                            .onTapGesture { player.jump(toUpcoming: i) }
-                    }
-                    .onMove { player.moveUpcoming(from: $0, to: $1) }
-                    .onDelete { player.removeUpcoming(at: $0) }
-                } header: {
-                    HStack {
-                        Text("接下来 · \(player.upcoming.count) 首")
-                        Spacer()
-                        if !player.upcoming.isEmpty { Button("清空") { player.clearUpcoming() }.font(.system(size: 13, weight: .semibold)) }
+                .buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 4)
+                List {
+                    if tab == 0 {
+                        if let s = player.song { row(s, playing: true).listRowBackground(Color.clear).moveDisabled(true).deleteDisabled(true) }
+                        if player.upcoming.isEmpty {
+                            Text("队列里没有更多歌曲了").font(.system(size: 14)).foregroundStyle(.secondary).listRowBackground(Color.clear)
+                        }
+                        ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
+                            row(s, playing: false).contentShape(Rectangle())
+                                .onTapGesture { player.jump(toUpcoming: i) }
+                                .listRowBackground(Color.clear)
+                        }
+                        .onMove { player.moveUpcoming(from: $0, to: $1) }
+                        .onDelete { player.removeUpcoming(at: $0) }
+                    } else {
+                        if player.history.isEmpty {
+                            Text("还没有播放记录").font(.system(size: 14)).foregroundStyle(.secondary).listRowBackground(Color.clear)
+                        }
+                        ForEach(Array(player.history.enumerated()), id: \.offset) { i, s in
+                            row(s, playing: player.song?.id == s.id).contentShape(Rectangle())
+                                .onTapGesture { player.play(songs: Array(player.history[i...]), startAt: 0) }
+                                .listRowBackground(Color.clear)
+                        }
+                        .onDelete { player.removeHistory(at: $0) }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.editMode, .constant(tab == 0 ? .active : .inactive))
             }
-            .listStyle(.insetGrouped)
-            .environment(\.editMode, .constant(.active))
             .navigationTitle("播放列表")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    Button { player.toggleShuffle() } label: {
-                        Image(systemName: "shuffle").foregroundStyle(player.shuffle ? Theme.lime : .primary)
-                    }
-                    Button { player.cycleRepeat() } label: {
-                        Image(systemName: player.repeatMode == .one ? "repeat.1" : "repeat")
-                            .foregroundStyle(player.repeatMode == .off ? Color.primary : Theme.lime)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() }.fontWeight(.semibold) }
-            }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() }.fontWeight(.semibold) } }
         }
+    }
+    private var modeIcon: String {
+        switch player.playMode { case .loop: "repeat"; case .one: "repeat.1"; case .shuffle: "shuffle"; case .order: "arrow.right" }
     }
     func row(_ s: NDSong, playing: Bool) -> some View {
         HStack(spacing: 12) {
-            CoverImage(url: LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120))
+            CoverImage(url: LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120), points: 40)
                 .frame(width: 40, height: 40).clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.title).font(.system(size: 15, weight: playing ? .semibold : .regular)).lineLimit(1)
                 Text(s.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            if playing { Image(systemName: "waveform").foregroundStyle(Theme.lime) }
+            if playing { Image(systemName: "waveform").font(.system(size: 13)).foregroundStyle(Theme.lime) }
         }
     }
 }

@@ -21,6 +21,9 @@ enum DebugSnap {
                     VolumeController.shared.set(v)
                     NetLog.logger.info("NPTEST vol set \(v) → controller \(VolumeController.shared.value) userGain \(PlayerStore.shared.userGain) system=\(VolumeController.usesSystem)")
                 }
+                if let r = arg("-np-rate").flatMap(Float.init) { PlayerStore.shared.setRate(r) }
+                if a.contains("-np-sleep") { PlayerStore.shared.setSleep(minutes: 30) }
+                if a.contains("-np-queue") { try? await Task.sleep(for: .seconds(2)); SheetCenter.shared.queue = true }
                 if let n = arg("-np-amb"), let amb = Ambience(rawValue: n) {
                     try? await Task.sleep(for: .seconds(1))
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { AppStateBridge.current?.ambience = amb }
