@@ -45,6 +45,22 @@ export const player = {
     this.buildOrder(start);
     this.pos = this.shuffle ? 0 : start;
     this.load(true);
+    this.healCovers();
+  },
+  // Online queue items saved before covers went through Core (or built from
+  // history rows) carry no cover.url: re-fetch the track by its full
+  // "<platform>:<id>" from Core, which returns the cached cover (D60).
+  async healCovers() {
+    const need = this.queue.filter((t) => isOnline(t?.id) && !t.cover?.url && !t._noCover);
+    if (!need.length) return;
+    const ids = [...new Set(need.map((t) => t.id))].slice(0, 300);
+    const got = new Map();
+    let i = 0;
+    const worker = async () => { while (i < ids.length) { const id = ids[i++]; try { const d = await get(`/tracks/${encodeURIComponent(id)}`); if (d?.id === id && d.cover?.url) got.set(id, d.cover); } catch {} } };
+    await Promise.all([1, 2, 3, 4].map(worker));
+    let n = 0;
+    for (const t of this.queue) if (isOnline(t?.id) && !t.cover?.url) { const c = got.get(t.id); if (c) { t.cover = c; n++; } else t._noCover = true; }
+    if (n) { this.save(); this.emit("queue"); this.emit("track"); this.media(); }
   },
   playNext(tracks) {
     tracks = [].concat(tracks).map(slim);
@@ -52,7 +68,7 @@ export const player = {
     const at = this.queue.length;
     this.queue.push(...tracks);
     this.order.splice(this.pos + 1, 0, ...tracks.map((_, i) => at + i));
-    this.emit("queue"); toast(`将在下一首播放 · ${tracks.length} 首`);
+    this.emit("queue"); this.healCovers(); toast(`将在下一首播放 · ${tracks.length} 首`);
   },
   enqueue(tracks) {
     tracks = [].concat(tracks).map(slim);
@@ -60,7 +76,7 @@ export const player = {
     const at = this.queue.length;
     this.queue.push(...tracks);
     this.order.push(...tracks.map((_, i) => at + i));
-    this.emit("queue"); toast(`已加入播放队列 · ${tracks.length} 首`);
+    this.emit("queue"); this.healCovers(); toast(`已加入播放队列 · ${tracks.length} 首`);
   },
   removeAt(p) {
     if (p === this.pos) return;
@@ -162,6 +178,7 @@ export const player = {
       const s = JSON.parse(localStorage.getItem(SKEY) || "null"); if (!s?.queue?.length) return;
       Object.assign(this, { queue: s.queue, order: s.order, pos: s.pos, shuffle: !!s.shuffle, repeat: s.repeat || "off", volume: s.volume ?? 1 });
       this.applyVol();
+      setTimeout(() => this.healCovers(), 0);
       if (this.track && isOnline(this.track.id)) this.load(false, s.at || 0);
       else if (this.track) { audio.src = streamURL(this.track.id); if (s.at) audio.currentTime = s.at / 1000; this.loadLyrics(); this.media(); this.emit("track"); }
     } catch {}
