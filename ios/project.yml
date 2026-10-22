@@ -26,7 +26,10 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_UIBackgroundModes: "audio"
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UIRequiresFullScreen: NO
         CODE_SIGNING_ALLOWED: NO
         # Simulator: ad-hoc sign with entitlements so Keychain works (unsigned → errSecMissingEntitlement -34018).
         "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
@@ -55,7 +58,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app.widgets
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: NO
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGNING_ALLOWED: NO
         "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"

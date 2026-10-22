@@ -16,8 +16,10 @@
 		112B45B56CA6EC8DF001128A /* OFL-SmileySans.txt in Resources */ = {isa = PBXBuildFile; fileRef = EAAB15991187EA958380E419 /* OFL-SmileySans.txt */; };
 		112DC50DEE50F63DAFB146ED /* EmbyClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3318DA59414862B1885E2720 /* EmbyClientTests.swift */; };
 		17FCA2C64AA0229648AC071D /* emby-audio.json in Resources */ = {isa = PBXBuildFile; fileRef = 9A3C163344750D61165021CE /* emby-audio.json */; };
+		1E47D068B47A5E2B7629065F /* IPad.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */; };
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
+		2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D025F1147743E7047E3D665 /* IPadTests.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
 		37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */ = {isa = PBXBuildFile; fileRef = 80FCD065D95D1B20100769C5 /* fnos-login.json */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
@@ -184,6 +186,7 @@
 		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
+		8D025F1147743E7047E3D665 /* IPadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadTests.swift; sourceTree = "<group>"; };
 		8D351EB4C609FA891763BACE /* EmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStates.swift; sourceTree = "<group>"; };
 		91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jellyfin-lyrics.json"; sourceTree = "<group>"; };
 		9743CD154042418ED809DFA6 /* YimengTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YimengTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -201,6 +204,7 @@
 		B727C7B6B00ECD4C014811FE /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		BF11FEF0B55F7446317FCA11 /* CoreModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreModels.swift; sourceTree = "<group>"; };
+		BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPad.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
 		CB7AA12279A810579DDAD711 /* GenreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreView.swift; sourceTree = "<group>"; };
 		D481EB1947F216689FAC4AF5 /* CoreEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEvents.swift; sourceTree = "<group>"; };
@@ -222,6 +226,7 @@
 			isa = PBXGroup;
 			children = (
 				065726152CF03E6FD2BF5A3A /* GestureTests.swift */,
+				8D025F1147743E7047E3D665 /* IPadTests.swift */,
 			);
 			path = YimengUITests;
 			sourceTree = "<group>";
@@ -325,6 +330,7 @@
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
 				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
 				0E250285D45C295C91932A00 /* HomeView.swift */,
+				BFCB77BB6D2CFCA3D38485A3 /* IPad.swift */,
 				71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */,
 				26134EFA3C10B18CD7770A97 /* LibraryCache.swift */,
 				197A06AAC57F015AE8C264DD /* LibraryStore.swift */,
@@ -535,6 +541,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4174A2343A33535F95EDA60D /* GestureTests.swift in Sources */,
+				2F34495EF5D7FF0E57A8A08B /* IPadTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -588,6 +595,7 @@
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
 				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,
 				D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */,
+				1E47D068B47A5E2B7629065F /* IPad.swift in Sources */,
 				DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */,
 				3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */,
 				D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */,
@@ -757,6 +765,9 @@
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -765,7 +776,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -823,7 +834,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -847,7 +858,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -869,6 +880,9 @@
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -877,7 +891,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

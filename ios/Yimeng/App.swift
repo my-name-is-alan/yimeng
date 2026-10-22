@@ -11,6 +11,8 @@ final class AppState: ObservableObject {
     @Published var path: [Route] = []
     @Published var nowPlaying = false
     @Published var lyricsMode = false
+    /// iPad: full-screen player (turntable in landscape) opened from the player column.
+    @Published var padFull = false
     @Published var track: DreamTrack = DreamMock.rose { didSet { if !PlayerStore.shared.hasRealPlayback { syncSystem() } } }
     @Published var isPlaying = false {
         didSet {
@@ -182,6 +184,39 @@ struct Shell: View {
     @ObservedObject private var library = LibraryStore.shared
 
     var tabs: some View {
+        Group { if hsc == .regular { padLayout } else { phoneTabs } }
+        .background(PlayerShortcuts())
+        .userActivity(YMHandoff.type, isActive: player.song != nil) { a in YMHandoff.fill(a) }
+        .onContinueUserActivity(YMHandoff.type) { a in YMHandoff.continueActivity(a) }
+        .onChange(of: state.nowPlaying) { _, v in if v, hsc == .regular, !state.padFull { state.nowPlaying = false } }   // iPad: the player column is always there
+        .environment(\.heroNS, ns)
+        .animation(.ui, value: state.nowPlaying)
+        .animation(.ui, value: player.hasRealPlayback)
+        .onAppear {
+            PlaybackSystem.shared.onCommand = { [weak s = state] c in
+                DispatchQueue.main.async {
+                    guard let s else { return }
+                    switch c { case "next": s.skip(1); case "prev": s.skip(-1); case "play": s.setPlaying(true); case "pause": s.setPlaying(false); default: s.setPlaying(!s.isPlaying) }
+                }
+            }
+            if state.demo != nil { state.syncSystem() }
+            #if DEBUG
+            DebugSnap.schedule()
+            #endif
+        }
+        .modifier(GlobalSheets())
+        #if DEBUG
+        .task { await PadDebug.run(state) }
+        .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
+        #endif
+        .onChange(of: library.connected) { _, on in
+            guard on else { return }
+            Task { async let h: Void = HomeStore.shared.refresh(); async let s: Void = StarStore.shared.load(); _ = await (h, s) }
+        }
+    }
+
+    @Environment(\.horizontalSizeClass) var hsc
+    var phoneTabs: some View {
         ZStack(alignment: .bottom) {
             Group {
                 switch state.tab {
@@ -223,29 +258,6 @@ struct Shell: View {
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 60)), removal: .opacity.combined(with: .offset(y: 80))))
                     .zIndex(2)
             }
-        }
-        .environment(\.heroNS, ns)
-        .animation(.ui, value: state.nowPlaying)
-        .animation(.ui, value: player.hasRealPlayback)
-        .onAppear {
-            PlaybackSystem.shared.onCommand = { [weak s = state] c in
-                DispatchQueue.main.async {
-                    guard let s else { return }
-                    switch c { case "next": s.skip(1); case "prev": s.skip(-1); case "play": s.setPlaying(true); case "pause": s.setPlaying(false); default: s.setPlaying(!s.isPlaying) }
-                }
-            }
-            if state.demo != nil { state.syncSystem() }
-            #if DEBUG
-            DebugSnap.schedule()
-            #endif
-        }
-        .modifier(GlobalSheets())
-        #if DEBUG
-        .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
-        #endif
-        .onChange(of: library.connected) { _, on in
-            guard on else { return }
-            Task { async let h: Void = HomeStore.shared.refresh(); async let s: Void = StarStore.shared.load(); _ = await (h, s) }
         }
     }
 
@@ -336,7 +348,7 @@ struct Shell: View {
             .background { if active { Capsule().fill(Theme.fill(scheme).opacity(1.6)).matchedGeometryEffect(id: "tabpill", in: tabNS) } }
         }.buttonStyle(.plain)
     }
-    @Namespace private var tabNS
+    @Namespace var tabNS
     @ObservedObject private var acct = CoreAccountStore.shared
 }
 
