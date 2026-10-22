@@ -1,0 +1,4 @@
+{"code":200,"playlist":{"id":7001,"name":"周杰伦精选","coverImgUrl":"https://p1.music.126.net/pl.jpg","description":"精选","trackCount":3,"playCount":123456,"creator":{"userId":1001,"nickname":"小明"},
+ "tracks":[{"id":186016,"name":"晴天","ar":[{"id":6452,"name":"周杰伦"}],"al":{"id":18905,"name":"叶惠美","picUrl":"https://p1.music.126.net/c1.jpg"},"dt":269000,"fee":1}],
+ "trackIds":[{"id":186016},{"id":999},{"id":5257138}]},
+ "privileges":[{"id":186016,"fee":1,"st":0,"pl":0,"freeTrialPrivilege":{"resConsumable":true}}]}

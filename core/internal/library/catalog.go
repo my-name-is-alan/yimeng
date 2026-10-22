@@ -101,7 +101,8 @@ type ListParams struct {
 	Q             string // substring search (case-insensitive for ASCII)
 	ArtistID      string
 	AlbumID       string
-	Favorite      bool // only favorites
+	Favorite      bool   // only favorites
+	Origin        string // "" or "all" = every origin; "local", "netease", ...
 }
 
 type Page[T any] struct {
@@ -200,6 +201,9 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 	}
 	var w where
 	addSearch(&w, p, `a.name`, `a.search_text`)
+	if p.Origin != "" && p.Origin != "all" {
+		w.add(`a.origin=?`, p.Origin)
+	}
 	out := Page[Artist]{Items: []Artist{}, Limit: p.Limit, Offset: p.Offset}
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM artists a`+w.sql(), w.args); err != nil {
 		return out, err
@@ -258,6 +262,9 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 	}
 	var w where
 	addSearch(&w, p, `al.title`, `al.artist_name`, `al.search_text`)
+	if p.Origin != "" && p.Origin != "all" {
+		w.add(`al.origin=?`, p.Origin)
+	}
 	if p.Favorite {
 		w.add(`al.id IN (SELECT entity_id FROM favorites WHERE entity_type='album')`)
 	}
@@ -388,6 +395,9 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 	}
 	var w where
 	addSearch(&w, p, `t.title`, `t.artist_name`, `al.title`, `t.search_text`)
+	if p.Origin != "" && p.Origin != "all" {
+		w.add(`t.origin=?`, p.Origin)
+	}
 	if p.AlbumID != "" {
 		w.add(`t.album_id=?`, p.AlbumID)
 	}
@@ -448,10 +458,20 @@ func (s *Scanner) AlbumCover(ctx context.Context, albumID string) (string, error
 	if err != nil {
 		return "", err
 	}
+	if strings.HasPrefix(p.String, "https://") || strings.HasPrefix(p.String, "http://") {
+		return p.String, nil // external album: remote cover URL (public CDN)
+	}
 	return s.safeFile(p.String, true)
 }
 
 func (s *Scanner) TrackCover(ctx context.Context, trackID string) (string, error) {
+	if IsExternalID(trackID) {
+		var al sql.NullString
+		if err := s.db.QueryRowContext(ctx, `SELECT album_id FROM tracks WHERE id=?`, trackID).Scan(&al); err != nil || !al.Valid {
+			return "", ErrNotFound
+		}
+		return s.AlbumCover(ctx, al.String)
+	}
 	var p sql.NullString
 	err := s.db.QueryRowContext(ctx, `SELECT st.cover_path FROM track_links l JOIN source_tracks st ON st.id=l.source_track_id
 		WHERE l.track_id=? AND st.cover_path IS NOT NULL ORDER BY l.confidence DESC LIMIT 1`, trackID).Scan(&p)

@@ -234,6 +234,9 @@ func normName(n string) (string, error) {
 }
 
 func (s *Scanner) CreatePlaylist(ctx context.Context, in PlaylistInput) (Playlist, error) {
+	if err := s.EnsureExternal(ctx, in.TrackIDs); err != nil {
+		return Playlist{}, fmt.Errorf("%w: %v", ErrBadInput, err)
+	}
 	if in.Name == nil {
 		return Playlist{}, fmt.Errorf("%w: name required", ErrBadInput)
 	}
@@ -297,6 +300,9 @@ func writeItems(ctx context.Context, tx querier, id string, ids []string) error 
 
 // UpdatePlaylist changes name/comment/rules (rules only on smart playlists).
 func (s *Scanner) UpdatePlaylist(ctx context.Context, id string, in PlaylistInput) (Playlist, error) {
+	if err := s.EnsureExternal(ctx, in.TrackIDs); err != nil {
+		return Playlist{}, fmt.Errorf("%w: %v", ErrBadInput, err)
+	}
 	p, err := s.loadPlaylist(ctx, s.db, id)
 	if err != nil {
 		return p, err
@@ -361,6 +367,9 @@ type PlaylistOp struct {
 // EditPlaylist applies an item operation to a static playlist. Indices refer
 // to stored items (including currently missing tracks).
 func (s *Scanner) EditPlaylist(ctx context.Context, id string, op PlaylistOp) (Playlist, error) {
+	if err := s.EnsureExternal(ctx, op.TrackIDs); err != nil {
+		return Playlist{}, fmt.Errorf("%w: %v", ErrBadInput, err)
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Playlist{}, err

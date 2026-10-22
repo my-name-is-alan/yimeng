@@ -1,0 +1,5 @@
+{"code":200,"result":{"songCount":2,"songs":[
+ {"id":186016,"name":"晴天","ar":[{"id":6452,"name":"周杰伦"}],"al":{"id":18905,"name":"叶惠美","picUrl":"https://p1.music.126.net/c1.jpg"},"dt":269000,"fee":1,"no":3,"cd":"01","publishTime":1059580800000,
+  "privilege":{"id":186016,"fee":1,"st":0,"pl":0,"maxbr":999000,"maxBrLevel":"lossless","freeTrialPrivilege":{"resConsumable":true,"userConsumable":false}}},
+ {"id":5257138,"name":"晴天（Live）","ar":[{"id":6452,"name":"周杰伦"}],"al":{"id":500,"name":"演唱会","picUrl":"https://p1.music.126.net/c2.jpg"},"dt":300000,"fee":8,
+  "privilege":{"id":5257138,"fee":8,"st":0,"pl":128000,"maxbr":320000,"maxBrLevel":"exhigh","freeTrialPrivilege":{"resConsumable":false,"userConsumable":false}}}]}}

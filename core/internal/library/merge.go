@@ -237,7 +237,9 @@ func (s *Scanner) Merge(ctx context.Context) error {
 	}
 	defer tx.Rollback()
 	now := time.Now().UnixMilli()
-	for _, q := range []string{`DELETE FROM track_links`, `DELETE FROM track_artists`, `DELETE FROM album_artists`} {
+	for _, q := range []string{`DELETE FROM track_links`,
+		`DELETE FROM track_artists WHERE track_id NOT IN (SELECT id FROM tracks WHERE origin<>'local')`,
+		`DELETE FROM album_artists WHERE album_id NOT IN (SELECT id FROM albums WHERE origin<>'local')`} {
 		if _, err := tx.ExecContext(ctx, q); err != nil {
 			return err
 		}
@@ -285,8 +287,8 @@ func (s *Scanner) Merge(ctx context.Context) error {
 		}
 	}
 	for _, q := range []string{
-		`DELETE FROM tracks WHERE id NOT IN (SELECT track_id FROM track_links)`,
-		`DELETE FROM albums WHERE id NOT IN (SELECT album_id FROM tracks WHERE album_id IS NOT NULL)`,
+		`DELETE FROM tracks WHERE origin='local' AND id NOT IN (SELECT track_id FROM track_links)`,
+		`DELETE FROM albums WHERE origin='local' AND id NOT IN (SELECT album_id FROM tracks WHERE album_id IS NOT NULL)`,
 		`DELETE FROM artists WHERE id NOT IN (SELECT artist_id FROM track_artists UNION SELECT artist_id FROM album_artists)`,
 		`UPDATE albums SET track_count=(SELECT count(*) FROM tracks WHERE album_id=albums.id),
 			duration_ms=(SELECT COALESCE(sum(duration_ms),0) FROM tracks WHERE album_id=albums.id),

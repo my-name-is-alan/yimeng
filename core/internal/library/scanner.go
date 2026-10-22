@@ -62,9 +62,10 @@ type Options struct {
 }
 
 type Scanner struct {
-	db   *sql.DB
-	opts Options
-	log  *slog.Logger
+	db          *sql.DB
+	extResolver ExternalResolver
+	opts        Options
+	log         *slog.Logger
 
 	mu      sync.Mutex
 	running string // job id

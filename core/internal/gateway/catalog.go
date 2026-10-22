@@ -47,6 +47,13 @@ func listParams(r *http.Request) (library.ListParams, error) {
 			return p, errors.New("favorite must be true or false")
 		}
 	}
+	// Library browsing defaults to local files; materialized online items
+	// (favorites, playlist entries) show up via favorite/album/artist filters
+	// or an explicit origin=all|<plugin>.
+	p.Origin = q.Get("origin")
+	if p.Origin == "" && !p.Favorite && p.AlbumID == "" && p.ArtistID == "" {
+		p.Origin = library.OriginLocal
+	}
 	return p, nil
 }
 

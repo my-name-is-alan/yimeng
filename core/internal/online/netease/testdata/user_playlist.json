@@ -1,0 +1,1 @@
+{"code":200,"playlist":[{"id":9001,"name":"小明喜欢的音乐","coverImgUrl":"https://p1.music.126.net/l.jpg","trackCount":120,"specialType":5,"creator":{"userId":1001,"nickname":"小明"}},{"id":9002,"name":"收藏的歌单","coverImgUrl":"","trackCount":20,"specialType":0,"subscribed":true,"creator":{"userId":42,"nickname":"别人"}}]}
