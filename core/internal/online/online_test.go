@@ -329,6 +329,10 @@ func TestCacheTTL(t *testing.T) {
 	if c.Get(ctx, Key("fa", "track", "1"), &got) {
 		t.Fatal("expired entry returned")
 	}
+	if n, _ := c.Prune(ctx); n != 0 {
+		t.Fatalf("pruned inside stale window: %d", n)
+	}
+	now = now.Add(PolicyFor(Key("fa", "track", "1")).Stale)
 	if n, _ := c.Prune(ctx); n != 1 {
 		t.Fatalf("prune %d", n)
 	}

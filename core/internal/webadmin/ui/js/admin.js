@@ -244,6 +244,8 @@ export async function settings(main) {
   // watcher / scanning (runtime config, read-only)
   const ro = (k, v) => [k, v ?? "—"];
   const liveSec = srv ? serverSettingsSec(sec, srv, reload) : null;
+  const cacheStats = admin ? await get("/settings/cache").catch(() => null) : null;
+  const cacheSec = cacheStats ? platformCacheSec(sec, cacheStats, reload) : "";
   const scanSec = sec("启动配置", "以下为 Core 启动时的配置（来自配置文件 / 环境变量），修改后需重启 Core 生效。" + (srv ? "文件监听、定时重扫、MusicBrainz 与后台补全已移到上方「运行设置」，即时生效。" : ""), kv([
     ...(srv ? [] : [ro("文件监听", h("span", null, bool(rt.watch_mode && rt.watch_mode !== "off", rt.watch_mode || "auto"), " 防抖 ", rt.watch_debounce)),
     ro("定时重扫", rt.rescan_interval === "0s" ? "关闭" : rt.rescan_interval)]), ro("启动时扫描", bool(rt.scan_on_start)),
@@ -332,7 +334,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";
@@ -375,6 +377,36 @@ function sourceLogin(s, name, done) {
 // applied live without restarting Core.
 const FILL_LABEL = { spotify: "Spotify", netease: "网易云音乐", qq: "QQ音乐", kugou: "酷狗音乐", musicbrainz: "MusicBrainz" };
 const RESCAN = [["0", "关闭"], ["30m", "每 30 分钟"], ["1h", "每小时"], ["6h", "每 6 小时"], ["24h", "每天"]];
+const ORIGIN_LABEL = { netease: "网易云", qq: "QQ音乐", kugou: "酷狗", spotify: "Spotify" };
+const KIND_LABEL = { track: "歌曲", album: "专辑", artist: "艺人", playlist: "歌单", charts: "排行榜", lyrics: "歌词", search: "搜索",
+  "rec-tracks": "每日推荐", "rec-playlists": "推荐歌单", "user-playlists": "我的歌单", discover: "发现歌单", user: "账号" };
+
+// Platform cache (D44): stats + clear per platform / kind.
+function platformCacheSec(sec, st, reload) {
+  const c = st.counters || {};
+  const served = (c.hits || 0) + (c.stale_served || 0) + (c.coalesced || 0) + (c.negative_hits || 0);
+  const ratio = served + (c.misses || 0) ? Math.round((served / (served + (c.misses || 0))) * 100) + "%" : "—";
+  const clear = async (origin = "", kind = "") => {
+    const what = origin || kind ? [ORIGIN_LABEL[origin] || origin, KIND_LABEL[kind] || kind].filter(Boolean).join(" · ") : "全部平台缓存";
+    if (!(await confirmDlg(`清除${what}？`, "下次访问时会重新向平台请求。", "清除", true))) return;
+    try { const r = await del("/settings/cache" + qs({ origin, kind })); toast(`已清除 ${fmtNum(r.deleted)} 条`); reload(); } catch (e) { errToast(e); }
+  };
+  const byOrigin = {};
+  for (const k of st.kinds || []) (byOrigin[k.origin] ||= []).push(k);
+  const rows = Object.entries(byOrigin).map(([o, ks]) => h("div", { class: "stack", style: { gap: "4px", marginTop: "10px" } },
+    h("div", { class: "row" }, h("b", null, ORIGIN_LABEL[o] || o), h("span", { class: "dim" }, `${fmtNum(ks.reduce((a, k) => a + k.entries, 0))} 条 · ${fmtBytes(ks.reduce((a, k) => a + k.bytes, 0))}`),
+      h("span", { class: "spacer" }), h("button", { class: "btn sm ghost", onclick: () => clear(o) }, icon("trash"), "清除")),
+    h("div", { class: "chips" }, ks.sort((a, b) => b.bytes - a.bytes).map((k) => h("button", { class: "badge", title: `新鲜 ${k.fresh} · 过期待刷新 ${k.stale} · 点击清除`, onclick: () => clear(o, k.kind) },
+      `${KIND_LABEL[k.kind] || k.kind} ${fmtNum(k.entries)}`)))));
+  return sec("平台缓存", "所有网易云 / QQ / 酷狗请求都经过 Core 的统一缓存：按类型设置有效期，过期后先返回旧数据再后台刷新，并发请求合并，平台风控冷却期间只用缓存。",
+    kv([["条目", fmtNum(st.entries)], ["占用", `${fmtBytes(st.bytes)} / ${fmtBytes(st.max_bytes)}`], ["命中率（本次启动）", ratio],
+      ["命中 / 旧数据 / 合并 / 未命中", `${fmtNum(c.hits || 0)} / ${fmtNum(c.stale_served || 0)} / ${fmtNum(c.coalesced || 0)} / ${fmtNum(c.misses || 0)}`],
+      ["不可用缓存命中", fmtNum(c.negative_hits || 0)], ["上游失败（用旧数据兜底）", `${fmtNum(c.errors || 0)}（${fmtNum(c.stale_on_error || 0)}）`], ["LRU 淘汰", fmtNum(c.evicted || 0)]]),
+    ...rows,
+    h("div", { class: "row", style: { marginTop: "12px" } }, h("span", { class: "dim mono" }, "上限：YIMENG_ONLINE_CACHE_MB"), h("span", { class: "spacer" }),
+      h("button", { class: "btn sm", disabled: !st.entries, onclick: () => clear() }, icon("trash"), "清除全部")));
+}
+
 function serverSettingsSec(sec, srv, reload) {
   const st = { ...srv.settings };
   st.rescan_interval = (st.rescan_interval || "0").replace(/0s$/, "").replace(/([hm])0m$/, "$1") || "0";

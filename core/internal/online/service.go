@@ -38,7 +38,15 @@ func NewService(reg *Registry, lib LibraryPort, cache *Cache, log *slog.Logger) 
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{Reg: reg, Lib: lib, Cache: cache, Log: log, leases: map[string]Resolution{}, now: time.Now}
+	s := &Service{Reg: reg, Lib: lib, Cache: cache, Log: log, leases: map[string]Resolution{}, now: time.Now}
+	if cache != nil && reg != nil {
+		// In a risk-control cooldown, serve stale copies without retrying.
+		cache.Cooling = func(origin string) bool {
+			in, err := reg.get(origin)
+			return err == nil && in.client != nil && time.Now().Before(in.client.CooldownUntil())
+		}
+	}
+	return s
 }
 
 func FullID(origin, native string) string { return origin + ":" + native }
@@ -124,7 +132,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int, only []string
 			defer wg.Done()
 			cctx, cancel := withTimeout(ctx, 6*time.Second)
 			defer cancel()
-			r, err := cached(cctx, s.Cache, Key(id, "search", fmt.Sprintf("%d:%s", limit, strings.ToLower(q))), TTLSearch, func() (SearchResult, error) {
+			r, err := cached(cctx, s.Cache, Key(id, "search", fmt.Sprintf("%d:%s", limit, strings.ToLower(q))), TTLSearch, func(ctx context.Context) (SearchResult, error) {
 				return c.Search(cctx, q, limit)
 			})
 			s.after(ctx, id, err)
@@ -272,7 +280,7 @@ func (s *Service) Album(ctx context.Context, id string) (Album, error) {
 	if err != nil {
 		return Album{}, err
 	}
-	a, err := cached(ctx, s.Cache, Key(o, "album", n), TTLAlbum, func() (Album, error) { return c.Album(ctx, n) })
+	a, err := cached(ctx, s.Cache, Key(o, "album", n), TTLAlbum, func(ctx context.Context) (Album, error) { return c.Album(ctx, n) })
 	s.after(ctx, o, err)
 	if err == nil {
 		s.rememberTracks(ctx, a.Tracks)
@@ -294,7 +302,7 @@ func (s *Service) Artist(ctx context.Context, id string) (Artist, error) {
 	if err != nil {
 		return Artist{}, err
 	}
-	a, err := cached(ctx, s.Cache, Key(o, "artist", n), TTLArtist, func() (Artist, error) { return c.Artist(ctx, n) })
+	a, err := cached(ctx, s.Cache, Key(o, "artist", n), TTLArtist, func(ctx context.Context) (Artist, error) { return c.Artist(ctx, n) })
 	s.after(ctx, o, err)
 	if err == nil {
 		s.rememberTracks(ctx, a.TopTracks)
@@ -318,7 +326,7 @@ func (s *Service) Playlist(ctx context.Context, id string) (Playlist, error) {
 	if err != nil {
 		return Playlist{}, err
 	}
-	pl, err := cached(ctx, s.Cache, Key(o, "playlist", n), TTLPlaylist, func() (Playlist, error) { return c.Playlist(ctx, n) })
+	pl, err := cached(ctx, s.Cache, Key(o, "playlist", n), TTLPlaylist, func(ctx context.Context) (Playlist, error) { return c.Playlist(ctx, n) })
 	s.after(ctx, o, err)
 	if err == nil {
 		s.rememberTracks(ctx, pl.Tracks)
@@ -340,7 +348,7 @@ func (s *Service) Lyrics(ctx context.Context, id string) (Lyrics, error) {
 	if err != nil {
 		return Lyrics{}, err
 	}
-	l, err := cached(ctx, s.Cache, Key(o, "lyrics", n), TTLLyrics, func() (Lyrics, error) { return c.Lyrics(ctx, n) })
+	l, err := cached(ctx, s.Cache, Key(o, "lyrics", n), TTLLyrics, func(ctx context.Context) (Lyrics, error) { return c.Lyrics(ctx, n) })
 	s.after(ctx, o, err)
 	return l, err
 }
@@ -364,7 +372,7 @@ func (s *Service) Charts(ctx context.Context, origin string) ([]Playlist, error)
 	if err != nil {
 		return nil, err
 	}
-	v, err := cached(ctx, s.Cache, Key(origin, "charts", "all"), TTLCharts, func() ([]Playlist, error) { return d.Charts(ctx) })
+	v, err := cached(ctx, s.Cache, Key(origin, "charts", "all"), TTLCharts, func(ctx context.Context) ([]Playlist, error) { return d.Charts(ctx) })
 	s.after(ctx, origin, err)
 	return v, err
 }
@@ -390,7 +398,7 @@ func (s *Service) RecommendTracks(ctx context.Context, origin string) ([]Track, 
 	if !s.Reg.LoggedIn(origin) {
 		return nil, ErrNeedsLogin
 	}
-	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-tracks"), TTLRecs, func() ([]Track, error) { return d.RecommendTracks(ctx) })
+	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-tracks")+":"+s.now().Format("2006-01-02"), TTLRecs, func(ctx context.Context) ([]Track, error) { return d.RecommendTracks(ctx) })
 	s.after(ctx, origin, err)
 	if err == nil {
 		s.rememberTracks(ctx, v)
@@ -403,7 +411,7 @@ func (s *Service) RecommendPlaylists(ctx context.Context, origin string) ([]Play
 	if err != nil {
 		return nil, err
 	}
-	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-playlists"), TTLRecs, func() ([]Playlist, error) { return d.RecommendPlaylists(ctx) })
+	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-playlists")+":"+s.now().Format("2006-01-02"), TTLRecs, func(ctx context.Context) ([]Playlist, error) { return d.RecommendPlaylists(ctx) })
 	s.after(ctx, origin, err)
 	return v, err
 }
@@ -413,7 +421,7 @@ func (s *Service) DiscoverPlaylists(ctx context.Context, origin, cat string, off
 	if err != nil {
 		return nil, err
 	}
-	v, err := cached(ctx, s.Cache, Key(origin, "discover", fmt.Sprintf("%s:%d:%d", cat, offset, limit)), TTLCharts, func() ([]Playlist, error) {
+	v, err := cached(ctx, s.Cache, Key(origin, "discover", fmt.Sprintf("%s:%d:%d", cat, offset, limit)), TTLCharts, func(ctx context.Context) ([]Playlist, error) {
 		return d.DiscoverPlaylists(ctx, cat, offset, limit)
 	})
 	s.after(ctx, origin, err)
@@ -432,7 +440,7 @@ func (s *Service) UserPlaylists(ctx context.Context, origin string) ([]Playlist,
 	if !s.Reg.LoggedIn(origin) {
 		return nil, ErrNeedsLogin
 	}
-	v, err := cached(ctx, s.Cache, s.userKey(origin, "user-playlists"), 10*time.Minute, func() ([]Playlist, error) { return u.UserPlaylists(ctx) })
+	v, err := cached(ctx, s.Cache, s.userKey(origin, "user-playlists"), 10*time.Minute, func(ctx context.Context) ([]Playlist, error) { return u.UserPlaylists(ctx) })
 	s.after(ctx, origin, err)
 	return v, err
 }
@@ -624,4 +632,20 @@ func (s *Service) FlushPlugin(origin string) {
 		}
 	}
 	s.mu.Unlock()
+}
+
+// RefreshHot touches the few always-visible platform lists (charts, and the
+// logged-in account's daily recommendations) so the hourly tick revalidates
+// them in the background instead of a user waiting on a cold fetch. It is
+// deliberately low-frequency and paced.
+func (s *Service) RefreshHot(ctx context.Context) {
+	for _, id := range s.Reg.EnabledIDs() {
+		if ctx.Err() != nil {
+			return
+		}
+		s.Charts(ctx, id)
+		time.Sleep(2 * time.Second)
+		s.RecommendTracks(ctx, id)
+		time.Sleep(2 * time.Second)
+	}
 }

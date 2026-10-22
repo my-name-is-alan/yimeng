@@ -310,3 +310,26 @@ Results are cached in memory for 6 h (empty results for 30 min), keyed by the no
 - The source appears as small grey text after the artist line, and 试听 as a lime outlined pill.
 - Unplayable rows are dimmed to 40% and tapping one shows the reason.
 - Now-playing surfaces carry no source badge.
+
+## D44 — One platform cache layer
+
+Every NetEase/QQ/Kugou catalog call goes through `online.cached()`, backed by `external_cache` (migration 0019).
+
+- **Per-kind policy** (fresh / stale window / negative):
+  - track 30d / 60d / 6h
+  - album 14d / 30d / 6h
+  - artist 7d / 30d / 6h
+  - playlist 6h / 7d / 1h
+  - charts 1h / 7d / 10m
+  - lyrics 90d / 365d / 24h
+  - search 10m / 1h / 10m
+  - daily recommendations: per account, the key carries the date
+  - user playlists 10m / 7d
+- **Stale-while-revalidate:** a stale entry is returned immediately and one coalesced background refresh replaces it. If that refresh fails, the stale copy stays.
+- **Coalescing:** concurrent misses on one key make a single upstream call. The fetch is detached from the first request's cancellation.
+- **Negative caching:** only for `unavailable` and `bad_input`. Transient and risk-control errors are never remembered.
+- **Risk control:** while a platform is in its cooldown (per-platform limiter plus 30s→15m doubling backoff in `Client`), stale copies are served without contacting it.
+- **Size:** capped by `YIMENG_ONLINE_CACHE_MB` (default 256), with LRU eviction by `last_access` (touched at most hourly).
+- **Hot refresh:** an hourly tick prunes, then refreshes charts and the account's daily recommendations, with paced requests.
+- **Stream URLs:** not stored here. They stay in short leases that honour the platform expiry.
+- **Settings:** stats and clear at `GET/DELETE /api/settings/cache` and in the 设置 → 平台缓存 section.

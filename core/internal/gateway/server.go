@@ -197,6 +197,8 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/settings/library-roots", d.adminOnly(d.getRoots))
 		mux.HandleFunc("GET /api/settings/server", d.adminOnly(d.getServerSettings))
 		mux.HandleFunc("PUT /api/settings/server", d.adminOnly(d.putServerSettings))
+		mux.HandleFunc("GET /api/settings/cache", d.adminOnly(d.getCacheStats))
+		mux.HandleFunc("DELETE /api/settings/cache", d.adminOnly(d.clearCache))
 		mux.HandleFunc("PUT /api/settings/library-roots", d.adminOnly(d.putRoots))
 		mux.HandleFunc("GET /api/overrides/{type}/{id}", d.getOverride)
 		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.localOnly("", d.putOverride)))

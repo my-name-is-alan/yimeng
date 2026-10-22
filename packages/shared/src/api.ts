@@ -217,6 +217,13 @@ export interface ArtistImageCandidate {
 
 export type FillSourceId = "spotify" | "netease" | "qq" | "kugou" | "musicbrainz";
 
+export interface CacheKindStats { origin: string; kind: string; entries: number; bytes: number; fresh: number; stale: number }
+/** GET /api/settings/cache (admin). */
+export interface CacheStats {
+  entries: number; bytes: number; max_bytes: number; kinds: CacheKindStats[];
+  counters: Record<"hits" | "stale_served" | "misses" | "coalesced" | "negative_hits" | "errors" | "stale_on_error" | "evicted", number>;
+}
+
 export interface ServerSettings {
   watch_mode: "auto" | "fsnotify" | "poll" | "off";
   /** Go duration, "0" = never */

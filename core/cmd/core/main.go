@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -325,6 +326,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 		}
 	}
 	onlineCache := online.NewCache(database)
+	if mb, err := strconv.Atoi(os.Getenv("YIMENG_ONLINE_CACHE_MB")); err == nil && mb > 0 {
+		onlineCache.MaxBytes = int64(mb) << 20
+	}
 	onlineSvc := online.NewService(plugins, scanner, onlineCache, log)
 	scanner.SetExternalResolver(onlineSvc.Materialize)
 	go func() {
@@ -336,6 +340,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 				return
 			case <-t.C:
 				onlineCache.Prune(ctx)
+				onlineSvc.RefreshHot(ctx)
 			}
 		}
 	}()

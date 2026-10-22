@@ -963,6 +963,28 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { description: provider_error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/settings/cache:
+    get:
+      summary: Platform cache stats (admin)
+      tags: [settings]
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CacheStats" }
+    delete:
+      summary: Clear platform cache entries (admin)
+      tags: [settings]
+      parameters:
+        - { name: origin, in: query, schema: { type: string }, description: "netease|qq|kugou… (empty = all)" }
+        - { name: kind, in: query, schema: { type: string }, description: "charts|playlist|album|… (empty = all)" }
+      responses:
+        "200":
+          description: Deleted count
+          content:
+            application/json:
+              schema: { type: object, properties: { deleted: { type: integer } } }
   /api/settings/server:
     get:
       tags: [settings]
@@ -1907,6 +1929,27 @@ components:
     ArtistImageCandidate:
       type: object
       properties: { provider: { type: string }, external_id: { type: string }, name: { type: string }, image_url: { type: string }, followers: { type: integer }, score: { type: number } }
+    CacheStats:
+      type: object
+      properties:
+        entries: { type: integer }
+        bytes: { type: integer }
+        max_bytes: { type: integer }
+        kinds:
+          type: array
+          items:
+            type: object
+            properties:
+              origin: { type: string }
+              kind: { type: string }
+              entries: { type: integer }
+              bytes: { type: integer }
+              fresh: { type: integer }
+              stale: { type: integer }
+        counters:
+          type: object
+          description: Since start — hits, stale_served, misses, coalesced, negative_hits, errors, stale_on_error, evicted.
+          additionalProperties: { type: integer }
     ServerSettings:
       type: object
       properties:
