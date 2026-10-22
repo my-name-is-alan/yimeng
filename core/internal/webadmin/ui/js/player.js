@@ -260,34 +260,73 @@ export function mountNowBar(nav) {
   const info = h("div", { class: "nb-track", role: "button", tabindex: 0, "aria-label": "打开正在播放", onclick: () => openNP(nav), onkeydown: (e) => e.key === "Enter" && openNP(nav) },
     art, h("div", { style: { minWidth: 0 } }, title, sub));
   const c = controls(), s = seekbar();
+  // Compact volume (like the iOS mini player, which leaves volume to the
+  // system): an icon that mutes on click and adjusts on scroll; the slider
+  // lives in a small popover shown on hover / keyboard focus.
   const vol = h("input", { type: "range", class: "range vol", min: 0, max: 100, value: player.volume * 100, "aria-label": "音量" });
   vol.addEventListener("input", () => { player.setVolume(vol.value / 100); setRangeFill(vol); });
-  const muteBtn = h("button", { class: "btn icon ghost", "aria-label": "静音", onclick: () => player.toggleMute() });
+  const volPct = h("span", { class: "vol-pct" });
+  const muteBtn = h("button", { class: "btn icon ghost", "aria-label": "静音 / 取消静音（滚轮调节音量）", title: "点击静音，滚轮调节音量", onclick: () => player.toggleMute() });
+  const volBox = h("div", { class: "vol-pop" }, muteBtn, h("div", { class: "vol-card", role: "group", "aria-label": "音量" }, vol, volPct));
+  volBox.addEventListener("wheel", (e) => { e.preventDefault(); player.setVolume(Math.min(1, Math.max(0, player.volume + (e.deltaY < 0 ? 0.05 : -0.05)))); }, { passive: false });
   const lyrBtn = h("button", { class: "btn icon ghost", "aria-label": "歌词", title: "歌词", onclick: () => openNP(nav, "lyrics") }, icon("lyrics"));
   const qBtn = h("button", { class: "btn icon ghost", "aria-label": "播放队列", title: "播放队列", onclick: () => openNP(nav, "queue") }, icon("queue"));
   const mini = h("div", { class: "mini-prog" }, h("i"));
-  bar.replaceChildren(tint, info, h("div", { class: "nb-center" }, c.el, s.el), h("div", { class: "nb-right" }, lyrBtn, qBtn, muteBtn, vol), mini);
+  bar.replaceChildren(tint, info, h("div", { class: "nb-center" }, c.el, s.el), h("div", { class: "nb-right" }, lyrBtn, qBtn, volBox), mini);
   let cur;
   const entSlot = h("span", { class: "ent-slot" });
   player.on((k) => {
     const t = player.track;
     bar.hidden = !t;
     if (!t) { cur = null; return; }
-    if (k === "time") { s.sync(); mini.firstChild.style.width = `${(player.time / (player.duration || 1)) * 100}%`; return; }
+    if (k === "time") { s.sync(); mini.firstChild.style.width = `${(player.time / (player.duration || 1)) * 100}%`; subLine(); return; }
+    if (k === "lyrics" || k === "state" || k === "play" || k === "pause") subLine();
     if (cur !== t.id) {
       cur = t.id;
       art.replaceChildren(cover(artURL(t, 120), t.album_title || t.title));
       tint.style.backgroundImage = artURL(t, 120) ? `url("${artURL(t, 120)}")` : "none";
       title.replaceChildren(t.title, " "); const qb = qualityBadge(t); if (qb) title.append(qb);
       title.append(entSlot);
-      sub.textContent = [t.artist_name, t.album_title].filter(Boolean).join(" — ");
+      artistText = [t.artist_name, t.album_title].filter(Boolean).join(" — ");
+      subKey = null; subLine();
     }
     entSlot.replaceChildren(entBadge(player.ent) || "");
     document.title = player.playing ? `▶ ${t.title} · ${t.artist_name} — 译梦` : "译梦 · 控制台";
     c.sync(); s.sync();
     muteBtn.replaceChildren(icon(player.muted || player.volume === 0 ? "mute" : "volume"));
-    vol.value = player.volume * 100; setRangeFill(vol);
+    vol.value = player.volume * 100; setRangeFill(vol); volPct.textContent = player.muted ? "静音" : `${Math.round(player.volume * 100)}`;
+    subLine();
   });
+  // The line under the title: the current synced lyric while playing
+  // (smooth slide, marquee when too long); the artist otherwise.
+  let artistText = "", subKey = null;
+  function currentLyric() {
+    const L = player.lyrics;
+    if (!L?.synced || !L.lines?.length || (!player.playing && player.time < 1)) return null;
+    const t = player.time + (player.ent?.preview_start_ms || 0) + 150;
+    let i = -1;
+    for (let k = 0; k < L.lines.length; k++) { if (L.lines[k].time_ms <= t) i = k; else break; }
+    if (i < 0) return null;
+    return { i, text: (L.lines[i].text || "").trim() || "♪" };
+  }
+  function subLine() {
+    const cl = currentLyric();
+    const key = cl ? `l${cl.i}` : "artist";
+    if (key === subKey) return;
+    subKey = key;
+    const text = cl ? cl.text : artistText;
+    const span = h("span", { class: `nb-sub-in ${cl ? "lyric" : ""}` }, text);
+    const old = sub.firstElementChild;
+    if (old) { old.classList.add("out"); setTimeout(() => old.remove(), 320); }
+    sub.append(span);
+    sub.classList.toggle("is-lyric", !!cl);
+    sub.title = text;
+    requestAnimationFrame(() => {
+      span.classList.add("in");
+      const over = span.scrollWidth - sub.clientWidth;
+      if (over > 4) { span.style.setProperty("--mq", `-${over + 16}px`); span.style.setProperty("--mqd", `${Math.max(4, over / 30)}s`); span.classList.add("marquee"); }
+    });
+  }
   document.addEventListener("keydown", (e) => {
     if (e.target.closest("input, textarea, select, [contenteditable], dialog")) return;
     if (e.code === "Space") { e.preventDefault(); player.toggle(); }
