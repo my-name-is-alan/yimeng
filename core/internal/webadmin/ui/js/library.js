@@ -1,10 +1,11 @@
 // Library pages: home, albums, album, artists, artist, tracks, search, playlists, favorites, history.
-import { get, post, put, patch, del, qs, coverURL, api } from "./api.js";
+import { get, post, put, patch, del, qs, coverURL, api, artistImageURL } from "./api.js";
 import { h, icon, cover, fmtDur, fmtLong, fmtNum, fmtAgo, empty, toast, errToast, confirmDlg, promptDlg, dialog, menu, debounce, isLocal, sourceBadge } from "./ui.js";
 import { player } from "./player.js";
-import { albumCard, artistCard, trackList, albumTracks, editAlbum, editArtist, pager, addToPlaylist } from "./components.js";
+import { albumCard, artistCard, trackList, albumTracks, editAlbum, editArtist, editArtistImage, pager, addToPlaylist } from "./components.js";
 import { isAdmin, nav, state } from "./state.js";
-import { onlineHome, searchGroups, scopedPlaylists, localHidden, loadMode, modeWizard, noPlugins } from "./online.js";
+import { onlineHome, searchGroups, scopedPlaylists, localHidden, loadMode, modeWizard, noPlugins, normTrack } from "./online.js";
+import { originName } from "./ui.js";
 
 const head = (title, sub, ...actions) => h("div", { class: "page-head" }, h("div", { style: { flex: 1, minWidth: 0 } }, h("h1", null, title), sub ? h("div", { class: "sub" }, sub) : null), ...actions);
 const skelGrid = (n = 12) => h("div", { class: "album-grid" }, Array.from({ length: n }, () => h("div", null, h("div", { class: "skel", style: { aspectRatio: 1 } }), h("div", { class: "skel", style: { height: "14px", marginTop: "10px", width: "70%" } }))));
@@ -31,7 +32,7 @@ export async function home(main) {
     h("div", { class: "shelf" }, items));
   const quick = h("div", { class: "row wrap" },
     h("button", { class: "btn primary lg", onclick: async () => { try { const p = await get(`/tracks${qs({ limit: 200, sort: "added", order: "desc" })}`); player.playList(p.items, Math.floor(Math.random() * p.items.length), { shuffle: true }); } catch (e) { errToast(e); } } }, icon("shuffle"), "随机播放全部"),
-    h("a", { class: "btn lg", href: "#/favorites" }, icon("heart"), "我的收藏"));
+    h("a", { class: "btn lg", href: "#/favorites" }, icon("heart"), "我的典藏"));
   const parts = [head(greet, stats ? `曲库里有 ${fmtNum(stats.tracks)} 首歌、${fmtNum(stats.albums)} 张专辑，累计播放 ${fmtNum(stats.play_count)} 次` : "今天想听点什么？"), quick];
   if (recent.items.length) parts.push(shelf("最近添加", recent.items.map((a) => albumCard(a)), "#/albums?sort=added"));
   else parts.push(empty("曲库还是空的。前往「设置」添加音乐目录并扫描。", "folder", h("a", { class: "btn primary", href: "#/settings" }, "去设置")));
@@ -84,8 +85,8 @@ export async function album(main, id) {
   const discs = new Set(tracks.map((t) => t.disc_no || 1));
   const lossless = tracks.filter((t) => t.stream?.lossless).length;
   const list = discs.size > 1
-    ? [...discs].sort().map((d) => h("div", { class: "section" }, h("div", { class: "eyebrow", style: { margin: "0 10px 8px" } }, `Disc ${d}`), trackList(tracks.filter((t) => (t.disc_no || 1) === d), { onChange: reload })))
-    : trackList(tracks, { onChange: reload });
+    ? [...discs].sort().map((d) => h("div", { class: "section" }, h("div", { class: "eyebrow", style: { margin: "0 10px 8px" } }, `Disc ${d}`), trackList(tracks.filter((t) => (t.disc_no || 1) === d), { showCover: false, numbered: true, onChange: reload })))
+    : trackList(tracks, { showCover: false, numbered: true, onChange: reload });
   main.replaceChildren(
     h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: al.has_cover ? `url("${coverURL(id, 300)}")` : "none" } }),
       h("div", { class: "hero-row" }, cover(al.has_cover ? coverURL(id, 600) : "", al.title),
@@ -119,13 +120,14 @@ export async function artist(main, id) {
   const reload = () => artist(main, id);
   main.replaceChildren(
     h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: first ? `url("${coverURL(first.id, 300)}")` : "none" } }),
-      h("div", { class: "hero-row" }, cover(first ? coverURL(first.id, 400) : "", ar.name, "round"),
+      h("div", { class: "hero-row" }, cover(artistImageURL(ar) || (first ? coverURL(first.id, 400) : ""), ar.name, "round"),
         h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, "艺人 ", sourceBadge(ar)), h("h1", null, ar.name),
           h("div", { class: "facts" }, `${ar.album_count} 张专辑 · ${ar.track_count} 首曲目${ar.sort_name && ar.sort_name !== ar.name ? ` · ${ar.sort_name}` : ""}`),
           h("div", { class: "hero-actions" },
             h("button", { class: "play-circle", "aria-label": "播放全部", onclick: async () => { const p = await get(`/tracks${qs({ artist_id: id, sort: "album", limit: 500 })}`); player.playList(p.items); } }, icon("play")),
             h("button", { class: "btn", onclick: async () => { const p = await get(`/tracks${qs({ artist_id: id, limit: 500 })}`); player.playList(p.items, 0, { shuffle: true }); } }, icon("shuffle"), "随机"),
-            isAdmin() && isLocal(ar) ? h("button", { class: "btn", onclick: () => editArtist(ar, reload) }, icon("edit"), "编辑") : null)))),
+            isAdmin() && isLocal(ar) ? h("button", { class: "btn", onclick: () => editArtist(ar, reload) }, icon("edit"), "编辑") : null,
+            isAdmin() && isLocal(ar) ? h("button", { class: "btn", onclick: () => editArtistImage(ar, reload) }, icon("image"), "更换图片") : null)))),
     trs.items.length ? h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "热门曲目")), trackList(trs.items, { showCover: true, numbered: false })) : null,
     h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "专辑")), h("div", { class: "album-grid" }, als.items.map((a) => albumCard(a)))));
 }
@@ -261,15 +263,56 @@ export async function playlist(main, id) {
       : empty(p.smart ? "当前没有符合规则的曲目" : "歌单是空的。在曲目菜单中选择「添加到歌单」。", "list")));
 }
 
+// 典藏 = only what the user favorited here (albums + songs). Platform "liked"
+// lists live in 曲库 under their source.
 export async function favorites(main) {
-  const [tr, al, cloud] = await Promise.all([get(`/tracks${qs({ favorite: true, limit: 500 })}`), get(`/albums${qs({ favorite: true, limit: 200 })}`),
-    get("/online/favorites").catch(() => ({ items: [] }))]);
-  main.replaceChildren(head("收藏", `${tr.total} 首歌曲 · ${al.total} 张专辑`, tr.items.length ? h("button", { class: "btn primary", onclick: () => player.playList(tr.items, 0, { shuffle: true }) }, icon("shuffle"), "随机播放") : null),
+  const [tr, al] = await Promise.all([get(`/tracks${qs({ favorite: true, limit: 500 })}`), get(`/albums${qs({ favorite: true, limit: 200 })}`)]);
+  main.replaceChildren(head("典藏", `${tr.total} 首歌曲 · ${al.total} 张专辑`, tr.items.length ? h("button", { class: "btn primary", onclick: () => player.playList(tr.items, 0, { shuffle: true }) }, icon("shuffle"), "随机播放") : null),
     al.items.length ? h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "专辑")), h("div", { class: "album-grid" }, al.items.map((a) => albumCard(a)))) : null,
-    h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "歌曲")), tr.items.length ? trackList(tr.items, { showCover: true, numbered: false }) : empty("点击曲目旁的 ♡ 收藏喜欢的歌", "heart")),
-    ...(cloud.items || []).filter((g) => g.playlist?.tracks?.length).map((g) => h("section", { class: "section" },
-      h("div", { class: "section-head" }, h("h2", null, `${g.playlist.name}`), h("span", { class: "badge src" }, "云端收藏 · 只读")),
-      trackList(g.playlist.tracks.map((t) => ({ ...t, album_id: t.album?.id || "", album_title: t.album?.name || "" })), { showCover: true, numbered: false }))));
+    h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "歌曲")), tr.items.length ? trackList(tr.items) : empty("点击曲目旁的 ♡，把喜欢的歌放进典藏", "heart")));
+}
+
+// 曲库 = unified library: local tracks + each platform's liked songs, with a
+// source filter (全部/本地/网易云/QQ/酷狗) and an A–Z index. Online-only mode
+// shows the platform favorites (never hidden).
+const LETTERS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", "#"];
+const collator = new Intl.Collator("zh-Hans-CN-u-co-pinyin", { sensitivity: "base", numeric: true });
+export async function libraryPage(main, params) {
+  let src = params.get("src") || "all", q = "";
+  main.replaceChildren(head("曲库", "加载中…"), h("div", { class: "skel", style: { height: "300px" } }));
+  const showLocal = !localHidden();
+  const [loc, cloud] = await Promise.all([
+    showLocal ? get(`/tracks${qs({ sort: "title", limit: 2000 })}`).catch(() => ({ items: [] })) : { items: [] },
+    get("/online/favorites").catch(() => ({ items: [] })),
+  ]);
+  const all = [...loc.items.map((t) => ({ ...t, origin: t.origin || "local" }))];
+  const notes = [];
+  for (const g of cloud.items || []) {
+    if (g.error) { notes.push(g); continue; }
+    for (const t of g.playlist?.tracks || []) all.push({ ...normTrack(t), favorite: true });
+  }
+  const key = (t) => (t.sort_letter && t.sort_letter !== "#" ? t.sort_letter : /^[a-z]/i.test(t.title || "") ? t.title[0].toUpperCase() : "#");
+  all.forEach((t) => { t.sort_letter = key(t); });
+  all.sort((a, b) => (a.sort_letter === "#") - (b.sort_letter === "#") || a.sort_letter.localeCompare(b.sort_letter) || collator.compare(a.title || "", b.title || ""));
+  const sources = [["all", "全部"], ...(showLocal && loc.items.length ? [["local", "本地"]] : []),
+    ...[...new Set((cloud.items || []).map((g) => g.origin))].map((o) => [o, originName(o)])];
+  const count = h("span"), box = h("div", { class: "lib-list" }), rail = h("nav", { class: "az-rail", "aria-label": "按字母跳转" });
+  const filter = h("input", { class: "input", type: "search", placeholder: "筛选（支持拼音）", oninput: debounce(() => { q = filter.value.trim().toLowerCase(); render(); }, 150) });
+  const chips = h("div", { class: "seg", role: "tablist", "aria-label": "来源" }, sources.map(([v, l]) =>
+    h("button", { role: "tab", class: v === src ? "on" : "", "aria-selected": String(v === src), onclick: (e) => { src = v; [...chips.children].forEach((c) => { c.classList.toggle("on", c === e.currentTarget); c.setAttribute("aria-selected", String(c === e.currentTarget)); }); history.replaceState(null, "", `#/library?src=${v}`); render(); } }, l)));
+  const noteEls = notes.filter((g) => src === "all" || g.origin === src).map((g) => h("div", { class: "notice" }, `${originName(g.origin)}：`, g.error === "plugin_login_required" ? "未登录，登录后这里会显示你在该平台收藏的歌曲 · " : `暂时无法获取（${g.error}） · `, h("a", { href: "#/settings" }, "去设置")));
+  function render() {
+    const list = all.filter((t) => (src === "all" || t.origin === src) && (!q || `${t.title} ${t.artist_name} ${t.album_title}`.toLowerCase().includes(q)));
+    count.textContent = `${fmtNum(list.length)} 首`;
+    const have = new Set(list.map((t) => t.sort_letter));
+    rail.replaceChildren(...LETTERS.map((L) => h("button", { type: "button", disabled: !have.has(L), "aria-label": `跳到 ${L}`, onclick: () => {
+      const row = box.querySelector(`.trow[data-letter="${CSS.escape(L)}"]`); if (row) { row.scrollIntoView({ block: "start", behavior: "smooth" }); row.focus({ preventScroll: true }); }
+    } }, L)));
+    box.replaceChildren(list.length ? trackList(list) : empty(src === "all" ? "曲库还是空的：添加本地音乐目录，或登录在线平台后收藏歌曲。" : "这个来源下没有歌曲", "track"));
+  }
+  main.replaceChildren(head("曲库", count, h("button", { class: "btn primary", onclick: () => { const l = all.filter((t) => (src === "all" || t.origin === src) && t.playable !== "unavailable"); l.length && player.playList(l, 0, { shuffle: true }); } }, icon("shuffle"), "随机播放")),
+    h("div", { class: "toolbar" }, chips, filter), ...noteEls, h("div", { class: "lib-wrap" }, box, rail));
+  render();
 }
 
 export async function historyPage(main) {

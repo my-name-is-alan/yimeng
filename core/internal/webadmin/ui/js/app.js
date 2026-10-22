@@ -17,10 +17,10 @@ const app = $("#app"), main = $("#main");
 const navigate = (hash) => { location.hash = hash; };
 
 const NAV = [
-  ["曲库", [["#/", "首页", "home"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/tracks", "歌曲", "track", "local"], ["#/playlists", "歌单", "list"], ["#/charts", "排行榜", "pulse"], ["#/favorites", "收藏", "heart"], ["#/history", "播放历史", "history"]]],
+  ["曲库", [["#/", "首页", "home"], ["#/library", "曲库", "track"], ["#/favorites", "典藏", "heart"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/playlists", "歌单", "list"], ["#/history", "播放历史", "history"]]],
   ["管理", [["#/dashboard", "仪表盘", "dash"], ["#/metadata", "元数据", "edit"], ["#/lyrics", "歌词匹配", "lyrics"], ["#/devices", "设备", "device"], ["#/users", "用户", "artist"], ["#/settings", "设置", "settings"], ["#/logs", "日志", "logs"]]],
 ];
-const TABS = [["#/", "首页", "home"], ["#/albums", "曲库", "album"], ["#/search", "搜索", "search", true], ["#/playlists", "歌单", "list"], ["#/dashboard", "管理", "dash"]];
+const TABS = [["#/", "首页", "home"], ["#/library", "曲库", "track"], ["#/search", "搜索", "search", true], ["#/playlists", "歌单", "list"], ["#/dashboard", "管理", "dash"]];
 
 function shell() {
   // Local-only sections are hidden in online-only mode or while the local library is empty.
@@ -101,6 +101,7 @@ const ROUTES = [
   [/^\/artists$/, (m, p) => lib.artists(main, p)],
   [/^\/artist\/([\w-]+)$/, (m) => lib.artist(main, m[1])],
   [/^\/tracks$/, (m, p) => lib.tracks(main, p)],
+  [/^\/library$/, (m, p) => lib.libraryPage(main, p)],
   [/^\/search$/, (m, p) => lib.search(main, p)],
   [/^\/playlists$/, (m, p) => lib.playlists(main, p)],
   [/^\/charts$/, (m, p) => onl.charts(main, p)],

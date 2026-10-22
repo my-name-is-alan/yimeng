@@ -64,6 +64,10 @@ export interface Track {
   favorite?: boolean;
   rating?: number;
   created_at: string;
+  /** A–Z index key (pinyin initial for Chinese titles, "#" otherwise) */
+  sort_letter?: string;
+  /** "local" or a platform id (netease | qq | kugou) */
+  origin?: string;
 }
 
 export interface PlayerState {

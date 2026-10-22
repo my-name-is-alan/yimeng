@@ -121,3 +121,24 @@ func HasHan(s string) bool {
 	}
 	return false
 }
+
+// SortLetter is the A–Z index key for a name: the uppercase first letter
+// (Han characters by their pinyin), or "#" for digits, symbols and others.
+func SortLetter(s string) string {
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case unicode.Is(unicode.Han, r):
+			if syll := pinyin.SinglePinyin(r, args); len(syll) > 0 && syll[0] != "" {
+				return strings.ToUpper(syll[0][:1])
+			}
+			return "#"
+		case r < 128 && unicode.IsLetter(r):
+			return string(unicode.ToUpper(r))
+		case unicode.IsSpace(r):
+			continue
+		default:
+			return "#"
+		}
+	}
+	return "#"
+}

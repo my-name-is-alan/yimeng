@@ -151,10 +151,10 @@ const isOnline = (id) => typeof id === "string" && id.includes(":");
 export const artURL = (t, s = 120) => t?.cover_url ? (/music\.126\.net/.test(t.cover_url) ? `${t.cover_url.replace(/^http:/, "https:")}?param=${s}y${s}` : t.cover_url) : t?.album_id ? coverURL(t.album_id, s) : "";
 export function entBadge(ent) {
   if (!ent) return null;
-  if (ent.entitlement === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的官方试听片段" }, "试听");
+  if (ent.entitlement === "preview") return h("span", { class: "pill-pv", title: "当前账号仅能播放平台提供的官方试听片段" }, "试听");
   if (ent.entitlement === "unavailable") return h("span", { class: "badge err" }, "不可播放");
   if (ent.fallback === "local") return h("span", { class: "badge ok", title: "已使用本地曲库中的同一首歌" }, "本地文件");
-  if (ent.fallback) return h("span", { class: "badge src", title: "已使用你登录的另一个平台账号播放" }, `经 ${ent.fallback}`);
+  // No source badge on now-playing surfaces (designer spec).
   return null;
 }
 export const slim = (t) => ({ id: t.id, title: t.title, artist_name: t.artist_name, album_id: t.album_id, album_title: t.album_title, duration_ms: t.duration_ms, format: t.format,
@@ -365,7 +365,7 @@ export function openNP(nav, tab = "lyrics") {
     if (!L) { lyr.className = "lyrics plain"; lyr.replaceChildren(h("p", null, "正在加载歌词…")); lines = []; return; }
     if (L.none || !L.lines?.length) {
       lyr.className = "lyrics plain";
-      lyr.replaceChildren(h("p", null, "暂无歌词"), h("p", { style: { fontSize: "14px", opacity: .6 } }, "可在「歌词匹配」中搜索 LRCLIB 或手动上传 LRC"));
+      lyr.replaceChildren(lyricsEmpty());
       lines = []; return;
     }
     lyr.className = L.synced ? "lyrics" : "lyrics plain";
@@ -412,4 +412,16 @@ export function openNP(nav, tab = "lyrics") {
   addEventListener("keydown", esc);
   setTab(tab); update("track");
   npClose = close;
+}
+
+// 暂无歌词 empty state: a small doodle (hand-drawn ring + note + sparkle, in
+// the 梦境环 style), the title, and a hint line.
+export function lyricsEmpty() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 120 96"); svg.setAttribute("aria-hidden", "true");
+  svg.innerHTML = '<g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M58 12c-21-1-38 14-39 33-1 20 15 37 37 38 22 1 41-13 42-33 1-21-17-38-40-38z" stroke-dasharray="190 14"/>' +
+    '<path d="M51 63V35l20-5v26"/><circle cx="46" cy="64" r="5"/><circle cx="66" cy="57" r="5"/>' +
+    '<path d="M98 14v10M93 19h10" stroke-width="2.5"/><path d="M14 74l6 2M16 82l5-3" stroke-width="2" opacity=".6"/></g>';
+  return h("div", { class: "lyr-empty" }, svg, h("div", { class: "t" }, "暂无歌词"), h("div", { class: "s" }, "配置译梦服务端可自动获取歌词"));
 }

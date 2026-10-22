@@ -90,7 +90,10 @@ type Deps struct {
 	// Web admin extras (all optional).
 	UserEdits    UserEdits
 	LyricsSearch LyricsSearcher
-	Matcher      metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
+	// ArtistAliases resolves other names of an artist (MusicBrainz), used by
+	// the lyrics scorer; optional.
+	ArtistAliases func(ctx context.Context, name string) []string
+	Matcher       metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
 	// ServerSettings are runtime-editable server settings (watcher, rescan, MusicBrainz, background fill).
 	ServerSettings *runtimecfg.Store
 	Logs           *logging.Ring

@@ -215,8 +215,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if mb, err := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: ua}); err == nil {
 		mbAliases = mb
 	}
+	artistAliases := metadata.AliasLookup(mbAliases)
 	spotifyMeta := spotifyapi.New(spotifyapi.Config{
-		Aliases: metadata.AliasLookup(mbAliases),
+		Aliases: artistAliases,
 		APIBase: os.Getenv("YIMENG_SPOTIFY_API_BASE_URL"), AuthBase: os.Getenv("YIMENG_SPOTIFY_AUTH_BASE_URL"),
 		HTTP: &http.Client{Timeout: 15 * time.Second}, UserAgent: ua,
 		Creds: func() (string, string, bool) {
@@ -457,6 +458,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Vault:          vlt,
 			UserEdits:      scanner,
 			LyricsSearch:   lyricsSearch(lrclibSearch, anonSrc),
+			ArtistAliases:  artistAliases,
 			Matcher:        matcher,
 			ServerSettings: rcStore,
 			Logs:           logRing,

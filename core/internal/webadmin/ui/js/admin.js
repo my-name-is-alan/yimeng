@@ -226,6 +226,7 @@ export async function settings(main) {
     admin ? get("/settings/runtime").catch(() => ({})) : {}, admin ? get("/settings/library-roots").catch(() => ({ roots: [] })) : { roots: [] }, get("/settings/artist-split").catch(() => null),
     get("/devices/me/stream-quality").catch(() => null), get("/metadata/providers").catch(() => ({ items: [] })), get("/sources").catch(() => ({ items: [] })),
     admin ? get("/system/backups").catch(() => ({ items: [] })) : { items: [] }]);
+  const srv = admin ? await get("/settings/server").catch(() => null) : null;
   const reload = () => settings(main);
 
   // roots
@@ -242,9 +243,10 @@ export async function settings(main) {
 
   // watcher / scanning (runtime config, read-only)
   const ro = (k, v) => [k, v ?? "—"];
-  const scanSec = sec("扫描与监听", "以下为 Core 启动时的配置（来自配置文件 / 环境变量），修改后需重启 Core 生效。", kv([
-    ro("文件监听", h("span", null, bool(rt.watch_mode && rt.watch_mode !== "off", rt.watch_mode || "auto"), " 防抖 ", rt.watch_debounce)),
-    ro("定时重扫", rt.rescan_interval === "0s" ? "关闭" : rt.rescan_interval), ro("启动时扫描", bool(rt.scan_on_start)),
+  const liveSec = srv ? serverSettingsSec(sec, srv, reload) : null;
+  const scanSec = sec("启动配置", "以下为 Core 启动时的配置（来自配置文件 / 环境变量），修改后需重启 Core 生效。" + (srv ? "文件监听、定时重扫、MusicBrainz 与后台补全已移到上方「运行设置」，即时生效。" : ""), kv([
+    ...(srv ? [] : [ro("文件监听", h("span", null, bool(rt.watch_mode && rt.watch_mode !== "off", rt.watch_mode || "auto"), " 防抖 ", rt.watch_debounce)),
+    ro("定时重扫", rt.rescan_interval === "0s" ? "关闭" : rt.rescan_interval)]), ro("启动时扫描", bool(rt.scan_on_start)),
     ro("响度分析", bool(rt.loudness_analysis)), ro("Subsonic API", bool(rt.subsonic)), ro("mDNS 发现", bool(rt.mdns)), ro("HTTPS", bool(rt.tls)),
     ro("配对码有效期", rt.pair_code_ttl), ro("日志", `${rt.log_level || "info"} · ${rt.log_format || "text"}`), ro("数据库", h("span", { class: "mono" }, rt.db_path)),
     ro("环境变量", h("span", { class: "mono dim" }, "YIMENG_WATCH · YIMENG_RESCAN_INTERVAL · YIMENG_SCAN_ON_START · YIMENG_LOUDNESS_ANALYSIS"))]));
@@ -330,7 +332,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), modeSec, plugSec, ...(local ? [rootsSec, scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";
@@ -367,4 +369,49 @@ function sourceLogin(s, name, done) {
   };
   if (methods.length > 1) d.bodyEl.before(h("div", { class: "tabs" }, methods.map((m, i) => h("button", { "aria-selected": i === 0 ? "true" : "false", onclick: (e) => { [...e.currentTarget.parentNode.children].forEach((b) => b.setAttribute("aria-selected", b === e.currentTarget)); show(m); } }, { cookie: "Cookie", qr: "扫码登录", oauth: "OAuth" }[m] || m))));
   show(methods[0]);
+}
+
+// 运行设置: runtime-editable server settings (PUT /api/settings/server),
+// applied live without restarting Core.
+const FILL_LABEL = { spotify: "Spotify", netease: "网易云音乐", qq: "QQ音乐", kugou: "酷狗音乐", musicbrainz: "MusicBrainz" };
+const RESCAN = [["0", "关闭"], ["30m", "每 30 分钟"], ["1h", "每小时"], ["6h", "每 6 小时"], ["24h", "每天"]];
+function serverSettingsSec(sec, srv, reload) {
+  const st = { ...srv.settings };
+  st.rescan_interval = (st.rescan_interval || "0").replace(/0s$/, "").replace(/([hm])0m$/, "$1") || "0";
+  const watch = h("select", { class: "input", style: { width: "auto" }, "aria-label": "文件监听" },
+    [["auto", "自动"], ["fsnotify", "系统事件 (fsnotify)"], ["poll", "轮询"], ["off", "关闭"]].map(([v, l]) => h("option", { value: v, selected: st.watch_mode === v }, l)));
+  const rescanOpts = RESCAN.some(([v]) => v === st.rescan_interval) ? RESCAN : [...RESCAN, [st.rescan_interval, st.rescan_interval]];
+  const rescan = h("select", { class: "input", style: { width: "auto" }, "aria-label": "定时重扫" }, rescanOpts.map(([v, l]) => h("option", { value: v, selected: st.rescan_interval === v }, l)));
+  const mb = h("input", { type: "checkbox", class: "switch", checked: st.musicbrainz_enabled, "aria-label": "MusicBrainz 自动补全" });
+  const contact = h("input", { class: "input", type: "email", value: st.musicbrainz_contact || "", placeholder: "联系邮箱（MusicBrainz 要求）", style: { maxWidth: "280px" } });
+  // fill sources: ordered checklist (on = used, order = priority)
+  const ids = srv.fill_source_ids || Object.keys(FILL_LABEL);
+  let order = [...st.fill_sources, ...ids.filter((x) => !st.fill_sources.includes(x))];
+  const on = new Set(st.fill_sources);
+  const list = h("div", { class: "stack", style: { gap: "6px" } });
+  const draw = () => list.replaceChildren(...order.map((id, i) => {
+    const cb = h("input", { type: "checkbox", checked: on.has(id), "aria-label": `使用 ${FILL_LABEL[id] || id}`, onchange: () => { cb.checked ? on.add(id) : on.delete(id); } });
+    const mv = (d) => { const j = i + d; if (j < 0 || j >= order.length) return; [order[i], order[j]] = [order[j], order[i]]; draw(); list.querySelectorAll(".fill-src")[j]?.querySelector(d < 0 ? "[data-up]" : "[data-down]")?.focus(); };
+    return h("div", { class: "fill-src" }, cb, h("span", { class: "grow" }, `${i + 1}. ${FILL_LABEL[id] || id}`),
+      h("button", { class: "btn icon sm ghost", "data-up": "", "aria-label": "上移", disabled: i === 0, onclick: () => mv(-1) }, "↑"),
+      h("button", { class: "btn icon sm ghost", "data-down": "", "aria-label": "下移", disabled: i === order.length - 1, onclick: () => mv(1) }, "↓"));
+  }));
+  draw();
+  const perMin = h("input", { class: "input", type: "number", min: 1, max: 120, value: st.fill_per_minute, style: { width: "90px" }, "aria-label": "每分钟请求上限" });
+  const row = (label, ...c) => h("div", { class: "row wrap", style: { alignItems: "center", gap: "12px", marginBottom: "12px" } }, h("span", { style: { minWidth: "120px", color: "var(--fg-2)", fontSize: "13.5px" } }, label), ...c);
+  const save = h("button", { class: "btn primary sm", onclick: async () => {
+    const body = { watch_mode: watch.value, rescan_interval: rescan.value, musicbrainz_enabled: mb.checked, musicbrainz_contact: contact.value.trim(),
+      fill_sources: order.filter((x) => on.has(x)), fill_per_minute: Number(perMin.value) || st.fill_per_minute };
+    if (body.musicbrainz_enabled && !body.musicbrainz_contact) return toast("启用 MusicBrainz 需要填写联系邮箱", "err");
+    save.disabled = true;
+    try { await put("/settings/server", body); toast("已保存，立即生效"); reload(); } catch (e) { errToast(e); } finally { save.disabled = false; }
+  } }, "保存");
+  return sec("运行设置", "修改后立即生效，无需重启 Core。", 
+    row("文件监听", watch), row("定时重扫", rescan),
+    row("MusicBrainz 补全", mb, contact),
+    h("div", { style: { margin: "6px 0 12px" } }, h("div", { style: { fontWeight: 600, marginBottom: "4px" } }, "后台补全缺失信息"),
+      h("p", { class: "muted", style: { margin: "0 0 10px", fontSize: "13px" } }, "只为本地曲目补全空缺的 ISRC、年份、流派和专辑封面，不覆盖已有标签或你的手动修改，也不修改音频文件。勾选并排序要使用的来源（越靠前越优先）；全部不勾选即关闭。"),
+      list),
+    row("每分钟请求上限", perMin, h("span", { class: "dim", style: { fontSize: "12.5px" } }, "1–120，避免触发平台限流")),
+    h("div", { class: "row" }, h("span", { class: "spacer" }), save));
 }

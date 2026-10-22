@@ -68,10 +68,12 @@ type Track struct {
 	Stream        *StreamInfo `json:"stream,omitempty"`
 	PlayCount     int         `json:"play_count"`
 	LastPlayedAt  *time.Time  `json:"last_played_at,omitempty"`
-	Favorite      bool        `json:"favorite"`
-	Rating        int         `json:"rating,omitempty"`
-	CreatedAt     time.Time   `json:"created_at"`
-	Origin        string      `json:"origin"`
+	// SortLetter is the A–Z index key (pinyin initial for Chinese titles).
+	SortLetter string    `json:"sort_letter"`
+	Favorite   bool      `json:"favorite"`
+	Rating     int       `json:"rating,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	Origin     string    `json:"origin"`
 }
 
 // StreamInfo describes the best source file (Roon-like signal path).
@@ -376,6 +378,7 @@ func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 		si.ReplayGain = &g
 	}
 	t.CreatedAt = time.UnixMilli(created).UTC()
+	t.SortLetter = search.SortLetter(t.Title)
 	if lastPlayed > 0 {
 		lp := time.UnixMilli(lastPlayed).UTC()
 		t.LastPlayedAt = &lp

@@ -62,6 +62,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/>',
   download: '<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>',
   check: '<path d="m5 12 5 5L20 7"/>',
@@ -220,7 +221,7 @@ export const isLocal = (x) => !x || !x.origin || x.origin === "local";
 export const originName = (o) => ORIGINS[o] || o;
 export const NOT_LOCAL_MSG = "在线来源的内容不可编辑或匹配，仅本地曲库支持";
 export function sourceBadge(x) {
-  return isLocal(x) ? null : h("span", { class: "badge src", title: `来源：${originName(x.origin)}（元数据只读）` }, originName(x.origin));
+  return isLocal(x) ? null : h("span", { class: "src-text", style: { marginLeft: "6px" }, title: `来源：${originName(x.origin)}（元数据只读）` }, { netease: "网易", qq: "QQ", kugou: "酷狗" }[x.origin] || originName(x.origin));
 }
 
 // Client-side mirror of the Core password policy (Core re-checks).

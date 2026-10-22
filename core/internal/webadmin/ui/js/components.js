@@ -1,5 +1,5 @@
 // Reusable library widgets: album/artist cards, track lists with actions, editors.
-import { get, post, put, del, qs, coverURL, downloadURL, bustCover } from "./api.js";
+import { get, post, put, del, qs, coverURL, downloadURL, bustCover, artistImageURL } from "./api.js";
 import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel } from "./ui.js";
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
@@ -11,10 +11,20 @@ export const albumHref = (id) => ext(id) ? extHref("album", id) : `#/album/${id}
 export const artistHref = (id) => ext(id) ? extHref("artist", id) : `#/artist/${id}`;
 const netImg = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
 export const trackArt = (t, size = 80) => t.cover_url ? netImg(t.cover_url, size) : t.album_id ? coverURL(t.album_id, size) : "";
+// 试听 = small lime outlined pill (designer spec); unplayable rows are dimmed
+// instead of badged, and explain themselves on tap.
 export function playBadge(t) {
-  if (t.playable === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的试听片段" }, "试听");
-  if (t.playable === "unavailable") return h("span", { class: "badge err", title: "当前账号无权播放（付费/下架/地区限制）" }, "不可播");
+  if (t.playable === "preview") return h("span", { class: "pill-pv", title: "当前账号仅能播放平台提供的试听片段" }, "试听");
   return null;
+}
+export const UNAVAIL_REASON = { vip: "需要平台会员", paid: "需要单独购买", region: "版权地区限制", offline: "已下架", login: "请先在设置中登录该平台" };
+export function unavailableReason(t) {
+  return UNAVAIL_REASON[t.unavailable_reason] || t.unavailable_message || "当前账号无权播放这首歌（付费、下架或地区限制）";
+}
+// Source = small grey text after the artist line (网易/QQ/酷狗), no brand colors.
+export const SOURCE_SHORT = { netease: "网易", qq: "QQ", kugou: "酷狗", spotify: "Spotify" };
+export function sourceText(t) {
+  return isLocal(t) ? null : h("span", { class: "src-text" }, SOURCE_SHORT[t.origin] || t.origin || "");
 }
 
 export function albumCard(al, { onPlay } = {}) {
@@ -29,7 +39,7 @@ export function albumCard(al, { onPlay } = {}) {
 }
 export function artistCard(ar) {
   return h("a", { href: `#/artist/${ar.id}` },
-    cover("", ar.name, "round"),
+    cover(artistImageURL(ar) || "", ar.name, "round"),
     h("div", { class: "t ellipsis" }, ar.name),
     h("div", { class: "s" }, `${ar.album_count} 张专辑 · ${ar.track_count} 首`));
 }
@@ -38,43 +48,58 @@ export async function albumTracks(albumId) {
   return p.items;
 }
 
-// Track list. opts: {showCover, showAlbum, numbered, onChange, playlist}
+// Track list. opts: {showCover, numbered (album order: show track_no), onChange, playlist, letters}
+// Rows start with a small cover and carry no index numbers unless numbered
+// (album pages). Unplayable rows are 40% opacity and toast their reason.
 export function trackList(tracks, opts = {}) {
-  const { showCover = false, numbered = true } = opts;
+  const { showCover = true, numbered = false } = opts;
+  const idx = numbered;
+  const cls = `${showCover ? "with-cover" : ""} ${idx ? "" : "no-index"}`;
   const wrap = h("div", { class: "tracks", role: "list" });
-  wrap.append(h("div", { class: `trow head ${showCover ? "with-cover" : ""}` },
-    h("span", { class: "no" }, "#"), showCover ? h("span", { class: "opt" }) : null, h("span", null, "标题"), h("span", { class: "al" }, "专辑"), h("span", { class: "du" }, "时长"), h("span")));
+  wrap.append(h("div", { class: `trow head ${cls}` },
+    idx ? h("span", { class: "no" }, "#") : null, showCover ? h("span", { class: "opt" }) : null, h("span", null, "标题"), h("span", { class: "al" }, "专辑"), h("span", { class: "du" }, "时长"), h("span")));
+  const blocked = (t) => t.playable === "unavailable";
+  const play = (i) => { const t = tracks[i]; if (blocked(t)) return toast(unavailableReason(t), "err"); player.playList(tracks.filter((x) => !blocked(x)), tracks.filter((x) => !blocked(x)).indexOf(t)); };
   const rows = tracks.map((t, i) => {
-    const no = h("span", { class: "no" }, numbered ? (t.track_no || i + 1) : i + 1);
+    const no = idx ? h("span", { class: "no" }, t.track_no || i + 1) : null;
     const fav = h("button", { class: `btn icon sm ghost ${t.favorite ? "fav-on" : ""}`, "aria-label": "收藏", title: "收藏", onclick: async (e) => {
       e.stopPropagation();
       try { t.favorite ? await del(`/favorites/track/${t.id}`) : await put(`/favorites/track/${t.id}`); t.favorite = !t.favorite; fav.classList.toggle("fav-on", t.favorite); toast(t.favorite ? "已收藏" : "已取消收藏"); } catch (err) { errToast(err); }
     } }, icon("heart"));
     const more = h("button", { class: "btn icon sm ghost", "aria-label": "更多操作", onclick: (e) => { e.stopPropagation(); trackMenu(more, t, tracks, opts); } }, icon("more"));
-    const row = h("div", { class: `trow ${showCover ? "with-cover" : ""} ${t.playable === "unavailable" ? "unavail" : ""}`, role: "listitem", tabindex: 0, "data-id": t.id,
-      ondblclick: () => player.playList(tracks, i), onkeydown: (e) => { if (e.key === "Enter") player.playList(tracks, i); },
+    const art = showCover ? h("div", { class: "cov-wrap opt" }, cover(trackArt(t, 80), t.album_title || t.title, "")) : null;
+    const row = h("div", { class: `trow ${cls} ${blocked(t) ? "unavail" : ""}`, role: "listitem", tabindex: 0, "data-id": t.id,
+      "data-letter": t.sort_letter || "", "aria-disabled": blocked(t) ? "true" : undefined, title: blocked(t) ? unavailableReason(t) : undefined,
+      ondblclick: () => play(i), onkeydown: (e) => { if (e.key === "Enter") play(i); },
       oncontextmenu: (e) => { e.preventDefault(); trackMenu(more, t, tracks, opts); } },
-      no, showCover ? cover(trackArt(t, 80), t.album_title || t.title, "opt") : null,
+      no, art,
       h("div", { style: { minWidth: 0 } },
-        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null, sourceBadge(t), " ", playBadge(t),
+        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null, playBadge(t),
           t.local_id ? h("span", { class: "badge ok", title: "本地曲库已有此曲，播放时优先使用本地文件" }, "本地") : null),
-        h("div", { class: "ar ellipsis" }, t.artist_name || "未知艺人")),
+        h("div", { class: "ar ellipsis" }, t.artist_name || "未知艺人", sourceText(t))),
       h("a", { class: "al ellipsis", href: t.album_id ? albumHref(t.album_id) : undefined, onclick: (e) => e.stopPropagation() }, t.album_title || ""),
       h("span", { class: "du" }, fmtDur(t.duration_ms)),
-      h("div", { class: "acts" }, h("button", { class: "btn icon sm ghost", "aria-label": "播放", onclick: (e) => { e.stopPropagation(); player.playList(tracks, i); } }, icon("play")), fav, more));
-    row.addEventListener("click", (e) => { if (matchMedia("(max-width: 700px)").matches && !e.target.closest("button,a")) player.playList(tracks, i); });
+      h("div", { class: "acts" }, h("button", { class: "btn icon sm ghost", "aria-label": "播放", onclick: (e) => { e.stopPropagation(); play(i); } }, icon("play")), fav, more));
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button,a")) return;
+      if (blocked(t)) return toast(unavailableReason(t), "err");
+      if (matchMedia("(max-width: 700px)").matches) play(i);
+    });
     return row;
   });
   wrap.append(...rows);
+  const eq = () => h("span", { class: `eq ${player.playing ? "" : "paused"}` }, h("i"), h("i"), h("i"));
   const mark = () => {
     const cur = player.track?.id;
     rows.forEach((r, i) => {
       const on = tracks[i].id === cur;
       r.classList.toggle("playing", on);
-      const n = r.firstChild;
-      if (on && !n.querySelector(".eq")) n.replaceChildren(h("span", { class: `eq ${player.playing ? "" : "paused"}` }, h("i"), h("i"), h("i")));
-      else if (on) n.querySelector(".eq").classList.toggle("paused", !player.playing);
-      else if (n.querySelector(".eq")) n.textContent = numbered ? (tracks[i].track_no || i + 1) : i + 1;
+      const slot = idx ? r.querySelector(".no") : r.querySelector(".cov-wrap");
+      if (!slot) return;
+      const e = slot.querySelector(".eq");
+      if (on && !e) { if (idx) slot.replaceChildren(eq()); else slot.append(eq()); }
+      else if (on) e.classList.toggle("paused", !player.playing);
+      else if (e) { if (idx) slot.textContent = tracks[i].track_no || i + 1; else e.remove(); }
     });
   };
   const off = player.on((k) => { if (k !== "time") { if (!wrap.isConnected) return off(); mark(); } });
@@ -258,6 +283,41 @@ export async function editAlbum(al, onChange) {
     foot: [h("button", { class: "btn danger", onclick: async () => { if (await resetOverride("album", al.id)) { d.close(); onChange?.(); } } }, "还原"), h("span", { class: "spacer" }),
       h("button", { class: "btn", onclick: () => d.close() }, "取消"),
       h("button", { class: "btn primary", onclick: async () => { try { if (await saveOverride("album", al.id, form.changed())) { d.close(); onChange?.(); } } catch (e) { errToast(e); } } }, "保存")] });
+}
+
+// Artist image editor (admin, local artists): upload / drag-drop, pick a
+// candidate from metadata sources, or remove. Stored by Core; survives rescans.
+export async function editArtistImage(ar, onChange) {
+  if (!isLocal(ar)) return toast(NOT_LOCAL_MSG, "err");
+  const preview = h("div", { class: "ai-preview" });
+  const show = (a) => preview.replaceChildren(cover(artistImageURL(a) || "", a.name, "round"));
+  show(ar);
+  const done = (a) => { ar = a || ar; show(ar); onChange?.(); };
+  const upload = async (f) => {
+    if (!f) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return toast("请选择 JPEG / PNG / WebP 图片", "err");
+    if (f.size > 10 << 20) return toast("图片不能超过 10 MB", "err");
+    try { const r = await put(`/artists/${ar.id}/image`, f, { headers: { "Content-Type": f.type } }); toast("艺人图片已更新"); done(r.artist || r); } catch (e) { errToast(e); }
+  };
+  const file = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true, onchange: () => upload(file.files[0]) });
+  const drop = h("div", { class: "ai-drop", tabindex: 0, role: "button", "aria-label": "选择或拖入图片", onclick: () => file.click(), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); } } },
+    icon("upload"), h("b", null, "拖入图片或点击选择"), h("span", null, "JPEG / PNG / WebP，≤10 MB"));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files[0]); });
+  const cands = h("div", { class: "ai-cands" }, h("p", { class: "muted" }, "正在从元数据来源查找…"));
+  const remove = h("button", { class: "btn danger", onclick: async () => { try { await del(`/artists/${ar.id}/image`); toast("已移除艺人图片"); done({ ...ar, image_updated_at: undefined }); } catch (e) { e.status === 404 ? toast("没有设置图片") : errToast(e); } } }, "移除图片");
+  const d = dialog({ title: `艺人图片 · ${ar.name}`, wide: true,
+    body: h("div", { class: "ai-grid" }, h("div", { class: "stack" }, preview, drop, file), h("div", { class: "stack" }, h("h3", null, "在线候选"), cands)),
+    foot: [remove, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: () => d.close() }, "完成")] });
+  try {
+    const r = await get(`/artists/${ar.id}/image/candidates`);
+    cands.replaceChildren(...(r.items.length ? r.items.map((c) => h("button", { class: "ai-cand", title: `${providerLabel(c.provider)} · ${c.name}`, onclick: async (e) => {
+      e.currentTarget.disabled = true;
+      try { const a = await post(`/artists/${ar.id}/image/from-match`, { provider: c.provider, url: c.image_url }); toast(`已使用 ${providerLabel(c.provider)} 的图片`); done(a.artist || a); } catch (err) { errToast(err); } finally { e.currentTarget.disabled = false; }
+    } }, h("img", { src: c.image_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), h("span", { class: "n ellipsis" }, c.name), h("span", { class: "src-text" }, providerLabel(c.provider))))
+      : [h("p", { class: "muted" }, "没有找到候选图片，可以手动上传。")]));
+  } catch (e) { cands.replaceChildren(h("p", { class: "muted" }, e.status === 503 ? "没有可用的元数据来源（可在设置中启用）。" : `查找失败：${e.message}`)); }
 }
 
 export function editArtist(ar, onChange) {

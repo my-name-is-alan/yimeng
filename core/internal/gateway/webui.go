@@ -157,6 +157,9 @@ func (d Deps) searchLyrics(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
+	if rq.Artist != "" && d.ArtistAliases != nil {
+		rq.ArtistAliases = d.ArtistAliases(ctx, rq.Artist)
+	}
 	items, err := d.LyricsSearch(ctx, q, title, artist)
 	if err != nil {
 		d.Log.Warn("lyrics search", "err", err)

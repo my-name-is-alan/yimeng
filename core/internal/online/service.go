@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/search"
 	"log/slog"
 	"sort"
 	"strings"
@@ -248,6 +249,7 @@ func (s *Service) Materialize(ctx context.Context, ids []string) error {
 func (s *Service) annotate(ctx context.Context, ts []Track) {
 	for i := range ts {
 		t := &ts[i]
+		t.SortLetter = search.SortLetter(t.Title)
 		id, conf, method, err := s.Lib.FindMatch(ctx, library.MatchQuery{ISRC: t.ISRC, Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs})
 		if err != nil || id == "" {
 			continue

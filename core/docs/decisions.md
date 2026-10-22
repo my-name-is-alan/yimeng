@@ -296,3 +296,17 @@ Platform CDNs sometimes answer `200 audio/mpeg` with an HTML "Forbidden" page (Q
 Apps need lyrics for songs that are not in the library (e.g. playing from another source) and must not hold platform credentials. `GET /api/v1/lyrics/search` and `/best` take title/artist/album/duration/isrc and are open to any paired device or signed-in user (not admin-only). Core queries local/user-bound lyrics (library tracks matching the title or ISRC) and LRCLIB, NetEase, QQ and Kugou in parallel with a 12 s per-source and 15 s total budget; partial results are returned.
 Scoring lives in `internal/lyrics/rank` and is shared with the web lyrics workbench, so both rank candidates the same way. Points: title 40, artist 30 (best pairwise match over split artists), album 5, duration 15 (≤2 s / ≤5 s / ≤10 s), synced 5, translation 2, source reliability 3. Similarity is `anon.Sim`: exact, pinyin-equal (so "qing tian" matches 晴天), bracket-stripped, or containment. A title with zero similarity multiplies the total by 0.3. Each candidate exposes the breakdown so clients and admins can see why it ranked where it did.
 Results are cached in memory for 6 h (empty results for 30 min), keyed by the normalized query. Only cache misses are rate-limited (30/min per token, burst 10 → 429 + Retry-After). "Nothing found" is a 200 with `{found:false, message:"暂无歌词"}`, so the app can show 「暂无歌词，可在设置中配置译梦以获取歌词」. `/best` returns the LRC, plain text, the translation LRC and merged `lines[{t_ms,text,trans}]`. `romanization` is reserved; no source provides it yet. Romanised artist aliases (e.g. "Jay Chou" ↔ 周杰伦) are not resolved yet: such queries rely on the title and duration.
+
+## D42 No Core-made recommendations
+译梦 has no recommendation system of its own. 每日推荐, 私人 FM and 推荐歌单 are passed through as-is from the platform account the user logged into. Home in both the API and the web UI shows only platform sections and objective library facts: 最近添加, 最近播放, 常听, 那年今日 and 随机播放. Core never ranks or generates "recommended for you" content. The "start radio from this track" action stays: it is a user-invoked shuffle over similar local tags, not a feed.
+
+## D43 Web IA mirrors the app
+- 曲库 is one list: local tracks plus each logged-in platform's liked songs, with a 全部/本地/网易云/QQ/酷狗 filter and an A–Z rail.
+- Each track carries a server-side `sort_letter`, the pinyin initial for Chinese titles.
+- In online-only mode, 曲库 shows the platform favorites rather than being hidden.
+- 典藏 holds only what the user favorited in Core.
+- 排行榜 left the navigation: home shows one 排行榜 entry, and the charts page has a platform switcher.
+- Rows start with a small cover and have no index numbers (album pages keep track numbers).
+- The source appears as small grey text after the artist line, and 试听 as a lime outlined pill.
+- Unplayable rows are dimmed to 40% and tapping one shows the reason.
+- Now-playing surfaces carry no source badge.

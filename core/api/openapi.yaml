@@ -2097,6 +2097,7 @@ components:
       properties:
         id: { type: string, example: tr_1a2b3c }
         title: { type: string }
+        sort_letter: { type: string, description: "A–Z index key: uppercase first letter, pinyin initial for Chinese titles, '#' otherwise", example: Q }
         artist_name: { type: string }
         artists: { type: array, items: { $ref: "#/components/schemas/ArtistRef" } }
         album_id: { type: string }

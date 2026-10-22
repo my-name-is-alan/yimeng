@@ -144,7 +144,8 @@ type Track struct {
 	VIP        bool        `json:"vip,omitempty"`      // platform marks the song as VIP/paid
 	MaxQuality Quality     `json:"max_quality,omitempty"`
 	// Filled by the Service:
-	LocalID string `json:"local_id,omitempty"` // equivalent local track
+	LocalID    string `json:"local_id,omitempty"`    // equivalent local track
+	SortLetter string `json:"sort_letter,omitempty"` // A–Z index key
 }
 
 type Album struct {

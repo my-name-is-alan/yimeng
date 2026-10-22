@@ -217,9 +217,23 @@ export function onlineTracks(tracks) { return trackList(normTracks(tracks), { sh
 
 export async function onlineHome() {
   const r = await get("/home");
-  return r.sections.filter((s) => (s.tracks?.length || s.playlists?.length) && !s.error).map((s) => h("section", { class: "section" },
+  const ok = r.sections.filter((s) => (s.tracks?.length || s.playlists?.length) && !s.error);
+  // Charts are not shelved on home; one 排行榜 entry leads to the charts page
+  // (platform switcher at its top). Designer spec: no extra nav tab.
+  const isChart = (s) => s.kind === "charts" || /排行/.test(s.title || "");
+  const chartOrigins = [...new Set(ok.filter(isChart).map((s) => s.origin || (s.id || "").split(":")[0]).filter(Boolean))];
+  const out = ok.filter((s) => !isChart(s)).map((s) => h("section", { class: "section" },
     h("div", { class: "section-head" }, h("h2", null, s.title), s.kind === "tracks" ? h("button", { class: "btn sm", onclick: () => playOnline(normTracks(s.tracks)) }, icon("play"), "播放全部") : null),
     s.kind === "tracks" ? onlineTracks(s.tracks.slice(0, 10)) : h("div", { class: "shelf" }, s.playlists.slice(0, 12).map(onlinePlaylistCard))));
+  if (ok.some(isChart)) out.splice(Math.min(1, out.length), 0, chartsEntry(chartOrigins));
+  return out;
+}
+
+function chartsEntry(origins) {
+  return h("section", { class: "section" },
+    h("div", { class: "section-head" }, h("h2", null, "排行榜"), h("a", { class: "btn sm ghost", href: "#/charts" }, "全部榜单")),
+    h("div", { class: "chart-entry" }, (origins.length ? origins : [""]).map((o) =>
+      h("a", { class: "chart-tile", href: `#/charts${o ? `?origin=${o}` : ""}` }, h("b", null, o ? originName(o) : "全部平台"), h("span", null, "热歌 · 新歌 · 飙升")))));
 }
 
 // ── pages ──
@@ -227,11 +241,14 @@ const head = (title, sub, ...a) => h("div", { class: "page-head" }, h("div", { s
 
 export async function charts(main, params) {
   const origin = params.get("origin") || "";
-  const r = await get(`/charts${qs({ origin })}`);
-  const groups = r.items.filter((g) => g.items?.length);
-  main.replaceChildren(head("排行榜", "来自已启用的在线音源"),
-    ...(groups.length ? groups.map((g) => h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, originName(g.origin))),
-      h("div", { class: "album-grid" }, g.items.map(onlinePlaylistCard)))) : [noPlugins()]));
+  const all = await get("/charts");
+  const origins = all.items.filter((g) => g.items?.length).map((g) => g.origin);
+  const cur = origins.includes(origin) ? origin : origins[0] || "";
+  const groups = all.items.filter((g) => g.items?.length && g.origin === cur);
+  const sw = h("div", { class: "seg", role: "tablist", "aria-label": "平台" }, origins.map((o) =>
+    h("a", { role: "tab", class: o === cur ? "on" : "", "aria-selected": String(o === cur), href: `#/charts?origin=${o}` }, originName(o))));
+  main.replaceChildren(head("排行榜", "来自已启用的在线音源"), origins.length > 1 ? sw : null,
+    ...(groups.length ? groups.map((g) => h("div", { class: "album-grid", style: { marginTop: "18px" } }, g.items.map(onlinePlaylistCard))) : [noPlugins()]));
 }
 
 export const noPlugins = () => empty("还没有启用在线音源。前往「设置 → 音源插件」启用网易云音乐等平台。", "cloud", h("a", { class: "btn primary", href: "#/settings" }, "去设置"));
@@ -259,7 +276,7 @@ export async function detail(main, origin, kind, native) {
           h("h1", null, title), h("div", { class: "facts" }, facts.join(" · ")),
           x.description ? h("div", { class: "facts ellipsis", style: { maxWidth: "640px" }, title: x.description }, x.description) : null, status,
           h("div", { class: "hero-actions" }, ...actions)))),
-    h("div", { class: "section" }, tracks.length ? trackList(tracks, { showCover: true, numbered: kind === "album" }) : empty("没有曲目")));
+    h("div", { class: "section" }, tracks.length ? trackList(tracks, { showCover: kind !== "album", numbered: kind === "album" }) : empty("没有曲目")));
   void id;
 }
 

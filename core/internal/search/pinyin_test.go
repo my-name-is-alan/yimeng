@@ -33,3 +33,11 @@ func stringIndex(s, sub string) int {
 	}
 	return -1
 }
+
+func TestSortLetter(t *testing.T) {
+	for in, want := range map[string]string{"晴天": "Q", "  apple": "A", "Zebra": "Z", "1999": "#", "": "#", "éclair": "#"} {
+		if got := SortLetter(in); got != want {
+			t.Errorf("%q: %q want %q", in, got, want)
+		}
+	}
+}

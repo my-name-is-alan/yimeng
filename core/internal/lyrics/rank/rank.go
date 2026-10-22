@@ -21,6 +21,9 @@ type Query struct {
 	Album      string `json:"album,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
 	ISRC       string `json:"isrc,omitempty"`
+	// ArtistAliases are other names for Artist (MusicBrainz aliases, e.g.
+	// Jay Chou ↔ 周杰伦), matched like the artist itself.
+	ArtistAliases []string `json:"-"`
 }
 
 // Reliability (0..1) per source: how often its timing/text is right.
@@ -62,7 +65,11 @@ func Score(q Query, c providers.Candidate) (int, providers.ScoreBreakdown) {
 	if strings.TrimSpace(q.Artist) == "" || strings.TrimSpace(c.Artist) == "" {
 		b.Artist = 15
 	} else {
-		b.Artist = 30 * artistSim(q.Artist, c.Artist)
+		as := artistSim(q.Artist, c.Artist)
+		for _, al := range q.ArtistAliases {
+			as = math.Max(as, artistSim(al, c.Artist))
+		}
+		b.Artist = 30 * as
 	}
 	if strings.TrimSpace(q.Album) == "" || strings.TrimSpace(c.Album) == "" {
 		b.Album = 2.5

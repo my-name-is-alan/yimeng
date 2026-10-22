@@ -176,6 +176,10 @@ func (d Deps) rankedLyrics(w http.ResponseWriter, r *http.Request) (rank.Query, 
 		wg            sync.WaitGroup
 		local, remote []providers.Candidate
 	)
+	if q.Artist != "" && d.ArtistAliases != nil {
+		wg.Add(1)
+		go func() { defer wg.Done(); q.ArtistAliases = d.ArtistAliases(ctx, q.Artist) }()
+	}
 	wg.Add(1)
 	go func() { defer wg.Done(); local = d.localLyricsCandidates(ctx, q) }()
 	if d.LyricsSearch != nil {

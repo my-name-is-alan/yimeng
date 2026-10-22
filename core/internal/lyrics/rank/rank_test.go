@@ -36,3 +36,12 @@ func TestPinyinAndMultiArtist(t *testing.T) {
 		t.Fatalf("multi-artist %v", b2.Artist)
 	}
 }
+
+func TestArtistAliases(t *testing.T) {
+	c := providers.Candidate{Provider: "qq", Title: "晴天", Artist: "周杰伦", Synced: true}
+	_, b := Score(Query{Title: "晴天", Artist: "Jay Chou"}, c)
+	_, b2 := Score(Query{Title: "晴天", Artist: "Jay Chou", ArtistAliases: []string{"周杰倫", "周杰伦"}}, c)
+	if b.Artist != 0 || b2.Artist != 30 {
+		t.Fatalf("aliases: %v %v", b.Artist, b2.Artist)
+	}
+}
