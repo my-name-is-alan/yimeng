@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.10.0
+  version: 0.11.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -1194,6 +1194,34 @@ paths:
                         capabilities: { type: integer, description: "Capability bitset (CapTrackTags=1, CapAlbumInfo=2, …)" }
                         health: { type: string, enum: [ok, degraded, down] }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tracks/{id}/download:
+    get:
+      tags: [library]
+      summary: Download a track for offline caching
+      description: |
+        Serves the library original (or an optional transcode via `format`/`bitrate`)
+        with `Content-Disposition: attachment`. Prefers a complete file with
+        Content-Length and Range support — transcodes are materialized into the
+        cache before the response body starts. Query `access_token` is allowed
+        (same as stream/cover) for download managers that cannot set headers.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: format, in: query, schema: { type: string, enum: [original, aac, mp3, opus, flac] } }
+        - { name: bitrate, in: query, schema: { type: integer } }
+        - { name: access_token, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Audio file
+          headers:
+            Content-Disposition: { schema: { type: string } }
+            X-Download-Profile: { schema: { type: string } }
+          content:
+            audio/*: { schema: { type: string, format: binary } }
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { description: Transcode failed }
 
 components:
   securitySchemes:

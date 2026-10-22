@@ -35,6 +35,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 封面缩略图：`/api/.../cover?size=&format=jpeg|webp|png`（纯 Go 缩放缓存）。
 - 歌词远程：默认启用 LRCLIB（`metadata.providers` / `YIMENG_PROVIDERS=lrclib`）；网易云/QQ 为 SPI stub（无安全公开 API）。`GET /api/metadata/providers` 列出已启用的 MetadataProvider。
 - HTTPS / 代理 / 限流：`YIMENG_TLS_CERT`+`YIMENG_TLS_KEY`；`YIMENG_TRUSTED_PROXIES`（CIDR，信任后才读 X-Forwarded-For）；`YIMENG_RATE_LIMIT`（默认 50 req/s/客户端）与 `YIMENG_GLOBAL_RATE_LIMIT`；超限 429 + Retry-After。
+- 离线下载：`GET /api/tracks/{id}/download`（`Content-Disposition: attachment`；可选 `format`/`bitrate` 转码后整文件下载）。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

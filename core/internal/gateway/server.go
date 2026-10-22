@@ -115,6 +115,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}/cover", d.trackCover)
 	mux.HandleFunc("GET /api/search", d.search)
 	mux.HandleFunc("GET /api/stream/{id}", d.stream)
+	mux.HandleFunc("GET /api/tracks/{id}/download", d.download)
 
 	mux.HandleFunc("GET /api/players", d.listPlayers)
 	mux.HandleFunc("GET /api/players/{id}", d.playerState)
@@ -200,8 +201,8 @@ func allowsQueryToken(r *http.Request) bool {
 		return false
 	}
 	p := r.URL.Path
-	return p == "/ws" || strings.HasPrefix(p, "/api/stream/") || (strings.HasSuffix(p, "/cover") &&
-		(strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/")))
+	return p == "/ws" || strings.HasPrefix(p, "/api/stream/") || strings.HasSuffix(p, "/download") ||
+		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/")))
 }
 
 func (d Deps) requireAuth(next http.Handler) http.Handler {

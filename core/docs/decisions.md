@@ -127,3 +127,10 @@ alternative considered. Newest items at the bottom.
   `trusted_proxies` CIDRs. Empty list = never trust (safe default on LAN).
 - Token-bucket rate limits: per-client (Bearer prefix else IP) and optional
   global. `/healthz` exempt. 429 + Retry-After. Default 50/s burst 200.
+
+## D14 Offline download
+- `GET /api/tracks/{id}/download` is for client-side offline caches, not streaming.
+  Always `Content-Disposition: attachment` with a sanitized `Artist - Title.ext`
+  filename (RFC 5987). Original by default; optional format/bitrate materializes
+  a full transcode into the cache first so Range/Content-Length work. Query
+  token allowed. Rejected: zip-of-album endpoint (clients iterate track IDs).
