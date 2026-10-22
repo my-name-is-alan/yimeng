@@ -453,9 +453,7 @@ func (p *Plugin) RecommendTracks(ctx context.Context) ([]online.Track, error) {
 					added++
 				}
 			}
-			if added == 0 {
-				break
-			}
+			_ = added // duplicate batches happen; keep asking until 8 calls
 		}
 		if len(all) > 0 {
 			return mapSongs(all, p.vip()), nil

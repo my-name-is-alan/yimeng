@@ -399,7 +399,7 @@ func (s *Service) RecommendTracks(ctx context.Context, origin string) ([]Track, 
 	if !s.Reg.LoggedIn(origin) {
 		return nil, ErrNeedsLogin
 	}
-	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-tracks")+":"+s.now().Format("2006-01-02"), TTLRecs, func(ctx context.Context) ([]Track, error) { return d.RecommendTracks(ctx) })
+	v, err := cached(ctx, s.Cache, s.userKey(origin, "rec-tracks2")+":"+s.now().Format("2006-01-02"), TTLRecs, func(ctx context.Context) ([]Track, error) { return d.RecommendTracks(ctx) })
 	s.after(ctx, origin, err)
 	if err == nil {
 		s.rememberTracks(ctx, v)
