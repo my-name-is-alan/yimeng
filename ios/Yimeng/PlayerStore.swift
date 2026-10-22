@@ -83,6 +83,11 @@ final class PlayerStore: ObservableObject {
     }
 
     func toggle() {
+        let fx = EffectsEngine.shared
+        if fx.active {
+            if isPlaying { fx.pause(); isPlaying = false; elapsed = fx.currentTime; save() } else { fx.resume(); isPlaying = true }
+            syncApp(); pushNowPlaying(); return
+        }
         if player == nil, song != nil {
             // Restored-from-disk: build the player now and seek to the saved time.
             startCurrent(autoplay: true, seek: pendingSeek ?? elapsed)
@@ -147,22 +152,31 @@ final class PlayerStore: ObservableObject {
         if AudioPrefs.clipGuard, let peak = (album ? rg.albumPeak : rg.trackPeak) ?? rg.trackPeak, peak > 0 { v = min(v, 1 / peak) }
         return Float(max(0, min(1, v)))
     }
-    func applyGain() { if !fadingOut { player?.volume = targetVolume(for: song) } }
+    func applyGain() { if !fadingOut { setVolume(targetVolume(for: song)) } }
+    private var volume: Float { EffectsEngine.shared.active ? EffectsEngine.shared.volume : (player?.volume ?? 1) }
+    private func setVolume(_ v: Float) { if EffectsEngine.shared.active { EffectsEngine.shared.volume = v } else { player?.volume = v } }
 
     private func fade(to target: Float, over secs: Double) {
         fadeTask?.cancel()
-        guard let p = player else { return }
-        let from = p.volume, steps = max(1, Int(secs * 20))
-        fadeTask = Task { @MainActor [weak p] in
+        guard player != nil || EffectsEngine.shared.active else { return }
+        let from = volume, steps = max(1, Int(secs * 20))
+        fadeTask = Task { @MainActor [weak self] in
             for i in 1...steps {
                 try? await Task.sleep(for: .milliseconds(50))
                 if Task.isCancelled { return }
-                p?.volume = from + (target - from) * Float(i) / Float(steps)
+                self?.setVolume(from + (target - from) * Float(i) / Float(steps))
             }
         }
     }
 
     private func advanceAtEnd() {
+        if EffectsEngine.shared.active {
+            if repeatMode == .one { try? EffectsEngine.shared.play(from: 0); fadingOut = false; applyGain(); return }
+            if index + 1 >= queue.count && repeatMode == .off {
+                isPlaying = false; tearDownPlayer(); elapsed = 0; pendingSeek = 0; syncApp(); pushNowPlaying(); return
+            }
+            skip(1); return
+        }
         if repeatMode == .one { player?.seek(to: .zero); player?.play(); fadingOut = false; applyGain(); return }
         if index + 1 >= queue.count && repeatMode == .off {
             isPlaying = false; player?.pause(); player?.seek(to: .zero); elapsed = 0; syncApp(); pushNowPlaying(); return
@@ -245,6 +259,10 @@ final class PlayerStore: ObservableObject {
         guard let url = LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
         tearDownPlayer()
         AudioRoute.configureSession()
+        if FXStore.shared.s.on && !passthroughOnce.contains(s.id) {
+            startEngine(s, url: url, autoplay: autoplay, seek: seek, handoff: false)
+            return
+        }
         let asset: AVURLAsset = (preloaded?.id == s.id ? preloaded?.asset : nil) ?? Self.asset(url)
         preloaded = nil
         let item = AVPlayerItem(asset: asset)
@@ -293,7 +311,91 @@ final class PlayerStore: ObservableObject {
         pushNowPlaying()
     }
 
+    // MARK: Effects (AVAudioEngine) path
+
+    /// Songs whose format the engine couldn't open: play them passthrough instead.
+    private var passthroughOnce: Set<String> = []
+    private var engineTick: Task<Void, Never>?
+    private var engineGen = 0
+
+    /// `handoff`: AVPlayer keeps playing while the file downloads; at hand-over we read its live position.
+    private func startEngine(_ s: NDSong, url: URL, autoplay: Bool, seek: TimeInterval?, handoff: Bool) {
+        engineGen += 1; let g = engineGen
+        if !handoff { isPlaying = autoplay; syncApp() }
+        let fx = EffectsEngine.shared
+        Task { @MainActor in
+            do {
+                let local = try await fx.fetch(url, id: s.id, suffix: s.suffix)
+                guard g == engineGen, song?.id == s.id else { return }
+                try fx.load(local)
+                var at = seek ?? 0
+                var play = autoplay
+                if handoff, let p = player {
+                    at = p.currentTime().seconds.isFinite ? p.currentTime().seconds : elapsed
+                    play = p.rate > 0
+                    tearDownAVPlayer()
+                }
+                fx.onEnd = { [weak self] in self?.advanceAtEnd() }
+                fx.volume = targetVolume(for: s)
+                try fx.play(from: at)
+                if !play { fx.pause() }
+                isPlaying = play
+                let d = fx.duration; if d > 0 { duration = d }
+                elapsed = at
+                AudioRoute.shared.refresh()
+                startEngineTick()
+                syncApp(); save(); pushNowPlaying()
+            } catch {
+                guard g == engineGen, song?.id == s.id else { return }
+                NetLog.logger.error("FX engine failed: \(error.localizedDescription, privacy: .public)")
+                SheetCenter.shared.say("此格式无法使用音效，已改为直通播放")
+                passthroughOnce.insert(s.id)
+                if !handoff { startCurrent(autoplay: autoplay, seek: seek) }
+            }
+        }
+    }
+
+    private func startEngineTick() {
+        engineTick?.cancel()
+        engineTick = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self, EffectsEngine.shared.active else { return }
+                guard self.isPlaying else { continue }
+                self.elapsed = EffectsEngine.shared.currentTime
+                let left = self.duration - self.elapsed
+                let cf = AudioPrefs.crossfade
+                if cf > 0, self.duration > cf * 2, left > 0, left <= cf, !self.fadingOut, self.repeatMode != .one {
+                    self.fadingOut = true; self.fade(to: 0, over: left)
+                }
+                let now = Date().timeIntervalSinceReferenceDate
+                if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
+            }
+        }
+    }
+
+    /// 音效 switched on/off mid-track: keep position (and play state) across the path change.
+    func effectsToggled() {
+        guard let s = song, let url = LibraryStore.shared.streamURL(for: s.id) else { return }
+        passthroughOnce.remove(s.id)
+        if FXStore.shared.s.on {
+            if player != nil { startEngine(s, url: url, autoplay: isPlaying, seek: elapsed, handoff: true) }
+            else { pendingSeek = pendingSeek ?? elapsed }   // not started yet: next play() builds the engine
+        } else if EffectsEngine.shared.active {
+            let at = EffectsEngine.shared.currentTime, playing = isPlaying
+            startCurrent(autoplay: playing, seek: at)
+        } else { engineGen += 1 }   // cancel an in-flight hand-off
+    }
+
     private func tearDownPlayer() {
+        engineGen += 1
+        engineTick?.cancel(); engineTick = nil
+        EffectsEngine.shared.onEnd = nil
+        EffectsEngine.shared.stop()
+        tearDownAVPlayer()
+    }
+
+    private func tearDownAVPlayer() {
         if let timeObs, let player { player.removeTimeObserver(timeObs) }
         timeObs = nil
         if let endObs { NotificationCenter.default.removeObserver(endObs) }

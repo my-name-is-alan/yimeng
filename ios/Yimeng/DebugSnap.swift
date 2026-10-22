@@ -6,6 +6,8 @@ enum DebugSnap {
     static func schedule() {
         let a = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> String? { a.firstIndex(of: k).flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil } }
+        if a.contains("-sheet-sound") { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SheetCenter.shared.sound = true } }
+        if a.contains("-fx-test") { fxTest() }
         guard let name = arg("-snap") else { return }
         let delay = Double(arg("-snapDelay") ?? "") ?? 12
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
@@ -13,6 +15,25 @@ enum DebugSnap {
             let img = UIGraphicsImageRenderer(bounds: w.bounds).image { _ in w.drawHierarchy(in: w.bounds, afterScreenUpdates: true) }
             let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(name + ".png")
             try? img.pngData()?.write(to: url)
+        }
+    }
+}
+extension DebugSnap {
+    /// Plays the first cached song with effects ON, toggles OFF/ON mid-track, logs positions + engine state.
+    static func fxTest() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(9))
+            let songs = LibraryCache.shared.songs
+            guard !songs.isEmpty else { NetLog.logger.error("FXTEST no songs"); return }
+            FXStore.shared.pick(FXSettings.presets[1]); FXStore.shared.s.on = true
+            PlayerStore.shared.play(songs: songs, startAt: 0)
+            for i in 0..<12 {
+                try? await Task.sleep(for: .seconds(2))
+                let e = EffectsEngine.shared
+                NetLog.logger.info("FXTEST t\(i * 2) engine=\(e.active) ch=\(e.channels) pos=\(String(format: "%.1f", e.active ? e.currentTime : PlayerStore.shared.elapsed), privacy: .public) playing=\(PlayerStore.shared.isPlaying)")
+                if i == 5 { FXStore.shared.s.on = false; NetLog.logger.info("FXTEST → OFF") }
+                if i == 8 { FXStore.shared.s.on = true; NetLog.logger.info("FXTEST → ON") }
+            }
         }
     }
 }

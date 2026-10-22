@@ -13,7 +13,7 @@ enum AudioPrefs {
     static var replayGain: Int { UserDefaults.standard.integer(forKey: "ym.rg.mode") }         // 0 off · 1 track · 2 album
     static var preamp: Double { UserDefaults.standard.double(forKey: "ym.rg.preamp") }         // dB
     static var clipGuard: Bool { UserDefaults.standard.object(forKey: "ym.rg.clip") as? Bool ?? true }
-    static var eqOn: Bool { UserDefaults.standard.bool(forKey: "ym.eq.on") }
+    @MainActor static var eqOn: Bool { FXStore.shared.s.on }
 }
 
 struct ReplayGainInfo: Codable, Hashable {
@@ -122,7 +122,7 @@ struct SignalPathSheet: View {
                                   song.samplingRate.map { String(format: "%.1f kHz", Double($0) / 1000) },
                                   song.channelCount.map { "\($0) 声道" }, song.bitRate.map { "\($0) kbps" }].compactMap { $0 }.joined(separator: " · "))
             step("arrow.triangle.2.circlepath", "串流", transcoded ? "服务器转码为 MP3 ≤ \(AudioPrefs.maxBitRate) kbps" : "原始文件（format=raw，未转码）")
-            step("waveform", "处理", AudioPrefs.eqOn ? "均衡器开启 · 非直通" : (AudioPrefs.replayGain > 0 ? "仅回放增益（音量）" : "无处理"))
+            step("waveform", "处理", AudioPrefs.eqOn ? "音效开启 · AVAudioEngine · 非直通" : (AudioPrefs.replayGain > 0 ? "仅回放增益（音量）" : "无处理"))
             step("hifispeaker", "输出", "\(route.name) · \(Int(route.sampleRate)) Hz · \(route.channels) 声道")
             HStack(spacing: 6) {
                 Circle().fill(passthrough ? Theme.lime : Color.orange).frame(width: 7, height: 7)
@@ -373,28 +373,15 @@ struct SoundSettingsView: View {
     @AppStorage("ym.rg.mode") private var rgMode = 0
     @AppStorage("ym.rg.preamp") private var preamp = 0.0
     @AppStorage("ym.rg.clip") private var clipGuard = true
-    @AppStorage("ym.eq.on") private var eqOn = false
-    @AppStorage("ym.eq.preset") private var preset = "平直"
-    @AppStorage("ym.eq.bands") private var bandsRaw = ""
     @Environment(\.dismiss) var dismiss
-
-    static let freqs = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"]
-    static let presets: [(String, [Double])] = [
-        ("平直", Array(repeating: 0, count: 10)),
-        ("低音增强", [6, 5, 4, 2, 0, 0, 0, 0, 0, 0]),
-        ("人声", [-2, -1, 0, 2, 4, 4, 3, 1, 0, -1]),
-        ("古典", [4, 3, 2, 0, -1, -1, 0, 2, 3, 4]),
-        ("电子", [5, 4, 1, 0, -2, 1, 0, 2, 4, 5]),
-        ("摇滚", [4, 3, -1, -2, -1, 1, 3, 4, 4, 4]),
-        ("夜间", [-2, -1, 0, 0, 1, 1, 0, -2, -3, -4]),
-    ]
-    private var bands: [Double] {
-        let v = bandsRaw.split(separator: ",").compactMap { Double($0) }
-        return v.count == 10 ? v : Array(repeating: 0, count: 10)
-    }
 
     var body: some View {
         Form {
+            Section {
+                EffectsPanel()
+            } footer: {
+                Text("关闭音效 = 原始直通（AVPlayer，FLAC / 杜比不经处理）；开启 = AVAudioEngine 解码 + 12 段 EQ + 峰值限制。切换时保持播放进度。")
+            }
             Section {
                 Picker("串流音质", selection: $maxBitRate) {
                     Text("原始 · 无损直通").tag(0)
@@ -423,25 +410,6 @@ struct SoundSettingsView: View {
             } header: { Text("音量标准化") } footer: {
                 Text("使用服务器提供的 ReplayGain 标签调整音量，不改变音频数据，不影响直通。")
             }
-            Section {
-                Toggle("均衡器", isOn: $eqOn).disabled(true)
-                Picker("预设", selection: $preset) { ForEach(Self.presets, id: \.0) { Text($0.0).tag($0.0) } }
-                    .onChange(of: preset) { _, p in
-                        if let v = Self.presets.first(where: { $0.0 == p })?.1 { bandsRaw = v.map { String($0) }.joined(separator: ",") }
-                    }
-                HStack(alignment: .bottom, spacing: 0) {
-                    ForEach(0..<10, id: \.self) { i in
-                        VStack(spacing: 6) {
-                            BandBar(value: bands[i])
-                            Text(Self.freqs[i]).font(.system(size: 9)).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity)
-                    }
-                }.frame(height: 120).padding(.vertical, 6)
-            } header: {
-                HStack { Text("均衡器"); Text("即将推出").font(.system(size: 10, weight: .bold)).padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Theme.lime.opacity(0.3))) }
-            } footer: {
-                Text("开启均衡器会关闭直通：需要在 App 内解码（AVAudioEngine + AVAudioUnitEQ），杜比 / 多声道会被下混为立体声。预设已保存，音频引擎将在下一版接入。")
-            }
         }
         .navigationTitle("音效设置")
         .navigationBarTitleDisplayMode(.inline)
@@ -449,21 +417,5 @@ struct SoundSettingsView: View {
         .onChange(of: rgMode) { _, _ in PlayerStore.shared.applyGain() }
         .onChange(of: preamp) { _, _ in PlayerStore.shared.applyGain() }
         .onChange(of: clipGuard) { _, _ in PlayerStore.shared.applyGain() }
-    }
-}
-
-private struct BandBar: View {
-    let value: Double   // -12...12 dB
-    var body: some View {
-        GeometryReader { g in
-            let h = g.size.height, mid = h / 2
-            let y = mid - CGFloat(value / 12) * mid
-            ZStack(alignment: .top) {
-                Capsule().fill(Color.secondary.opacity(0.25)).frame(width: 3).frame(maxWidth: .infinity)
-                Path { p in p.move(to: CGPoint(x: g.size.width / 2, y: mid)); p.addLine(to: CGPoint(x: g.size.width / 2, y: y)) }
-                    .stroke(Theme.lime, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                Circle().fill(Color.primary).frame(width: 9, height: 9).position(x: g.size.width / 2, y: y)
-            }
-        }
     }
 }
