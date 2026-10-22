@@ -241,6 +241,8 @@ struct CoreLyricLine: Codable, Hashable, Sendable {
     var trans: String?
     var roma: String?
     var words: [CoreLyricWord]?
+    /// Title / credit lines (作词、作曲…). Hidden in the lyric view and never used as a quote.
+    var meta: Bool?
 }
 struct CoreLyrics: Codable, Sendable {
     var found: Bool?

@@ -24,7 +24,7 @@ final class HomeStore: ObservableObject {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         // Per source: switching Emby ↔ 飞牛 must not paint the other library's cached home.
-        let id = MusicSources.activeId
+        let id = MusicSources.scopeId
         return d.appendingPathComponent(id == SourceKind.navidrome.rawValue ? "home.v1.json" : "home.\(id).v1.json")
     }
 

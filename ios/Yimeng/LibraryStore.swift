@@ -242,7 +242,8 @@ final class LibraryStore: ObservableObject {
         let svc = SourceKind.core.keychainService
         var envToken = false
         #if DEBUG
-        envToken = ProcessInfo.processInfo.environment["YIMENG_CORE_TOKEN"]?.isEmpty == false
+        let e = ProcessInfo.processInfo.environment
+        envToken = e["YIMENG_CORE_TOKEN"]?.isEmpty == false || e["YIMENG_CORE_USER"]?.isEmpty == false
         #endif
         if !envToken, !cfg.host.isEmpty, let a = Keychain.get(service: svc, account: "access"), !a.isEmpty {
             liveMode = true

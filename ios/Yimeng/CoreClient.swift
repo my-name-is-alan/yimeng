@@ -43,6 +43,7 @@ actor CoreClient {
         guard let u = Self.normalize(host) else { throw NavidromeError.badURL }
         if u != base { cursors = [:] }
         base = u
+        UserDefaults.standard.set((u.host ?? "") + "_" + String(u.port ?? 0), forKey: MusicSources.coreScopeKey)
     }
     /// No auth. Used by the connect form to show the server's name before login.
     func serverInfo() async throws -> CoreServerInfo {
@@ -191,7 +192,9 @@ actor CoreClient {
         if let a = s.album, !a.isEmpty { q["album"] = a }
         if let d = s.duration { q["duration_ms"] = "\(d * 1000)" }
         if let i = s.isrc { q["isrc"] = i }
-        return try? await get("/api/v1/lyrics/best", query: q, cache: true)
+        guard var r: CoreLyrics = try? await get("/api/v1/lyrics/best", query: q, cache: true) else { return nil }
+        r.lines = r.lines?.filter { $0.meta != true }
+        return r
     }
     func dream(_ trackId: String) async -> CoreDream? { try? await get("/api/v1/tracks/\(trackId)/dream", cache: true) }
     func charts(origin: String) async throws -> CoreCharts { try await get("/api/v1/charts", query: ["origin": origin], cache: true) }
@@ -303,7 +306,7 @@ enum CoreETagCache {
     struct Hit { let etag: String; let body: Data }
     private static var dir: URL {
         let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("core-etag", isDirectory: true).appendingPathComponent(MusicSources.activeId, isDirectory: true)
+            .appendingPathComponent("core-etag", isDirectory: true).appendingPathComponent(MusicSources.scopeId, isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }

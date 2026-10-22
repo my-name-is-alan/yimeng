@@ -19,7 +19,7 @@ struct PlaybackSnapshot: Codable {
 final class PlayerStore: ObservableObject {
     static let shared = PlayerStore()
     /// Resume point is per source.
-    private static var saveKey: String { "ym.playback.v1." + MusicSources.activeId }
+    private static var saveKey: String { "ym.playback.v1." + MusicSources.scopeId }
 
     /// Source switch: stop audio, clear now-playing UI, but keep the old source's saved resume point.
     func stopForSourceSwitch() {
@@ -287,13 +287,17 @@ final class PlayerStore: ObservableObject {
 
     /// Call after Navidrome is connected. Restores paused state; hides bar if song is gone.
     func restore() async {
+        // Pre-v27 Core queues were saved unscoped (shared by the mock and every Core): drop them.
+        UserDefaults.standard.removeObject(forKey: "ym.playback.v1.core")
         guard song == nil,
               let data = UserDefaults.standard.data(forKey: Self.saveKey),
               let snap = try? JSONDecoder().decode(PlaybackSnapshot.self, from: data),
               snap.index >= 0, snap.index < snap.queue.count else { return }
         let s = snap.queue[snap.index]
         guard LibraryStore.shared.connected else { return }
-        let exists = (try? await NavidromeClient.shared.songExists(id: s.id)) ?? false
+        // Core online ids (qq:/netease:/kugou:) 404 on /tracks/{id}; they are not library rows.
+        let online = NavidromeClient.core && s.id.contains(":")
+        let exists = online ? true : ((try? await NavidromeClient.shared.songExists(id: s.id)) ?? false)
         guard exists else { clear(); return }
         queue = snap.queue
         index = snap.index
@@ -370,7 +374,7 @@ final class PlayerStore: ObservableObject {
                 if let l = self.embyLive {
                     self.embyLive = (l.id, self.elapsed)
                     self.coreScrobbleIfDue()
-                    if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false); if NavidromeClient.core { let e = self.elapsed; Task { await CoreClient.shared.putProgress(l.id, ms: Int(e * 1000)) } } }
+                    if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false); if NavidromeClient.core { let e = self.elapsed; let dur = self.duration; Task { await CoreClient.shared.putProgress(l.id, ms: Int(e * 1000), durationMs: dur > 0 ? Int(dur * 1000) : nil) } } }
                 }
                 if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
             }

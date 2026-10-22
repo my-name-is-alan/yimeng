@@ -63,7 +63,7 @@ titles = ["梦里的那条长长长长长长长长的街道", "雨停之前", "N
 for i, t in enumerate(titles):
     al = ALBUMS[i % 8]
     TRACKS.append({"id": f"tr{i+1}", "title": t, "artists": [al["artist"]], "album": {"id": al["id"], "name": al["name"]}, "album_id": al["id"],
-                   "origin": "local", "playable": True, "preview": False, "duration_ms": 48000, "has_lyrics": i % 3 != 2, "favorite": i in (1, 4),
+                   "origin": "local", "playable": True, "preview": False, "entitlement": "full", "duration_ms": 48000, "has_lyrics": i % 3 != 2, "favorite": i in (1, 4),
                    "audio": {"codec": "flac" if i % 2 == 0 else "aac", "sample_rate": 44100 if i % 2 else 96000, "bit_depth": 24 if i % 2 == 0 else None,
                              "bitrate": 320 if i % 2 else 2800, "channels": 2},
                    "cover": al["cover"], "stream_url": sign(f"/api/stream/tr{i+1}"), "sort_letter": "A", "track_no": i // 8 + 1,
@@ -71,9 +71,9 @@ for i, t in enumerate(titles):
 ONLINE = [
     {"id": "netease:186001", "title": "网易云上的一首歌", "artists": [{"id": "netease:ar9", "name": "云村歌手"}], "album": {"id": "netease:al9", "name": "云村专辑"},
      "origin": "netease", "playable": True, "preview": False, "duration_ms": 48000, "has_lyrics": True, "cover": cover("netease_186001", 2), "sort_letter": "W"},
-    {"id": "qq:003aBc", "title": "仅可试听的歌", "artists": [{"name": "Q 音歌手"}], "album": {"name": "Q 音专辑"}, "origin": "qq", "playable": True, "preview": True,
+    {"id": "qq:003aBc", "title": "仅可试听的歌", "artists": [{"name": "Q 音歌手"}], "album": {"name": "Q 音专辑"}, "origin": "qq", "playable": True, "preview": False, "entitlement": "preview",
      "preview_window": {"start_ms": 30000, "end_ms": 60000}, "duration_ms": 48000, "cover": cover("qq_003", 4), "sort_letter": "J"},
-    {"id": "kugou:A1B2", "title": "版权受限的歌", "artists": [{"name": "酷狗歌手"}], "album": {"name": "酷狗专辑"}, "origin": "kugou", "playable": False, "preview": False,
+    {"id": "kugou:A1B2", "title": "版权受限的歌", "artists": [{"name": "酷狗歌手"}], "album": {"name": "酷狗专辑"}, "origin": "kugou", "playable": False, "preview": False, "entitlement": "unavailable",
      "unplayable_reason": "酷狗：该歌曲因版权原因暂不可播放", "duration_ms": 200000, "cover": cover("kugou_a1", 6), "sort_letter": "B"},
 ]
 for o in ONLINE: o.setdefault("stream_url", sign(f"/api/stream/{urllib.parse.quote(o['id'], safe='')}"))
@@ -115,6 +115,12 @@ def page(items, q, key):
     chunk = items[cur:cur + limit]; nxt = cur + limit if cur + limit < len(items) else None
     return {"items": chunk, "next_cursor": str(nxt) if nxt else None, "updated_at": "2026-10-22T08:00:00Z", "total": len(items)}
 
+def session(name, user="mock"):
+    # Core P0: Session {token, device, user}; ymd_ device tokens do not expire.
+    return {"token": "ymd_" + os.urandom(8).hex(), "device": {"id": "dev_" + os.urandom(6).hex(), "name": name, "device_type": "ios"},
+            "user": {"id": "u1", "username": user, "role": "user"}}
+HISTORY = []
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     def log_message(self, f, *a): sys.stderr.write("%s %s\n" % (self.command, self.path.split("?")[0]))
@@ -129,9 +135,10 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code); self.send_header("Content-Type", "application/json; charset=utf-8")
         if etag: self.send_header("ETag", tag)
         self.send_header("Content-Length", str(len(data))); self.end_headers(); self.wfile.write(data)
+    def err(self, code, c, msg): return self.send_json({"error": c, "code": c, "message": msg}, code, False)
     def authed(self):
         a = self.headers.get("Authorization", ""); q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        return a.startswith("Bearer at-") or "sig" in q
+        return a.startswith("Bearer ymd_") or "sig" in q or q.get("access_token", [""])[0].startswith("ymd_")
     def do_DELETE(self): self.route("DELETE")
     def do_PUT(self): self.route("PUT")
     def do_PATCH(self): self.route("PATCH")
@@ -140,22 +147,29 @@ class H(BaseHTTPRequestHandler):
     def route(self, m):
         u = urllib.parse.urlparse(self.path); p = u.path; q = urllib.parse.parse_qs(u.query)
         if p == "/api/v1/server/info":
-            return self.send_json({"name": "译梦 Core · 书房 NAS (mock)", "version": "0.1.0-mock", "features": {"lyrics": True, "charts": True, "ws": False, "sse": True},
+            return self.send_json({"name": "译梦 Core · 书房 NAS (mock)", "server_name": "译梦 Core · 书房 NAS (mock)", "api_version": "v1", "authenticated": self.authed(), "version": "0.1.0-mock", "features": {"lyrics": True, "charts": True, "ws": False, "sse": True},
                                    "platforms": PLATFORMS})
         if p == "/api/v1/auth/login":
             b = self.body()
-            if not b.get("username"): return self.send_json({"message": "用户名或密码错误"}, 401, False)
-            return self.send_json({"access_token": "at-" + os.urandom(6).hex(), "refresh_token": "rt-" + os.urandom(6).hex(), "expires_in": 3600}, etag=False)
-        if p == "/api/v1/auth/refresh": return self.send_json({"access_token": "at-" + os.urandom(6).hex(), "refresh_token": "rt-" + os.urandom(6).hex()}, etag=False)
-        if p == "/api/v1/auth/logout": return self.send_json({}, etag=False)
+            if not b.get("username") or not b.get("password"): return self.err(401, "invalid_credentials", "用户名或密码错误")
+            return self.send_json(session(b.get("device_name", "mock"), b["username"]), etag=False)
+        if p == "/api/v1/pair":
+            b = self.body()
+            if not b.get("code"): return self.err(400, "invalid_body", "code is required")
+            return self.send_json(session(b.get("name", "mock")), 201, False)
+        if p == "/api/v1/pair/request": sys.stderr.write("PAIRING CODE (mock) 0000-0000\n"); return self.send_json({"expires_at": "2026-10-22T12:00:00Z"}, 202, False)
+        if p == "/api/v1/auth/refresh":
+            if not self.body().get("refresh_token"): return self.err(400, "invalid_body", "refresh_token is required")
+            return self.send_json(session("mock"), etag=False)
+        if p == "/api/v1/auth/logout": self.send_response(204); self.send_header("Content-Length", "0"); self.end_headers(); return
         if p.startswith("/api/covers/"):
             cid = urllib.parse.unquote(p.split("/")[-1]); n = sum(map(ord, cid)) % 8
             img = COVER_CACHE.get(n) or png(PALETTE[n], 240); COVER_CACHE[n] = img
             self.send_response(200); self.send_header("Content-Type", "image/png"); self.send_header("Content-Length", str(len(img))); self.end_headers(); self.wfile.write(img); return
         if p.startswith("/api/stream/"):
-            if not self.authed(): return self.send_json({"message": "unauthorized"}, 401, False)
+            if not self.authed(): return self.err(401, "unauthorized", "unauthorized")
             tid = urllib.parse.unquote(p.split("/")[-1]); t = track_by(tid)
-            if t and t.get("playable") is False: return self.send_json({"message": t.get("unplayable_reason")}, 403, False)
+            if t and t.get("playable") is False: return self.err(403, "forbidden", t.get("unplayable_reason"))
             data = open(WAV, "rb").read(); total = len(data); rng = self.headers.get("Range")
             start, end = 0, total - 1
             if rng and rng.startswith("bytes="):
@@ -165,7 +179,7 @@ class H(BaseHTTPRequestHandler):
             if rng: self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
             self.send_header("X-Yimeng-Codec", "pcm_s16le"); self.send_header("X-Yimeng-SampleRate", "22050"); self.send_header("X-Yimeng-BitDepth", "16"); self.send_header("X-Yimeng-Channels", "1")
             self.send_header("Content-Length", str(len(chunk))); self.end_headers(); self.wfile.write(chunk); return
-        if not self.authed(): return self.send_json({"message": "unauthorized"}, 401, False)
+        if not self.authed(): return self.err(401, "unauthorized", "unauthorized")
         if p == "/api/v1/home":
             return self.send_json({"banner": ALBUMS[:5], "recently_added": ALBUMS[::-1], "recently_played": ALBUMS[2:7], "frequent": ALBUMS[1:6],
                                    "random": random.Random(time.strftime("%Y%m%d")).sample(ALBUMS, 6), "top_artists": [{"id": a, "name": n, "sort_letter": l, "cover": cover(a, i)} for i, (a, n, l) in enumerate(ARTISTS)],
@@ -173,7 +187,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/v1/albums": return self.send_json(page(ALBUMS, q, "albums"))
         if p.startswith("/api/v1/albums/"):
             aid = p.split("/")[-1]; a = next((x for x in ALBUMS if x["id"] == aid), None)
-            return self.send_json(dict(a, tracks=[t for t in TRACKS if t["album_id"] == aid])) if a else self.send_json({"message": "not found"}, 404, False)
+            return self.send_json(dict(a, tracks=[t for t in TRACKS if t["album_id"] == aid])) if a else self.err(404, "not_found", "not found")
         if p == "/api/v1/artists": return self.send_json(page([{"id": a, "name": n, "sort_letter": l, "album_count": 1, "cover": cover(a, i)} for i, (a, n, l) in enumerate(ARTISTS)], q, "ar"))
         if p.startswith("/api/v1/artists/"):
             aid = p.split("/")[4]
@@ -192,7 +206,12 @@ class H(BaseHTTPRequestHandler):
             if m == "POST":
                 b = self.body(); pl = {"id": f"pl{len(PLAYLISTS)+1}", "name": b.get("name", "新歌单"), "track_ids": b.get("track_ids", []), "origin": "local"}
                 pl["track_count"] = len(pl["track_ids"]); PLAYLISTS.append(pl); return self.send_json({k: v for k, v in pl.items() if k != "track_ids"}, etag=False)
-            return self.send_json(page([{k: v for k, v in pl.items() if k != "track_ids"} for pl in PLAYLISTS], q, "pl"))
+            sc = q.get("scope", ["local"])[0]
+            if sc not in ("local", "mine", "recommend", "discover", "charts", "all", "online"): return self.err(400, "invalid_query", "invalid scope")
+            loc = [{k: v for k, v in pl.items() if k != "track_ids"} for pl in PLAYLISTS]
+            onl = [dict(c, kind="chart") for o in CHARTS for c in CHARTS[o]]
+            items = loc if sc in ("local", "mine") else onl if sc in ("online", "charts", "recommend", "discover") else loc + onl
+            return self.send_json(page(items, {k: v for k, v in q.items() if k != "origin"}, "pl"))
         if p.startswith("/api/v1/playlists/"):
             parts = p.split("/"); pid = parts[4]
             if pid.startswith("chart_"):
@@ -200,7 +219,7 @@ class H(BaseHTTPRequestHandler):
             if pid.startswith("rec_") or pid.startswith("u_"):
                 return self.send_json(page(TRACKS[5:17], q, "c"))
             pl = next((x for x in PLAYLISTS if x["id"] == pid), None)
-            if not pl: return self.send_json({"message": "not found"}, 404, False)
+            if not pl: return self.err(404, "not_found", "not found")
             if len(parts) > 5:
                 if m == "GET": return self.send_json(page([track_by(i) for i in pl["track_ids"] if track_by(i)], q, "pt"), etag=False)
                 b = self.body() if m != "DELETE" else {}
@@ -221,21 +240,33 @@ class H(BaseHTTPRequestHandler):
             if tid == "netease:186001": d["bpm"] = 120
             return self.send_json(d)
         if p.startswith("/api/v1/progress"):
-            if m == "PUT": PROGRESS[urllib.parse.unquote(p.split("/")[-1])] = self.body().get("position_ms", 0); return self.send_json({}, etag=False)
-            ids = q.get("ids", [""])[0].split(","); return self.send_json({"items": [{"track_id": i, "position_ms": PROGRESS[i]} for i in ids if i in PROGRESS]}, etag=False)
+            if m == "PUT":
+                tid = urllib.parse.unquote(p.split("/")[-1]); b = self.body()
+                PROGRESS[tid] = {"track_id": tid, "position_ms": b.get("position_ms", 0), "duration_ms": b.get("duration_ms"), "finished": bool(b.get("finished")),
+                                 "device_id": "dev_mock", "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+                return self.send_json(PROGRESS[tid], etag=False)
+            ids = q.get("ids", [""])[0].split(",")
+            return self.send_json({"items": [PROGRESS[i] if isinstance(PROGRESS[i], dict) else {"track_id": i, "position_ms": PROGRESS[i]} for i in ids if i in PROGRESS]}, etag=False)
         if p == "/api/v1/charts":
             o = q.get("origin", ["netease"])[0]; return self.send_json({"origins": ["netease", "qq", "kugou"], "charts": CHARTS.get(o, [])})
-        if p == "/api/v1/search/suggest": return self.send_json({"items": [t["title"] for t in ALL_TRACKS if q.get("q", [""])[0] in t["title"]][:8]})
+        if p == "/api/v1/search/suggest": return self.send_json({"q": q.get("q", [""])[0], "items": [t["title"] for t in ALL_TRACKS if q.get("q", [""])[0] in t["title"]][:8]})
+        if p == "/api/v1/scrobble" and m == "POST":
+            b = self.body()
+            if not b.get("track_id"): return self.err(400, "invalid_body", "track_id is required")
+            HISTORY.insert(0, {"track_id": b["track_id"], "played_at": b.get("played_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "duration_ms": b.get("duration_ms", 0), "completed": bool(b.get("completed"))})
+            self.send_response(204); self.send_header("Content-Length", "0"); self.end_headers(); return
+        if p == "/api/v1/history": return self.send_json({"items": HISTORY[:int(q.get("limit", ["50"])[0])], "total": len(HISTORY)}, etag=False)
         if p == "/api/v1/search":
             s = q.get("q", [""])[0]
             return self.send_json({"tracks": [t for t in TRACKS if s in t["title"]], "albums": [a for a in ALBUMS if s in a["name"]], "artists": [],
-                                   "playlists": [], "online": {"netease": [ONLINE[0]], "qq": [ONLINE[1]]} if q.get("online", ["0"])[0] == "1" else {}})
+                                   "playlists": [], "online": [{"origin": "netease", "name": "网易云", "result": {"tracks": [ONLINE[0]]}},
+                                              {"origin": "qq", "name": "QQ 音乐", "result": {"tracks": [ONLINE[1]]}}] if q.get("online", ["0"])[0] == "1" else []})
         if p.startswith("/api/v1/online/"):
             parts = p.split("/"); o = parts[4]; rest = "/".join(parts[5:])
             plat = next((x for x in PLATFORMS if x["origin"] == o), None)
-            if not plat or not plat["logged_in"]: return self.send_json({"code": "not_logged_in"}, 404, False)
+            if not plat or not plat["logged_in"]: return self.err(404, "not_logged_in", "未登录该平台")
             def mk(t): return dict(t, origin=o)
-            if rest == "daily" and "daily" in plat["capabilities"]: return self.send_json({"date": time.strftime("%Y-%m-%d"), "items": [mk(t) for t in TRACKS[10:22]]}, etag=False)
+            if rest == "daily" and "daily" in plat["capabilities"]: return self.send_json({"origin": o, "date": time.strftime("%Y-%m-%d"), "items": [mk(t) for t in TRACKS[10:22]]}, etag=False)
             if rest == "fm" and "fm" in plat["capabilities"]: return self.send_json({"items": [mk(t) for t in random.sample(TRACKS, 3)]}, etag=False)
             if rest == "fm/feedback": return self.send_json({}, etag=False)
             if rest == "recommend/playlists" and "recommend_playlists" in plat["capabilities"]:
@@ -244,13 +275,13 @@ class H(BaseHTTPRequestHandler):
                 typ = q.get("type", ["created"])[0]
                 names = ["我喜欢的音乐", "跑步"] if typ == "created" else ["收藏的老歌"]
                 return self.send_json({"items": [{"id": f"u_{o}_{typ}_{k}", "name": n, "origin": o, "track_count": 12, "cover": cover(f"u{o}{typ}{k}", k)} for k, n in enumerate(names)]})
-            return self.send_json({"code": "not_supported", "message": "not_supported"}, 404, False)
+            return self.err(404, "not_supported", "该平台不支持")
         if p == "/api/v1/events":
             self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.send_header("Cache-Control", "no-cache"); self.end_headers()
             try:
                 while True: self.wfile.write(b": keepalive\n\n"); self.wfile.flush(); time.sleep(15)
             except Exception: return
-        return self.send_json({"message": "not found"}, 404, False)
+        return self.err(404, "not_found", "not found")
 
 if __name__ == "__main__":
     print(f"译梦 Core mock on {BASE}", flush=True)

@@ -32,7 +32,10 @@ struct SettingsView: View {
                             sources.active.title, chevron: true)
                     }.buttonStyle(.plain)
                     divider
-                    row("server.rack", NavidromeClient.emby ? library.embyProduct : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : "未连接")
+                    row("server.rack", NavidromeClient.emby ? library.embyProduct : NavidromeClient.core ? (library.coreServerName.isEmpty ? "译梦服务端" : library.coreServerName) : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : (library.status.isEmpty || library.status == "待连接译梦服务端" ? "未连接" : library.status))
+                    if NavidromeClient.core && library.connected {
+                        row("person.badge.key", "账号", library.user.isEmpty ? "设备配对" : library.user)
+                    }
                     divider
                     row("square.stack", "曲库", [library.albumTotal.map { "\($0) 张专辑" }, library.songTotal.map { "\($0) 首" }].compactMap { $0 }.joined(separator: " · "))
                 }

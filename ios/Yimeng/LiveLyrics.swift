@@ -58,16 +58,25 @@ struct LiveLyricsView: View {
             switch store.phase {
             case .ready:
                 GeometryReader { g in
-                    VStack(alignment: .leading, spacing: 22) {
-                        ForEach(Array(store.lines.enumerated()), id: \.offset) { i, l in
-                            line(l, ms: ms, d: abs(i - idx), active: i == idx)
+                    // Scroll by anchor, not by a fixed per-line height: wrapped or short lines made the
+                    // fixed-step offset drift past the content (blank view after resuming mid-song).
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: 22) {
+                                ForEach(Array(store.lines.enumerated()), id: \.offset) { i, l in
+                                    line(l, ms: ms, d: abs(i - idx), active: i == idx)
+                                        .frame(maxWidth: .infinity, alignment: .leading).id(i)
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, g.size.height * 0.5)
                         }
+                        .scrollDisabled(true)
+                        .onAppear { proxy.scrollTo(idx, anchor: UnitPoint(x: 0, y: 0.36)) }
+                        .onChange(of: store.lines.count) { proxy.scrollTo(idx, anchor: UnitPoint(x: 0, y: 0.36)) }
+                        .onChange(of: idx) { _, n in withAnimation(.smooth(duration: 0.6)) { proxy.scrollTo(n, anchor: UnitPoint(x: 0, y: 0.36)) } }
                     }
-                    .padding(.horizontal, 28)
-                    .offset(y: g.size.height * 0.36 - CGFloat(idx) * lineStep)
-                    .animation(.smooth(duration: 0.6), value: idx)
-                    .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
-                    .clipped()
+                    .frame(width: g.size.width, height: g.size.height)
                     .mask(LinearGradient(stops: [.init(color: .clear, location: 0.08), .init(color: .black, location: 0.2),
                                                  .init(color: .black, location: 0.8), .init(color: .clear, location: 0.9)], startPoint: .top, endPoint: .bottom))
                 }
