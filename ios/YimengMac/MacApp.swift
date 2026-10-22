@@ -360,6 +360,7 @@ struct MacNowPlaying: View {
     @ObservedObject var state: AppState
     @Environment(\.colorScheme) private var scheme
     @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var lyrics = LyricsStore.shared
     private let coverSide: CGFloat = 320
 
     var body: some View {
@@ -367,7 +368,7 @@ struct MacNowPlaying: View {
             YMBackdrop().ignoresSafeArea()
             DreamField(track: state.track, animated: true).opacity(0.55).ignoresSafeArea()
 
-            VStack(spacing: 22) {
+            VStack(spacing: 0) {
                 HStack {
                     Button {
                         withAnimation(.ui) { state.nowPlaying = false }
@@ -377,76 +378,107 @@ struct MacNowPlaying: View {
                             .background(Circle().fill(Theme.fill(scheme)))
                     }.buttonStyle(.plain)
                     Spacer()
-                    Text("正在播放").font(.system(size: 13, weight: .semibold)).opacity(0.6)
+                    Text(state.lyricsMode ? "歌词" : "正在播放").font(.system(size: 13, weight: .semibold)).opacity(0.6)
                     Spacer()
-                    Color.clear.frame(width: 36, height: 36)
+                    Button {
+                        withAnimation(.ui) { state.lyricsMode.toggle() }
+                        if state.lyricsMode, let s = player.song { LyricsStore.shared.load(s) }
+                    } label: {
+                        Text("词").font(.system(size: 13, weight: .bold))
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(state.lyricsMode ? Color(white: 0.07) : Theme.fg(scheme))
+                            .background(Circle().fill(state.lyricsMode ? Color.white : Theme.fill(scheme)))
+                    }.buttonStyle(.plain)
                 }
                 .padding(.horizontal, 28).padding(.top, 18)
 
-                Spacer(minLength: 12)
-
-                ZStack {
-                    GeometryReader { g in
-                        let rect = CGRect(
-                            x: (g.size.width - coverSide) / 2,
-                            y: (g.size.height - coverSide) / 2,
-                            width: coverSide, height: coverSide
-                        )
-                        DoodleLayer(
-                            track: state.track,
-                            slot: CoverSlot(rect: rect, radius: 14),
-                            ambience: state.ambience == .aurora ? .pure : state.ambience,
-                            intensity: state.intensity * 0.75,
-                            beat: state.beatSync
-                        )
+                if state.lyricsMode {
+                    HStack(alignment: .center, spacing: 36) {
+                        coverBlock(side: 240)
+                            .frame(width: 280)
+                        LiveLyricsView(time: player.elapsed, accent: Theme.accent(scheme))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
-                    .frame(width: coverSide + 120, height: coverSide + 120)
-                    .allowsHitTesting(false)
+                    .padding(.horizontal, 36)
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    Group {
-                        if let u = state.remoteCoverURL ?? player.coverURL {
-                            let sized = CoverCache.sized(u, points: coverSide)
-                            if let img = CoverCache.shared.memory(sized) ?? CoverCache.shared.cached(sized) {
-                                Image(platformImage: img).resizable().scaledToFill()
-                            } else {
-                                CoverImage(url: u, points: coverSide)
-                            }
-                        } else if !state.track.cover.isEmpty {
-                            Image(state.track.cover).resizable().scaledToFill()
-                        } else {
-                            Theme.fill(scheme).overlay(YMBrandMark(size: 96).opacity(0.5))
-                        }
+                    PlayerTransport(big: true).environmentObject(state)
+                        .frame(maxWidth: 520)
+                        .padding(.vertical, 18)
+                } else {
+                    Spacer(minLength: 12)
+                    coverBlock(side: coverSide)
+                    VStack(spacing: 6) {
+                        Text(player.song?.title ?? state.track.title)
+                            .font(.system(size: 26, weight: .bold))
+                            .lineLimit(2).multilineTextAlignment(.center)
+                        Text(player.song?.artist ?? state.track.artist)
+                            .font(.system(size: 16))
+                            .foregroundStyle(Theme.secondary(scheme))
                     }
-                    .frame(width: coverSide, height: coverSide)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: .black.opacity(0.35), radius: 28, y: 14)
-
-                    Crayon(shape: WobblyFrame(), color: Theme.fg(scheme), width: 2.2)
-                        .frame(width: coverSide + 24, height: coverSide + 24)
-                        .allowsHitTesting(false)
-                }
-                .frame(width: coverSide + 120, height: coverSide + 120)
-
-                VStack(spacing: 6) {
-                    Text(player.song?.title ?? state.track.title)
-                        .font(.system(size: 26, weight: .bold))
-                        .lineLimit(2).multilineTextAlignment(.center)
-                    Text(player.song?.artist ?? state.track.artist)
-                        .font(.system(size: 16))
-                        .foregroundStyle(Theme.secondary(scheme))
-                }
-                .padding(.horizontal, 40)
-
-                PlayerTransport(big: true).environmentObject(state)
-                    .frame(maxWidth: 520)
+                    .padding(.horizontal, 40)
                     .padding(.top, 8)
 
-                Spacer(minLength: 40)
+                    PlayerTransport(big: true).environmentObject(state)
+                        .frame(maxWidth: 520)
+                        .padding(.top, 8)
+
+                    Spacer(minLength: 40)
+                }
             }
             .foregroundStyle(Theme.fg(scheme))
         }
     }
+
+    @ViewBuilder private func coverBlock(side: CGFloat) -> some View {
+        ZStack {
+            GeometryReader { g in
+                let rect = CGRect(
+                    x: (g.size.width - side) / 2,
+                    y: (g.size.height - side) / 2,
+                    width: side, height: side
+                )
+                DoodleLayer(
+                    track: state.track,
+                    slot: CoverSlot(rect: rect, radius: 14),
+                    ambience: state.ambience == .aurora ? .pure : state.ambience,
+                    intensity: state.intensity * 0.75,
+                    beat: state.beatSync
+                )
+            }
+            .frame(width: side + 100, height: side + 100)
+            .allowsHitTesting(false)
+
+            Group {
+                if let u = state.remoteCoverURL ?? player.coverURL {
+                    let sized = CoverCache.sized(u, points: side)
+                    if let img = CoverCache.shared.memory(sized)
+                        ?? CoverCache.shared.cached(sized)
+                        ?? CoverCache.shared.memoryAnySize(sized) {
+                        Image(platformImage: img).resizable().scaledToFill()
+                    } else {
+                        CoverImage(url: u, points: side)
+                    }
+                } else if !state.track.cover.isEmpty {
+                    Image(state.track.cover).resizable().scaledToFill()
+                } else {
+                    Theme.fill(scheme).overlay(YMBrandMark(size: 96).opacity(0.5))
+                }
+            }
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 28, y: 14)
+
+            Crayon(shape: WobblyFrame(), color: Theme.fg(scheme), width: 2.2)
+                .frame(width: side + 24, height: side + 24)
+                .allowsHitTesting(false)
+        }
+        .frame(width: side + 100, height: side + 100)
+    }
 }
+
 
 enum MacShot {
     @MainActor static func applyTab(_ state: AppState) {
@@ -457,6 +489,7 @@ enum MacShot {
         else if a.contains("-shotMacSearch") { state.tab = .search }
         else if a.contains("-shotMacColl") { state.tab = .collection }
         else if a.contains("-shotMacSound") { state.tab = .me }
+        else if a.contains("-shotMacAlbums") { state.tab = .library }
         else { state.tab = .home }
         state.path = []
     }
@@ -491,9 +524,11 @@ enum MacShot {
                 }
                 if let u = PlayerStore.shared.coverURL ?? state.remoteCoverURL {
                     let big = CoverCache.sized(u, points: 320)
+                    let mid = CoverCache.sized(u, points: 240)
                     let mini = CoverCache.sized(u, points: 44)
                     do {
                         _ = try await CoverCache.shared.fetch(big)
+                        _ = try await CoverCache.shared.fetch(mid)
                         _ = try await CoverCache.shared.fetch(mini)
                         let hit = CoverCache.shared.memory(big) != nil
                         fputs("[ym] cover ok mem=\(hit) \(big.path)\n", stderr)
@@ -577,7 +612,34 @@ enum MacShot {
         } else {
             state.macSoundStage = false
         }
-        if !a.contains("-shotMacPlaying") && !a.contains("-shotMacSound") {
+        if a.contains("-shotMacLyrics") {
+            state.tab = .home
+            await preparePlaying(state)
+            if let s = PlayerStore.shared.song {
+                LyricsStore.shared.load(s)
+                // Wait for lyrics lines.
+                for _ in 0..<40 {
+                    if case .ready = LyricsStore.shared.phase { break }
+                    if case .empty = LyricsStore.shared.phase { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            withAnimation(.ui) { state.lyricsMode = true; state.nowPlaying = true }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if a.contains("-shotMacAlbums") {
+            state.tab = .library
+            state.librarySeg = .albums
+            await LibraryCache.shared.open(LibraryView.key(.albums, sort: state.albumSort), albumSort: state.albumSort)
+            // Prefetch album grid covers.
+            for alb in LibraryCache.shared.albumList(state.albumSort).prefix(18) {
+                if let u = LibraryStore.shared.coverURL(alb, size: 300) {
+                    _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: YMLayout.tile()))
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if !a.contains("-shotMacPlaying") && !a.contains("-shotMacSound") && !a.contains("-shotMacLyrics") {
             await PlatformStore.shared.refresh()
             await warmCovers()
         }
@@ -612,8 +674,14 @@ enum MacShot {
     @MainActor static func capture(state: AppState?) {
         let s = state ?? AppState()
         let a = ProcessInfo.processInfo.arguments
-        if !a.contains("-shotMacPlaying") { applyTab(s) }
-        else { s.tab = .home; s.nowPlaying = true }
+        if a.contains("-shotMacPlaying") || a.contains("-shotMacLyrics") {
+            s.tab = .home; s.nowPlaying = true
+            if a.contains("-shotMacLyrics") { s.lyricsMode = true }
+        } else if a.contains("-shotMacAlbums") {
+            s.tab = .library; s.librarySeg = .albums; s.nowPlaying = false
+        } else if !a.contains("-shotMacSound") {
+            applyTab(s)
+        }
 
         YMLayout.pad = true
         YMLayout.width = 1140
@@ -640,6 +708,8 @@ enum MacShot {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let name: String
         if a.contains("-shotMacPlaying") { name = "v44-mac-playing.png" }
+        else if a.contains("-shotMacLyrics") { name = "v45-mac-lyrics.png" }
+        else if a.contains("-shotMacAlbums") { name = "v45-mac-albums.png" }
         else if a.contains("-shotMacSound") { name = "v44-mac-sound.png" }
         else if a.contains("-shotMacLib") { name = "v44-mac-library.png" }
         else if a.contains("-shotMacMe") { name = "v44-mac-me.png" }
