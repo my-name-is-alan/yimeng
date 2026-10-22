@@ -191,6 +191,7 @@ final class FMStore: ObservableObject {
         PlayerStore.shared.play(songs: songs, startAt: 0)
     }
     func stop() { origin = nil; ids = [] }
+    func owns(_ s: [NDSong]) -> Bool { origin != nil && s.allSatisfy { ids.contains($0.id) } }
     /// Called by PlayerStore when a track starts; tops the queue up near the end.
     func trackStarted() {
         guard let o = origin, active else { return }
@@ -335,5 +336,31 @@ struct PlatformPlaylistGroups: View {
             }.padding(.horizontal, Theme.margin)
         }
         .task { await store.loadUserPlaylists() }
+    }
+}
+
+/// Dream data on now playing: tags + tempo, each shown only if present (server bpm, else on-device estimate once stable).
+@MainActor
+final class DreamStore {
+    static let shared = DreamStore()
+    func load(_ s: NDSong) {
+        guard NavidromeClient.core else { return }
+        let id = s.id
+        Task {
+            guard let d = await CoreClient.shared.dream(CoreClient.path(id)) else { return }
+            AppStateBridge.current?.applyDream(id, d)
+        }
+    }
+}
+
+struct BeatTagLine: View {
+    let track: DreamTrack
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            let r = BeatStore.read()
+            let bpm = track.serverBPM ?? (r.live && r.bpm > 0 ? r.bpm : nil)
+            let parts = track.tags.prefix(3).map { $0 } + (bpm.map { ["\(Int($0.rounded())) BPM"] } ?? [])
+            if !parts.isEmpty { Text(parts.joined(separator: " · ")).font(.system(size: 11)).opacity(0.5) }
+        }
     }
 }

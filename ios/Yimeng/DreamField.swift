@@ -23,6 +23,14 @@ struct DreamField: View {
                     }.blur(radius: 70)
                 }
             }
+            if animated && PlayerStore.shared.hasRealPlayback {
+                // Background breathing on the beat (doodles + field only; controls/text never move).
+                TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
+                    let p = BeatStore.pulse(serverBPM: track.serverBPM)
+                    RadialGradient(colors: [track.blobs[0].opacity(0.22 * p), .clear], center: .center, startRadius: 20, endRadius: 420)
+                        .blendMode(.screen)
+                }.allowsHitTesting(false)
+            }
             // soft haze so text stays legible
             LinearGradient(colors: [.black.opacity(0.10), .clear, .black.opacity(0.28)], startPoint: .top, endPoint: .bottom)
         }

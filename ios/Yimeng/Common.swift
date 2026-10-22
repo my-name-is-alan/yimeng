@@ -37,6 +37,8 @@ struct AlbumRow: View {
 }
 
 struct TrackRow: View {
+    /// 译梦 Core: source badge, 试听 capsule, 40% + toast when unplayable.
+    var song: NDSong? = nil
     let index: Int; let title: String; var subtitle: String? = nil; var trailing = ""; var art: String? = nil; var playing = false
     var accessory: AnyView? = nil
     /// Flat song lists (曲库 / 收藏 / 搜索): small cover instead of the index. Album tracklists keep track numbers.
@@ -62,7 +64,13 @@ struct TrackRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 16)).foregroundStyle(playing ? Theme.accent(scheme) : Theme.fg(scheme)).lineLimit(1).truncationMode(.middle)
-                    if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1) }
+                    if subtitle != nil || song?.origin != nil {
+                        HStack(spacing: 6) {
+                            if let subtitle { Text(subtitle).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1) }
+                            SourceBadge(origin: song?.origin)
+                            if song?.preview == true { PreviewCapsule() }
+                        }
+                    }
                 }
                 Spacer()
                 Text(trailing).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
@@ -72,8 +80,9 @@ struct TrackRow: View {
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
         }
         .frame(height: art == nil && !showCover ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
+        .opacity(song?.isUnplayable == true ? 0.4 : 1)
         .contentShape(Rectangle())
-        .onTapGesture { onTap?() }
+        .onTapGesture { if let s = song, s.isUnplayable { SheetCenter.shared.say(s.unplayableToast) } else { onTap?() } }
     }
 }
 

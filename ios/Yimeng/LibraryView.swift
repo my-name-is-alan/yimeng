@@ -9,6 +9,7 @@ struct LibraryView: View {
 
     @ObservedObject private var cache = LibraryCache.shared
     @State private var visited: Set<Seg> = []
+    @State private var origin: String? = CoreState.originFilter
     nonisolated(unsafe) static var cycled = false
 
     var body: some View {
@@ -32,7 +33,14 @@ struct LibraryView: View {
                         }.buttonStyle(.plain)
                     }
                 }.padding(.horizontal, Theme.margin)
-            }.padding(.top, 16).padding(.bottom, 12)
+            }.padding(.top, 16).padding(.bottom, NavidromeClient.core ? 4 : 12)
+            if NavidromeClient.core && [.songs, .albums].contains(state.librarySeg) {
+                SourceFilterChips(origin: $origin).padding(.bottom, 10)
+                    .onChange(of: origin) { _, o in
+                        CoreState.originFilter = o
+                        Task { await cache.ensure(LibraryView.key(state.librarySeg, sort: state.albumSort), force: true) }
+                    }
+            }
 
             // Each visited segment stays mounted (own scroll position, no refetch on switch).
             ZStack {
@@ -131,7 +139,7 @@ private struct SegmentScroll: View {
                 case .songs: SongsList()
                 case .albums: AlbumsGrid()
                 case .artists: ArtistsList()
-                case .playlists: PlaylistsList()
+                case .playlists: VStack(spacing: 0) { PlaylistsList(); if NavidromeClient.core { PlatformPlaylistGroups() } }
                 case .starred: StarredList()
                 }
             }
@@ -176,7 +184,7 @@ struct SongRowPlay: View {
     @ObservedObject private var stars = StarStore.shared
     var body: some View {
         let s = songs[i]
-        TrackRow(index: i + 1, title: s.title, subtitle: [s.artist, s.album ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
+        TrackRow(song: s, index: i + 1, title: s.title, subtitle: [s.artist, s.album ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
                  trailing: s.durationLabel, playing: player.song?.id == s.id,
                  accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) }),
                  showCover: showCover, coverURL: showCover ? LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) : nil) {

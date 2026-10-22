@@ -51,6 +51,8 @@ struct ArtistIndex: Sendable {
     static func build(_ src: [NDArtist]) -> ArtistIndex {
         let keyed: [(NDArtist, String, String)] = src.map { a in
             let l = Initials.latin(a.name)
+            // 译梦 Core sends sort_letter — trust it over our own pinyin guess.
+            if let s = a.sortLetter?.uppercased(), Initials.letters.contains(s) { return (a, s, l) }
             return (a, Initials.letter(ofLatin: l), l)
         }
         let order = Dictionary(uniqueKeysWithValues: Initials.letters.enumerated().map { ($1, $0) })

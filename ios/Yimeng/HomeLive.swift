@@ -46,10 +46,26 @@ struct HomeLive: View {
                         FirstRunDoodle().padding(.top, 40)
                     }
 
+                    YueqianHomeCard().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
+                    if NavidromeClient.core {
+                        PlatformHomeSections()
+                        if !CoreState.platforms(can: "charts").isEmpty {
+                            Button { state.path.append(.charts) } label: {
+                                HStack(spacing: 12) {
+                                    Crayon(shape: WaveShape(), color: Theme.lime).frame(width: 34, height: 14)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("排行").font(.system(size: 17, weight: .bold))
+                                        Text(CoreState.platforms(can: "charts").map { CoreOrigin.label($0.origin) }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
+                                    }
+                                    Spacer(); Image(systemName: "chevron.right").opacity(0.5)
+                                }.padding(14).background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.fill(scheme)))
+                            }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 22)
+                        }
+                    }
                     albumSection("最近添加", newest, sort: "newest", i: 2)
                     albumSection("最近播放", recent, sort: "recent", i: 3)
                     albumSection("常听", frequent, sort: "frequent", i: 4)
-                    albumSection("随机推荐", random, sort: "random", i: 5)
+                    albumSection("随机专辑", random, sort: "random", i: 5)
                     if !artists.isEmpty {
                         header("热门歌手") { state.librarySeg = .artists; state.tab = .library }.motionIn(stagger(6))
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -113,6 +129,7 @@ struct HomeLive: View {
         .refreshable { await home.refresh(force: true) }
         .task {
             await home.refresh()
+            if YueqianStore.shared.card == nil { await YueqianStore.shared.load() }
             #if DEBUG
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, args[i + 1].hasPrefix("playlist:") {

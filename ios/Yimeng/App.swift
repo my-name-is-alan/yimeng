@@ -3,7 +3,7 @@ import SwiftUI
 enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
-enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), ndPlaylist(NDPlaylist), artist, genre(NDGenre), genres }
+enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), ndArtist(NDArtist), ndPlaylist(NDPlaylist), artist, genre(NDGenre), genres, charts }
 
 @MainActor
 final class AppState: ObservableObject {
@@ -58,6 +58,23 @@ final class AppState: ObservableObject {
     }
 
     /// Called by PlayerStore when an ND stream starts / advances.
+    /// Server cover colors (3) → 4 blobs; else the house palette.
+    static func blobs(_ hex: [String]?) -> [Color] {
+        let def = [Color(hex: 0x7a1cff), Color(hex: 0xff5fa8), Color(hex: 0x33d17a), Color(hex: 0xffd36b)]
+        let c = (hex ?? []).compactMap { h -> Color? in
+            UInt32(h.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16).map { Color(hex: $0) }
+        }
+        guard c.count >= 2 else { return def }
+        return [c[0], c[1], c.count > 2 ? c[2] : def[2], def[3]]
+    }
+    /// /tracks/{id}/dream: colors, tags, bpm — each applied only if present.
+    func applyDream(_ id: String, _ d: CoreDream) {
+        guard track.id == id else { return }
+        var t = track
+        if let c = d.colors, c.count >= 2 { t = DreamTrack(id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: Self.blobs(c), bpm: d.bpm.map { Int($0) } ?? t.bpm, energy: t.energy, genre: t.genre, duration: t.duration, lyrics: t.lyrics) }
+        t.serverBPM = d.bpm; t.tags = d.tags ?? []
+        track = t
+    }
     func applyNDSong(_ s: NDSong, coverURL: URL?, playing: Bool) {
         syncingFromPlayer = true
         defer { syncingFromPlayer = false }
@@ -69,7 +86,7 @@ final class AppState: ObservableObject {
             artist: s.artist,
             cover: "cvA",
             base: Color(hex: 0x1a1028),
-            blobs: [Color(hex: 0x7a1cff), Color(hex: 0xff5fa8), Color(hex: 0x33d17a), Color(hex: 0xffd36b)],
+            blobs: Self.blobs(s.colors),
             bpm: 100,
             energy: 0.45,
             genre: "navidrome",
@@ -151,15 +168,18 @@ struct Shell: View {
             else if !library.hasSource && !library.loading { NoSourceView() }
             else { tabs }
         }
+        .sheet(isPresented: $yueqian.showSheet) { YueqianSheet().presentationCornerRadius(28) }
         .task {
             await SourceStore.shared.activeSource.activate()
             booted = true
+            Task { await YueqianStore.shared.maybeAutoShow() }
             async let h: Void = HomeStore.shared.refresh()
             async let s: Void = StarStore.shared.load()
             _ = await (h, s)
         }
     }
     @State private var booted = false
+    @ObservedObject private var yueqian = YueqianStore.shared
 
     @ObservedObject private var library = LibraryStore.shared
 
@@ -241,6 +261,7 @@ struct Shell: View {
             case .artist: ArtistView().zoomDestination("artist", ns)
             case .genre(let g): GenreView(genre: g)
             case .genres: GenreListView()
+            case .charts: ChartsView()
             }
         }.toolbar(.hidden, for: .navigationBar)
     }

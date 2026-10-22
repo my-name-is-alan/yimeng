@@ -131,7 +131,7 @@ struct DoodleLayer: View {
         GeometryReader { g in
             TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate
-                let pulse = beat ? 1 + 0.025 * intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi)) : 1
+                let pulse = beat ? 1 + (PlayerStore.shared.hasRealPlayback ? 0.04 * intensity * BeatStore.pulse(serverBPM: track.serverBPM) : 0.025 * intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))) : 1
                 ZStack {
                     switch ambience {
                     case .doodle:

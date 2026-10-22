@@ -123,7 +123,7 @@ struct NDAlbumView: View {
                         VStack(spacing: 0) {
                             ForEach(Array(songs.enumerated()), id: \.element.id) { i, t in
                                 let playing = player.song?.id == t.id
-                                TrackRow(index: i + 1, title: t.title, trailing: t.durationLabel, playing: playing,
+                                TrackRow(song: t, index: i + 1, title: t.title, trailing: t.durationLabel, playing: playing,
                                          accessory: AnyView(StarButton(on: stars.isStarred(song: t.id), size: 15) { stars.toggle(t) })) {
                                     PlayerStore.shared.playAlbum(shown, songs: songs, startAt: i)
                                     withAnimation(.ui) { state.nowPlaying = true }
@@ -254,7 +254,7 @@ struct LibrarySearchView: View {
                     if !songs.isEmpty {
                         SectionHeader(title: "歌曲", more: false)
                         ForEach(Array(songs.prefix(30).enumerated()), id: \.element.id) { i, s in
-                            TrackRow(index: i + 1, title: s.title, subtitle: s.artist, trailing: s.durationLabel,
+                            TrackRow(song: s, index: i + 1, title: s.title, subtitle: s.artist, trailing: s.durationLabel,
                                      showCover: true, coverURL: library.coverArtURL(id: s.coverId ?? s.albumId, size: 120)) {
                                 PlayerStore.shared.play(songs: songs, startAt: i,
                                                         coverURL: library.coverArtURL(id: s.coverId ?? s.albumId, size: 600))

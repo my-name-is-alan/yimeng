@@ -17,6 +17,9 @@ struct SettingsView: View {
     @State private var editingName = false
     @State private var cacheBytes: Int64 = 0
     @State private var showReplay = false
+    @State private var showFonts = false
+    @State private var showLicenses = false
+    @AppStorage(YueqianStore.autoKey) private var yueqianAuto = true
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -66,9 +69,15 @@ struct SettingsView: View {
                     divider
                     toggleRow("dot.radiowaves.left.and.right", "灵动岛 / 实时活动", $liveActivity)
                     divider
+                    toggleRow("ticket", "每天首次打开显示今日乐签", $yueqianAuto)
+                    divider
+                    Button { showFonts = true } label: { row("textformat", "歌词字体", LyricFontStore.options.first { $0.id == LyricFontStore.shared.selected }?.name ?? "系统字体", chevron: true) }.buttonStyle(.plain)
+                    divider
                     Button { FirstRun.reset(); showReplay = true } label: {
                         row("arrow.counterclockwise", "重看启动引导", "下次冷启动生效", chevron: true)
                     }.buttonStyle(.plain)
+                    divider
+                    Button { showLicenses = true } label: { row("doc.text", "开源许可", "字体 · SIL OFL 1.1", chevron: true) }.buttonStyle(.plain)
                     divider
                     row("info.circle", "关于译梦", "v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""))")
                 }
@@ -78,6 +87,8 @@ struct SettingsView: View {
         }
         .background(Theme.base(scheme))
         .sheet(isPresented: $showSources) { SourcesView(embedded: true) }
+        .sheet(isPresented: $showFonts) { LyricFontPicker().presentationDetents([.medium, .large]) }
+        .sheet(isPresented: $showLicenses) { NavigationStack { LicensesView() } }
         .alert("已重置", isPresented: $showReplay) { Button("好", role: .cancel) {} } message: { Text("下次冷启动会从启动动画开始。") }
         .alert("昵称", isPresented: $editingName) {
             TextField("昵称", text: $nickname)

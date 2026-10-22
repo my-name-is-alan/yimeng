@@ -118,6 +118,9 @@ final class FXTapState {
     var preamp: Float = 1
     var limiterOn = true
     var gain: Float = 1          // limiter gain, smoothed
+    /// false → analysis-only tap (FX off): beat/energy read, samples untouched.
+    var fxOn = true
+    let beat = BeatAnalyzer()
 
     func refresh() {
         let (s, v) = FXParams.shared.get()
@@ -134,6 +137,10 @@ final class FXTapState {
 
     func process(_ abl: UnsafeMutableAudioBufferListPointer, frames n: Int) {
         guard supported, n > 0 else { return }
+        if !fxOn {
+            if let b = abl.first, let d = b.mData?.assumingMemoryBound(to: Float.self) { beat.feed(d, stride: max(Int(b.mNumberChannels), 1), frames: n) }
+            return
+        }
         refresh()
         // Gather channel pointers + strides (non-interleaved: one buffer per channel; interleaved: stride = channels).
         var ch: [(UnsafeMutablePointer<Float>, Int)] = []
@@ -148,6 +155,7 @@ final class FXTapState {
             vDSP_vsmul(p, st, &pre, p, st, vDSP_Length(n))
             if let setup { delays[i].withUnsafeMutableBufferPointer { vDSP_biquad(setup, $0.baseAddress!, p, st, p, st, vDSP_Length(n)) } }
         }
+        if let (p0, st0) = ch.first { beat.feed(p0, stride: st0, frames: n) }
         guard limiterOn else { return }
         // Block peak limiter (64-frame blocks, instant attack, ~80 ms release), ceiling −0.3 dBFS, linked channels.
         let ceil: Float = 0.966, rel = Float(exp(-64.0 / (0.08 * sampleRate)))
@@ -178,12 +186,13 @@ enum FXTap {
     }
 
     /// Build an audioMix with our tap for the item's first audio track.
-    static func makeMix(for item: AVPlayerItem) async -> AVAudioMix? {
+    static func makeMix(for item: AVPlayerItem, fx: Bool = true) async -> AVAudioMix? {
         guard let track = try? await item.asset.loadTracks(withMediaType: .audio).first else { return nil }
         var cb = MTAudioProcessingTapCallbacks(
-            version: kMTAudioProcessingTapCallbacksVersion_0, clientInfo: nil,
-            init: { _, _, storageOut in
-                storageOut.pointee = Unmanaged.passRetained(FXTapState()).toOpaque()
+            version: kMTAudioProcessingTapCallbacksVersion_0, clientInfo: fx ? UnsafeMutableRawPointer(bitPattern: 1) : nil,
+            init: { _, info, storageOut in
+                let s = FXTapState(); s.fxOn = info != nil
+                storageOut.pointee = Unmanaged.passRetained(s).toOpaque()
             },
             finalize: { tap in
                 Unmanaged<FXTapState>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
@@ -196,6 +205,7 @@ enum FXTap {
                 st.interleaved = f.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
                 st.supported = f.mFormatID == kAudioFormatLinearPCM && f.mFormatFlags & kAudioFormatFlagIsFloat != 0 && f.mBitsPerChannel == 32
                 st.version = -1
+                st.beat.prepare(sampleRate: f.mSampleRate)
                 NetLog.logger.info("FX tap prepare ch=\(st.channels) sr=\(Int(st.sampleRate)) float=\(st.supported) interleaved=\(st.interleaved)")
             },
             unprepare: nil,
@@ -217,8 +227,9 @@ enum FXTap {
     /// Attach / detach on the live item — no rebuild, position untouched.
     @MainActor static func apply(on: Bool, item: AVPlayerItem?, song: NDSong?) async -> Bool {
         guard let item else { return false }
-        guard on else { item.audioMix = nil; return true }
-        if unsupported(song) { item.audioMix = nil; return false }
+        if unsupported(song) { item.audioMix = nil; BeatStore.reset(); return !on }   // bitstream: no PCM to analyze either
+        // FX off: a lightweight analysis-only tap (beat breathing for the doodles); samples pass through untouched.
+        guard on else { item.audioMix = await makeMix(for: item, fx: false); return true }
         guard let mix = await makeMix(for: item) else { item.audioMix = nil; return false }
         item.audioMix = mix
         return true

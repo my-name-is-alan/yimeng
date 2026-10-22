@@ -19,6 +19,9 @@ struct DreamTrack: Identifiable, Hashable {
     let genre: String
     let duration: TimeInterval
     var lyrics: [LyricLine] = DreamMock.lyrics
+    /// 译梦 Core: platform-provided tempo / tags (nil/empty → on-device estimate / nothing shown).
+    var serverBPM: Double? = nil
+    var tags: [String] = []
 
     // rules() from part2.py
     var motif: Motif { energy > 0.7 ? .zig : (["folk", "acoustic", "jazz"].contains(genre) ? .ink : .cloud) }

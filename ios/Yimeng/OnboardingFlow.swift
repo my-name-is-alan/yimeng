@@ -867,6 +867,7 @@ struct SourceConnectView: View {
     @State private var draft: SourceConfig
     @State private var showSecret = false
     @State private var busy = false
+    @State private var coreName = ""
     @State private var embyMode: LibraryStore.EmbyMode = LibraryStore.embyMode
     @State private var embyPick: String?
     @ObservedObject private var lib = LibraryStore.shared
@@ -904,6 +905,13 @@ struct SourceConnectView: View {
                 }
                 .padding(.horizontal, 20).padding(.top, 8)
 
+                if kind == .core {
+                    HStack(spacing: 6) {
+                        Text("推荐").font(.system(size: 11, weight: .bold)).foregroundStyle(.black)
+                            .padding(.horizontal, 8).frame(height: 20).background(Capsule().fill(Theme.lime))
+                        Text("歌词、排行、各平台每日推荐与私人 FM 都由服务端提供").font(.system(size: 12)).opacity(0.6)
+                    }.padding(.horizontal, 20).padding(.top, 10)
+                }
                 if kind.isLocal {
                     localBody
                 } else {
@@ -945,6 +953,17 @@ struct SourceConnectView: View {
                             draft.connected = LibraryStore.shared.connected
                             draft.statusNote = LibraryStore.shared.status
                             store.upsert(draft)
+                        } else if kind == .core {
+                            // 译梦服务端: username/password → rotating tokens in the Keychain; the password is never stored.
+                            let u = draft.username.trimmingCharacters(in: .whitespaces)
+                            let pw = draft.secret
+                            var c = draft; c.username = u; c.secret = ""; c.host = draft.host; store.upsert(c)
+                            if store.active != .core { await store.activate(.core) }
+                            await LibraryStore.shared.connectCore(host: draft.host, username: u, password: pw)
+                            draft = store.config(for: .core)
+                            draft.connected = LibraryStore.shared.connected
+                            draft.statusNote = LibraryStore.shared.status
+                            store.upsert(draft)
                         } else if kind == .fnos {
                             // 飞牛音乐: the separate 「音乐」 app account (not the fnOS system login).
                             let u = draft.username.trimmingCharacters(in: .whitespaces)
@@ -977,6 +996,12 @@ struct SourceConnectView: View {
             .foregroundStyle(.white)
         }
         .preferredColorScheme(.dark)
+        .task(id: draft.host) {
+            guard kind == .core, !draft.host.isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(500))
+            try? await CoreClient.shared.configure(host: draft.host)
+            coreName = (try? await CoreClient.shared.serverInfo())?.name ?? ""
+        }
         .onAppear {
             var c = store.config(for: kind)
             #if DEBUG
@@ -999,7 +1024,7 @@ struct SourceConnectView: View {
         case .navidrome: "通过 Subsonic API 连接"
         case .emby: "通过 Emby REST API 连接"
         case .fnos: "飞牛音乐 · 主机地址"
-        case .core: "译梦 Core · 主机 + Token"
+        case .core: coreName.isEmpty ? "译梦 Core · 主机 + 账号" : "已发现：\(coreName)"
         case .local: "从本机或文件 App 导入"
         }
     }

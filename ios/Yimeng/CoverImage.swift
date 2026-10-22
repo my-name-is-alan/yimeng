@@ -31,6 +31,7 @@ private struct CoverImageInner: View {
     var body: some View {
         ZStack {
             Color.gray.opacity(failed ? 0.25 : 0.12)
+            if image == nil, stand == nil, let h = CoreState.blurhash(for: url), let b = Blurhash.image(h) { Image(uiImage: b).resizable().scaledToFill() }
             if image == nil, let stand { Image(uiImage: stand).resizable().scaledToFill() }
             if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
         }
@@ -108,6 +109,7 @@ final class CoverCache: @unchecked Sendable {
     static func sized(_ url: URL, points: CGFloat) -> URL {
         let want = Int((points * min(3, UIScreen.main.scale)).rounded(.up))
         let px = buckets.first { $0 >= want } ?? buckets.last!
+        if url.query?.contains("sig=") == true { return url }   // 译梦 Core pre-signed: size may be part of the signature
         guard var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         var q = c.queryItems ?? []
         q.removeAll { $0.name == "size" }; q.append(URLQueryItem(name: "size", value: "\(px)"))
@@ -117,6 +119,9 @@ final class CoverCache: @unchecked Sendable {
 
     private static func parts(_ url: URL) -> (id: String, size: Int)? {
         let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        if url.path.contains("/api/covers/") {   // 译梦 Core: id is in the path; sig/exp must not split the cache
+            return (CoreState.coverKey(url.absoluteString), Int(q.first(where: { $0.name == "size" })?.value ?? "0") ?? 0)
+        }
         guard let id = q.first(where: { $0.name == "id" })?.value else { return nil }
         return (id, Int(q.first(where: { $0.name == "size" })?.value ?? "0") ?? 0)
     }
@@ -171,7 +176,9 @@ final class CoverCache: @unchecked Sendable {
         guard await limiter.acquire() else { throw CancellationError() }
         defer { limiter.release() }
         try Task.checkCancellation()
-        let (data, resp) = try await session.data(from: url)
+        var req = URLRequest(url: url)
+        for (k, v) in CoreState.mediaHeaders(for: url) { req.setValue(v, forHTTPHeaderField: k) }
+        let (data, resp) = try await session.data(for: req)
         let k = Self.key(url), px = Self.parts(url)?.size ?? 0
         guard (resp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         let img = await Task.detached(priority: .userInitiated) { Self.decode(data, maxPixel: px) }.value

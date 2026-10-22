@@ -9,6 +9,8 @@ struct NowPlayingView: View {
     @ObservedObject private var stars = StarStore.shared
     @State private var showAmbience = false
     @State private var showMore = false
+    @State private var showFonts = false
+    @State private var showSourcesFromLyrics = false
     @State private var start = Date().addingTimeInterval(-72)
     var track: DreamTrack { state.track }
 
@@ -27,7 +29,12 @@ struct NowPlayingView: View {
                 DreamField(track: track)
                 if state.lyricsMode {
                     TimelineView(.periodic(from: .now, by: 0.25)) { tl in
-                        LyricsView(track: track, time: times(tl.date).0.truncatingRemainder(dividingBy: 40))
+                        if player.song != nil {
+                            LiveLyricsView(time: times(tl.date).0, accent: Theme.lime,
+                                           onConfigureCore: { showSourcesFromLyrics = true }, onFonts: { showFonts = true })
+                        } else {
+                            LyricsView(track: track, time: times(tl.date).0.truncatingRemainder(dividingBy: 40))
+                        }
                     }.transition(.opacity)
                 } else {
                     // Background layers: the only things allowed to breathe with the beat.
@@ -52,6 +59,7 @@ struct NowPlayingView: View {
                 VStack(spacing: 0) {
                         topBar.motionIn(0.05, from: .top)
                         Spacer()
+                        FMControls().padding(.bottom, 10)
                         actionRow.padding(.horizontal, Theme.margin + 6).padding(.bottom, 14).motionIn(0.26)
                     controls.motionIn(0.3)
                 }
@@ -63,6 +71,8 @@ struct NowPlayingView: View {
         .task { if ProcessInfo.processInfo.arguments.contains("-np-sheet") { try? await Task.sleep(for: .seconds(4)); showAmbience = true } }
         .task { if ProcessInfo.processInfo.arguments.contains("-np-more") { try? await Task.sleep(for: .seconds(5)); showMore = true } }
         #endif
+        .sheet(isPresented: $showFonts) { LyricFontPicker().presentationDetents([.medium, .large]).presentationCornerRadius(28) }
+        .sheet(isPresented: $showSourcesFromLyrics) { SourcesView(embedded: true) }
         .sheet(isPresented: $showMore) {
             if let s = player.song {
                 NowPlayingMoreSheet(song: s) { showAmbience = true }.environmentObject(state)
@@ -106,6 +116,7 @@ struct NowPlayingView: View {
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
             if let s = player.song {
                 QualityBadge(song: s).padding(.top, 8)
+                BeatTagLine(track: track).padding(.top, 6)
             } else {
                 Text("\(track.genre) · \(track.bpm) BPM").font(.system(size: 12)).opacity(0.55).padding(.top, 4)
             }

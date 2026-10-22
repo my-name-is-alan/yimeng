@@ -70,6 +70,9 @@ final class PlayerStore: ObservableObject {
 
     func play(songs: [NDSong], startAt: Int = 0, coverURL: URL? = nil) {
         guard !songs.isEmpty else { return }
+        let start = max(0, min(startAt, songs.count - 1))
+        if songs[start].isUnplayable { SheetCenter.shared.say(songs[start].unplayableToast); return }
+        if !FMStore.shared.owns(songs) { FMStore.shared.stop() }
         queue = songs
         index = max(0, min(startAt, songs.count - 1))
         self.coverURL = coverURL
@@ -260,6 +263,7 @@ final class PlayerStore: ObservableObject {
         if NavidromeClient.fnos, !LibraryStore.shared.fnosToken.isEmpty {
             headers["Cookie"] = FnosClient.cookieHeader(root: LibraryStore.shared.fnosRoot, token: LibraryStore.shared.fnosToken); headers["X-Music-API"] = "v1"
         }
+        if NavidromeClient.core { headers.merge(CoreState.mediaHeaders(for: url)) { _, b in b } }
         return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
     }
 
@@ -365,7 +369,7 @@ final class PlayerStore: ObservableObject {
                 let now = Date().timeIntervalSinceReferenceDate
                 if let l = self.embyLive {
                     self.embyLive = (l.id, self.elapsed)
-                    if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false) }
+                    if now - self.embyLastProgress > 10 { self.embyLastProgress = now; self.embyReport(.progress, id: l.id, pos: self.elapsed, paused: false); if NavidromeClient.core { let e = self.elapsed; Task { await CoreClient.shared.putProgress(l.id, ms: Int(e * 1000)) } } }
                 }
                 if now - self.lastSave > 3 { self.lastSave = now; self.save(); self.pushNowPlaying() }
             }
@@ -378,6 +382,19 @@ final class PlayerStore: ObservableObject {
         }
         p.defaultRate = rate
         record(s)
+        LyricsStore.shared.load(s)
+        DreamStore.shared.load(s)
+        FMStore.shared.trackStarted()
+        if NavidromeClient.core, (seek ?? 0) < 1 {
+            let id = s.id
+            Task { [weak self] in
+                guard let ms = await CoreClient.shared.progress(ids: [id])[id] else { return }
+                let pos = Double(ms) / 1000; guard pos > 5 else { return }
+                guard let self, self.song?.id == id, self.elapsed < 3, self.duration <= 0 || pos < self.duration - 10 else { return }
+                self.player?.seek(to: CMTime(seconds: pos, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in }
+                self.elapsed = pos; self.pushNowPlaying()
+            }
+        }
         embyLive = (s.id, elapsed); embyLastProgress = Date().timeIntervalSinceReferenceDate
         embyReport(.start, id: s.id, pos: elapsed, paused: !autoplay)
         if NavidromeClient.emby, (seek ?? 0) < 1 {

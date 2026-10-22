@@ -81,7 +81,7 @@ struct PlaylistDetailView: View {
                 EmptyState(kind: .playlists).listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
             ForEach(Array(songs.enumerated()), id: \.offset) { i, s in
-                TrackRow(index: i + 1, title: s.title, subtitle: s.artist, trailing: s.durationLabel, playing: player.song?.id == s.id,
+                TrackRow(song: s, index: i + 1, title: s.title, subtitle: s.artist, trailing: s.durationLabel, playing: player.song?.id == s.id,
                          accessory: AnyView(StarButton(on: stars.isStarred(song: s.id), size: 15) { stars.toggle(s) })) {
                     PlayerStore.shared.play(songs: songs, startAt: i, coverURL: nil)
                     withAnimation(.ui) { state.nowPlaying = true }
