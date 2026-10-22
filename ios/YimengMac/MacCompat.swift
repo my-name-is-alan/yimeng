@@ -99,7 +99,20 @@ final class CoreProfileStore: ObservableObject {
 }
 
 struct ListeningReportView: View { var body: some View { EmptyView() } }
-struct LastfmView: View { var body: some View { EmptyView() } }
+struct LastfmView: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        YMPage("Last.fm") {
+            YMSection(title: "连接", footer: "在译梦服务端配置 API Key 后，听歌记录会同步到 Last.fm。Mac 端只读展示。") {
+                YMRow(icon: "dot.radiowaves.left.and.right", "状态", "未连接 · 可在服务端开启", chevron: false)
+            }
+            Text("完整授权流程仍在 iOS / 网页端完成。")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.secondary(scheme))
+                .padding(.top, 16)
+        }
+    }
+}
 struct ProfileView: View {
     var body: some View { EmptyView() }
     static func upload(_ img: PlatformImage) async {}

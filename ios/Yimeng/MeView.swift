@@ -101,8 +101,10 @@ struct SettingsView: View {
                         row("arrow.down.circle", "离线缓存", "\(OfflineCache.shared.entries.count) 首 · " + ByteCountFormatter.string(fromByteCount: OfflineCache.shared.usedBytes, countStyle: .file), chevron: true)
                     }.buttonStyle(.plain)
                     divider
+                    #if os(iOS)
                     toggleRow("dot.radiowaves.left.and.right", "灵动岛 / 实时活动", $liveActivity)
                     divider
+                    #endif
                     Button { showFonts = true } label: { row("textformat", "歌词字体", LyricFontStore.options.first { $0.id == LyricFontStore.shared.selected }?.name ?? "系统字体", chevron: true) }.buttonStyle(.plain)
                     divider
                     Button { FirstRun.reset(); showReplay = true } label: {
