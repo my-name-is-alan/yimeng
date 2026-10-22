@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/my-name-is-alan/yimeng/core/internal/search"
+
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -246,19 +248,19 @@ func (s *Scanner) Merge(ctx context.Context) error {
 		}
 	}
 	for id, name := range artists {
-		exec(`INSERT INTO artists(id, name, sort_name, created_at, updated_at) VALUES (?,?,?,?,?)
-			ON CONFLICT(id) DO UPDATE SET name=excluded.name, updated_at=excluded.updated_at WHERE name<>excluded.name`,
-			id, name, normKey(name), now, now)
+		exec(`INSERT INTO artists(id, name, sort_name, search_text, created_at, updated_at) VALUES (?,?,?,?,?,?)
+			ON CONFLICT(id) DO UPDATE SET name=excluded.name, search_text=excluded.search_text, updated_at=excluded.updated_at WHERE name<>excluded.name OR search_text<>excluded.search_text`,
+			id, name, normKey(name), search.Text(name), now, now)
 	}
 	for _, a := range albums {
-		exec(`INSERT INTO albums(id, title, year, cover_path, mb_release_id, artist_name, genre, created_at, updated_at)
-			VALUES (?,?,?,?,?,?,?,?,?)
+		exec(`INSERT INTO albums(id, title, year, cover_path, mb_release_id, artist_name, genre, search_text, created_at, updated_at)
+			VALUES (?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET title=excluded.title, year=excluded.year,
 			cover_path=COALESCE(excluded.cover_path, CASE WHEN albums.cover_source='remote' THEN albums.cover_path END),
 			cover_source=CASE WHEN excluded.cover_path IS NULL AND albums.cover_source='remote' THEN 'remote' ELSE 'local' END,
 			mb_release_id=COALESCE(excluded.mb_release_id, albums.mb_release_id), artist_name=excluded.artist_name, genre=excluded.genre,
-			updated_at=excluded.updated_at`,
-			a.id, a.title, nzInt(a.year), nz(a.cover), nz(a.mbRel), a.artistName, nz(a.genre), a.created, now)
+			search_text=excluded.search_text, updated_at=excluded.updated_at`,
+			a.id, a.title, nzInt(a.year), nz(a.cover), nz(a.mbRel), a.artistName, nz(a.genre), search.Text(a.title, a.artistName), a.created, now)
 		for i, c := range a.artists {
 			exec(`INSERT OR IGNORE INTO album_artists(album_id, artist_id, role, position) VALUES (?,?,?,?)`,
 				a.id, artistID(c.Name), c.Role, i)
@@ -267,13 +269,13 @@ func (s *Scanner) Merge(ctx context.Context) error {
 	for _, id := range trackOrder {
 		t := tracks[id]
 		exec(`INSERT INTO tracks(id, title, album_id, disc_no, track_no, duration_ms, isrc, mb_recording_id,
-			artist_name, genre, year, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+			artist_name, genre, year, search_text, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET title=excluded.title, album_id=excluded.album_id, disc_no=excluded.disc_no,
 			track_no=excluded.track_no, duration_ms=excluded.duration_ms, isrc=excluded.isrc,
 			mb_recording_id=COALESCE(excluded.mb_recording_id, tracks.mb_recording_id), artist_name=excluded.artist_name, genre=excluded.genre,
-			year=excluded.year, updated_at=excluded.updated_at`,
+			year=excluded.year, search_text=excluded.search_text, updated_at=excluded.updated_at`,
 			t.id, t.title, nz(t.albumID), nzInt(t.discNo), nzInt(t.trackNo), nzInt64(t.dur), nz(t.isrc), nz(t.mbRec),
-			t.artistName, nz(t.genre), nzInt(t.year), t.created, now)
+			t.artistName, nz(t.genre), nzInt(t.year), search.Text(t.title, t.artistName), t.created, now)
 		for i, c := range t.artists {
 			exec(`INSERT OR IGNORE INTO track_artists(track_id, artist_id, role, position) VALUES (?,?,?,?)`,
 				t.id, artistID(c.Name), c.Role, i)

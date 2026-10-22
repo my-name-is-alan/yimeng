@@ -154,3 +154,10 @@ alternative considered. Newest items at the bottom.
   and stream info (AIFF COMM, DSF fmt, DSDIFF PROP/DSD, APE v3.98+ header).
 - Tags: whatever dhowden/tag can read (DSF ID3 yes; APE/DFF/AIFF best-effort).
   Transcode of DSD/APE remains ffmpeg-dependent when available.
+
+## D18 Pinyin + fuzzy search
+- Migration adds `search_text` on artists/albums/tracks: lowercase name + full
+  pinyin + initials (mozillazg/go-pinyin). Filled on every Merge.
+- List/search `q` expands via ExpandQuery (original + pinyin of Chinese chars)
+  and ORs LIKE against name fields and search_text. Not edit-distance fuzzy —
+  substring + pinyin is enough for LAN library size.

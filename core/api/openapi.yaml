@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.14.0
+  version: 0.15.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and

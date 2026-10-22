@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/my-name-is-alan/yimeng/core/internal/search"
 )
 
 // Read side of the canonical layer, used by the catalog API.
@@ -124,6 +126,24 @@ func likeAny(q string) string {
 	return "%" + r.Replace(strings.TrimSpace(q)) + "%"
 }
 
+// addSearch appends OR-ed LIKE predicates over cols for every ExpandQuery form of p.Q.
+func addSearch(w *where, p ListParams, cols ...string) {
+	if p.Q == "" || len(cols) == 0 {
+		return
+	}
+	forms := search.ExpandQuery(p.Q)
+	var parts []string
+	var args []any
+	for _, f := range forms {
+		pat := likeAny(f)
+		for _, c := range cols {
+			parts = append(parts, c+` LIKE ? ESCAPE '\'`)
+			args = append(args, pat)
+		}
+	}
+	w.add(`(`+strings.Join(parts, ` OR `)+`)`, args...)
+}
+
 func orderBy(sorts map[string]string, p ListParams, def string) (string, error) {
 	key := p.Sort
 	if key == "" {
@@ -175,9 +195,7 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 		return Page[Artist]{}, err
 	}
 	var w where
-	if p.Q != "" {
-		w.add(`a.name LIKE ? ESCAPE '\'`, likeAny(p.Q))
-	}
+	addSearch(&w, p, `a.name`, `a.search_text`)
 	out := Page[Artist]{Items: []Artist{}, Limit: p.Limit, Offset: p.Offset}
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM artists a`+w.sql(), w.args); err != nil {
 		return out, err
@@ -235,9 +253,7 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 		return Page[Album]{}, err
 	}
 	var w where
-	if p.Q != "" {
-		w.add(`(al.title LIKE ? ESCAPE '\' OR al.artist_name LIKE ? ESCAPE '\')`, likeAny(p.Q), likeAny(p.Q))
-	}
+	addSearch(&w, p, `al.title`, `al.artist_name`, `al.search_text`)
 	if p.Favorite {
 		w.add(`al.id IN (SELECT entity_id FROM favorites WHERE entity_type='album')`)
 	}
@@ -367,10 +383,7 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 		return Page[Track]{}, err
 	}
 	var w where
-	if p.Q != "" {
-		w.add(`(t.title LIKE ? ESCAPE '\' OR t.artist_name LIKE ? ESCAPE '\' OR al.title LIKE ? ESCAPE '\')`,
-			likeAny(p.Q), likeAny(p.Q), likeAny(p.Q))
-	}
+	addSearch(&w, p, `t.title`, `t.artist_name`, `al.title`, `t.search_text`)
 	if p.AlbumID != "" {
 		w.add(`t.album_id=?`, p.AlbumID)
 	}
