@@ -58,7 +58,7 @@ struct SettingsView: View {
                 group("系统设置", i: 3) {
                     HStack {
                         row("internaldrive", "缓存", ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file))
-                        Button("清除") { Cache.clear(); cacheBytes = Cache.size() }
+                        Button("清除") { Cache.clear(); LibraryCache.shared.clear(); cacheBytes = Cache.size() }
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.fg(scheme))
                             .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Theme.fill(scheme)))
                             .buttonStyle(.plain)

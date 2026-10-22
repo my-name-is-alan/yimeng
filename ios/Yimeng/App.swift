@@ -99,6 +99,9 @@ final class AppState: ObservableObject {
         }
         #if DEBUG
         if let s = arg("-seg"), let seg = LibraryView.Seg(rawValue: s) { librarySeg = seg }
+        if args.contains("-clear-lib-cache") {
+            try? FileManager.default.removeItem(at: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("library"))
+        }
         #endif
         if demo == "island" { nowPlaying = true; track = DreamMock.zig; isPlaying = true }
         AppStateBridge.current = self

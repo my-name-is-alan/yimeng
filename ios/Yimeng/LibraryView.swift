@@ -7,43 +7,106 @@ struct LibraryView: View {
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
 
+    @ObservedObject private var cache = LibraryCache.shared
+    @State private var visited: Set<Seg> = []
+    nonisolated(unsafe) static var cycled = false
+
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("曲库").font(.system(size: 28, weight: .bold))
-                    Text(library.status.isEmpty ? "Navidrome" : library.status)
-                        .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
-                }
-                .padding(.horizontal, Theme.margin).padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("曲库").font(.system(size: 28, weight: .bold))
+                Text(library.status.isEmpty ? "Navidrome" : library.status)
+                    .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
+            }
+            .padding(.horizontal, Theme.margin).padding(.top, 16)
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Seg.allCases, id: \.self) { s in
-                            let seg = state.librarySeg
-                            Button { withAnimation(.snappy) { state.librarySeg = s } } label: {
-                                Text(label(s)).font(.system(size: 14, weight: .semibold))
-                                    .padding(.horizontal, 16).frame(height: 34)
-                                    .foregroundStyle(seg == s ? Theme.base(scheme) : Theme.fg(scheme))
-                                    .background(Capsule().fill(seg == s ? Theme.fg(scheme) : Theme.fill(scheme)))
-                            }.buttonStyle(.plain)
-                        }
-                    }.padding(.horizontal, Theme.margin)
-                }.padding(.top, 16)
-
-                Group {
-                    switch state.librarySeg {
-                    case .songs: SongsList()
-                    case .albums: AlbumsGrid()
-                    case .artists: ArtistsList()
-                    case .playlists: PlaylistsList()
-                    case .starred: StarredList()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Seg.allCases, id: \.self) { s in
+                        let seg = state.librarySeg
+                        Button { state.librarySeg = s } label: {
+                            Text(label(s)).font(.system(size: 14, weight: .semibold))
+                                .padding(.horizontal, 16).frame(height: 34)
+                                .foregroundStyle(seg == s ? Theme.base(scheme) : Theme.fg(scheme))
+                                .background(Capsule().fill(seg == s ? Theme.fg(scheme) : Theme.fill(scheme)))
+                        }.buttonStyle(.plain)
                     }
-                }.padding(.top, 12)
-                Color.clear.frame(height: 170)
+                }.padding(.horizontal, Theme.margin)
+            }.padding(.top, 16).padding(.bottom, 12)
+
+            // Each visited segment stays mounted (own scroll position, no refetch on switch).
+            ZStack {
+                ForEach(Seg.allCases, id: \.self) { s in
+                    if visited.contains(s) || s == state.librarySeg {
+                        SegmentScroll(seg: s)
+                            .opacity(s == state.librarySeg ? 1 : 0)
+                            .allowsHitTesting(s == state.librarySeg)
+                    }
+                }
             }
         }
         .background(Theme.base(scheme))
+        .onAppear { visited.insert(state.librarySeg) }
+        .onChange(of: state.librarySeg) { _, s in visited.insert(s) }
+        .task { await cache.open(LibraryView.key(state.librarySeg, sort: state.albumSort), albumSort: state.albumSort) }
+        #if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-cycle-segs"), !LibraryView.cycled else { return }
+            LibraryView.cycled = true
+            let st = state
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(8))
+                NetLog.logger.info("CYCLE start")
+                for _ in 0..<2 { for s in Seg.allCases { st.librarySeg = s; try? await Task.sleep(for: .seconds(1.2)) } }
+                st.tab = .home; try? await Task.sleep(for: .seconds(1.5)); st.tab = .library
+                try? await Task.sleep(for: .seconds(1.5))
+                for s in Seg.allCases { st.librarySeg = s; try? await Task.sleep(for: .seconds(1.0)) }
+                NetLog.logger.info("CYCLE end")
+            }
+        }
+        #endif
+    }
+
+    static func key(_ s: Seg, sort: String) -> String {
+        switch s {
+        case .songs: return "songs"
+        case .albums: return "albums:\(sort)"
+        case .artists: return "artists"
+        case .playlists: return "playlists"
+        case .starred: return "starred"
+        }
+    }
+}
+
+/// One segment's scroll view: cached content, scroll anchor restore, pull-to-refresh.
+private struct SegmentScroll: View {
+    let seg: LibraryView.Seg
+    @EnvironmentObject var state: AppState
+    @ObservedObject private var cache = LibraryCache.shared
+    @State private var anchor: String?
+    private var key: String { LibraryView.key(seg, sort: state.albumSort) }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            Group {
+                switch seg {
+                case .songs: SongsList()
+                case .albums: AlbumsGrid()
+                case .artists: ArtistsList()
+                case .playlists: PlaylistsList()
+                case .starred: StarredList()
+                }
+            }
+            .scrollTargetLayout()
+            Color.clear.frame(height: 170)
+        }
+        .scrollPosition(id: $anchor, anchor: .top)
+        .onAppear { anchor = cache.scrollAnchor[seg.rawValue] }
+        .onChange(of: anchor) { _, a in if let a { cache.scrollAnchor[seg.rawValue] = a } }
+        .refreshable {
+            if seg == .starred { await StarStore.shared.load() } else { await cache.ensure(key, force: true) }
+        }
+        .task(id: key) { if seg != .starred { await cache.ensure(key) } }
     }
 }
 
@@ -75,25 +138,27 @@ struct SongRowPlay: View {
 }
 
 private struct SongsList: View {
-    @State private var songs: [NDSong] = []
-    @State private var done = false
-    @State private var loading = false
+    @ObservedObject private var cache = LibraryCache.shared
     var body: some View {
+        let songs = cache.songs
         LazyVStack(spacing: 0) {
-            ForEach(songs.indices, id: \.self) { i in
-                SongRowPlay(songs: songs, i: i)
-                    .onAppear { if i >= songs.count - 10 { Task { await more() } } }
+            if songs.isEmpty {
+                if cache.failed.contains("songs") {
+                    EmptyState(kind: .network, action: ("重试", { Task { await cache.ensure("songs", force: true) } }))
+                } else if cache.done.contains("songs") {
+                    EmptyState(kind: .songs)
+                } else {
+                    DoodleLoader()
+                    ForEach(0..<8, id: \.self) { _ in SkeletonRow() }
+                }
             }
-            if loading { ProgressView().padding() }
-            if done && songs.isEmpty { EmptyState(kind: .songs, action: ("重新载入", { done = false; Task { await more() } })) }
+            ForEach(Array(songs.enumerated()), id: \.element.id) { i, _ in
+                SongRowPlay(songs: songs, i: i)
+                    .id(songs[i].id)
+                    .onAppear { if i >= songs.count - 20 { Task { await cache.more("songs") } } }
+            }
+            if cache.paging.contains("songs") { InlineLoader() }
         }
-        .task { if songs.isEmpty { await more() } }
-    }
-    private func more() async {
-        guard !loading, !done else { return }
-        loading = true; defer { loading = false }
-        let page = (try? await NavidromeClient.shared.songs(offset: songs.count, count: 60)) ?? []
-        if page.isEmpty { done = true } else { songs += page }
     }
 }
 
@@ -103,10 +168,10 @@ private struct AlbumsGrid: View {
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
     private var type: String { state.albumSort }
-    @State private var albums: [NDAlbum] = []
-    @State private var done = false
-    @State private var loading = false
+    @ObservedObject private var cache = LibraryCache.shared
+    private var key: String { "albums:\(type)" }
     var body: some View {
+        let albums = cache.albumList(type)
         VStack(alignment: .leading, spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
@@ -119,9 +184,20 @@ private struct AlbumsGrid: View {
                 }.padding(.horizontal, Theme.margin)
             }
             let w = (UIScreen.main.bounds.width - Theme.margin * 2 - 16) / 2
+            if albums.isEmpty {
+                if cache.failed.contains(key) {
+                    EmptyState(kind: .network, action: ("重试", { Task { await cache.ensure(key, force: true) } }))
+                } else if cache.done.contains(key) {
+                    EmptyState(kind: .albums)
+                } else {
+                    DoodleLoader()
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
+                        ForEach(0..<6, id: \.self) { _ in SkeletonTile(size: w) }
+                    }.padding(.horizontal, Theme.margin)
+                }
+            }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible())], spacing: 20) {
-                ForEach(albums.indices, id: \.self) { i in
-                    let a = albums[i]
+                ForEach(Array(albums.enumerated()), id: \.element.id) { i, a in
                     Button { state.path.append(.ndAlbum(a)) } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             RemoteCover(url: library.coverURL(a), size: w)
@@ -129,38 +205,36 @@ private struct AlbumsGrid: View {
                             Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                         }
                     }.buttonStyle(.plain)
-                    .onAppear { if i >= albums.count - 6 { Task { await more() } } }
+                    .id(a.id)
+                    .onAppear { if i >= albums.count - 20 { Task { await cache.more(key) } } }
                 }
             }.padding(.horizontal, Theme.margin)
-            if loading { ProgressView().frame(maxWidth: .infinity) }
-            if done && albums.isEmpty { EmptyState(kind: .albums) }
-            Text("已加载 \(albums.count) 张专辑").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
-                .padding(.horizontal, Theme.margin)
+            if cache.paging.contains(key) { InlineLoader() }
+            if !albums.isEmpty {
+                Text("已加载 \(albums.count) 张专辑").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                    .padding(.horizontal, Theme.margin)
+            }
         }
-        .task(id: type) {
-            done = false
-            albums = []; await more()
-        }
-    }
-    private func more() async {
-        guard !loading, !done else { return }
-        loading = true; defer { loading = false }
-        let t = type
-        let page = (try? await NavidromeClient.shared.albumList(type: t, offset: t == "random" ? 0 : albums.count, size: t == "random" ? 60 : 200)) ?? []
-        guard t == type else { return }
-        if page.count < 200 || t == "random" { done = true }
-        albums += page.filter { p in !albums.contains(where: { $0.id == p.id }) }
     }
 }
 
 private struct ArtistsList: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
-    @State private var artists: [NDArtist] = []
-    @State private var loaded = false
+    @ObservedObject private var cache = LibraryCache.shared
     var body: some View {
+        let artists = cache.artists
         LazyVStack(alignment: .leading, spacing: 0) {
-            if loaded && artists.isEmpty { EmptyState(kind: .artists) }
+            if artists.isEmpty {
+                if cache.failed.contains("artists") {
+                    EmptyState(kind: .network, action: ("重试", { Task { await cache.ensure("artists", force: true) } }))
+                } else if cache.done.contains("artists") {
+                    EmptyState(kind: .artists)
+                } else {
+                    DoodleLoader(text: "正在点名歌手…")
+                    ForEach(0..<8, id: \.self) { _ in SkeletonRow() }
+                }
+            }
             ForEach(artists) { ar in
                 Button { state.path.append(.ndArtist(ar)) } label: {
                     HStack(spacing: 12) {
@@ -175,7 +249,6 @@ private struct ArtistsList: View {
                 }.buttonStyle(.plain)
             }
         }
-        .task { if !loaded { artists = (try? await NavidromeClient.shared.artists()) ?? []; loaded = true } }
     }
 }
 
@@ -209,10 +282,10 @@ private struct PlaylistsList: View {
                     }.buttonStyle(.plain)
                 }
             } else {
+                DoodleLoader(text: "正在整理歌单…")
                 ForEach(0..<5, id: \.self) { _ in SkeletonRow() }
             }
         }
-        .task { await events.load() }
         .alert("新建歌单", isPresented: $creating) {
             TextField("歌单名称", text: $name)
             Button("取消", role: .cancel) {}

@@ -105,7 +105,21 @@ actor NavidromeClient {
         return (albums, artists, songs)
     }
 
+    /// getArtists is ~5 MB on this server; home, totals and 曲库 all want it — share one in-flight request, memo 10 min.
+    private var artistsTask: Task<[NDArtist], Error>?
+    private var artistsAt = Date.distantPast
     func artists() async throws -> [NDArtist] {
+        if let t = artistsTask, Date().timeIntervalSince(artistsAt) < 600 {
+            do { return try await t.value } catch { artistsTask = nil; throw error }
+        }
+        let t = Task { try await self.fetchArtists() }
+        artistsTask = t; artistsAt = Date()
+        do { return try await t.value } catch { artistsTask = nil; throw error }
+    }
+
+    func invalidateArtists() { artistsTask = nil }
+
+    private func fetchArtists() async throws -> [NDArtist] {
         let obj = try await rest("getArtists.view", query: [:])
         let index = ((obj["artists"] as? [String: Any])?["index"]) as? [[String: Any]] ?? []
         var out: [NDArtist] = []

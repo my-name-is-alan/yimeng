@@ -12,6 +12,7 @@
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
+		3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26134EFA3C10B18CD7770A97 /* LibraryCache.swift */; };
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
 		44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
@@ -85,6 +86,7 @@
 		221E80FC912CC7CB64F2505A /* MusicSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSources.swift; sourceTree = "<group>"; };
 		2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImage.swift; sourceTree = "<group>"; };
 		256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistDetailView.swift; sourceTree = "<group>"; };
+		26134EFA3C10B18CD7770A97 /* LibraryCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCache.swift; sourceTree = "<group>"; };
 		3855754257202630A564173A /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		3DA1C686614CB8D6930D4D49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		3DCA6146350902AD251CEEB2 /* Common.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Common.swift; sourceTree = "<group>"; };
@@ -161,6 +163,7 @@
 				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
 				0E250285D45C295C91932A00 /* HomeView.swift */,
 				71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */,
+				26134EFA3C10B18CD7770A97 /* LibraryCache.swift */,
 				197A06AAC57F015AE8C264DD /* LibraryStore.swift */,
 				624D971C2C9BF41CC02A1560 /* LibraryView.swift */,
 				16EAA934AB97BEE0902D11F2 /* MeView.swift */,
@@ -302,6 +305,7 @@
 				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,
 				D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */,
 				DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */,
+				3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */,
 				D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */,
 				58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */,
 				C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */,
