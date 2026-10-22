@@ -69,6 +69,7 @@ enum MusicSources {
         case .navidrome: NavidromeSource()
         case .fnos: FnosSource()
         case .emby: EmbySource()
+        case .core: CoreSource()
         default: ComingSoonSource(kind: k)
         }
     }
@@ -104,6 +105,16 @@ enum MusicSources {
         await PlayerStore.shared.restore()
     }
     func deactivate() { LibraryStore.shared.reset() }
+}
+
+@MainActor struct CoreSource: MusicSource {
+    let kind = SourceKind.core
+    let isImplemented = true
+    func activate() async {
+        await LibraryStore.shared.bootstrapCore()
+        await PlayerStore.shared.restore()
+    }
+    func deactivate() { LibraryStore.shared.reset(); CoreEvents.shared.stop() }
 }
 
 @MainActor struct ComingSoonSource: MusicSource {

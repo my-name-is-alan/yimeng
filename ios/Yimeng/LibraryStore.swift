@@ -9,6 +9,10 @@ struct NDAlbum: Identifiable, Hashable, Codable {
     let coverId: String?
     let year: Int?
     let songCount: Int?
+    // 译梦 Core (optional)
+    var sortLetter: String? = nil
+    var origin: String? = nil
+    var colors: [String]? = nil
 }
 
 struct NDArtist: Identifiable, Hashable, Codable {
@@ -16,6 +20,7 @@ struct NDArtist: Identifiable, Hashable, Codable {
     let name: String
     let albumCount: Int?
     var coverId: String? = nil
+    var sortLetter: String? = nil
 }
 
 struct NDGenre: Identifiable, Hashable, Codable {
@@ -34,6 +39,7 @@ struct NDPlaylist: Identifiable, Hashable, Codable {
     var isPublic: Bool? = nil
     var duration: Int? = nil
     var owner: String? = nil
+    var origin: String? = nil
 }
 
 struct NDSong: Identifiable, Hashable, Codable {
@@ -53,6 +59,18 @@ struct NDSong: Identifiable, Hashable, Codable {
     var bitDepth: Int? = nil
     var channelCount: Int? = nil
     var replayGain: ReplayGainInfo? = nil
+    // 译梦 Core (optional; nil for other sources)
+    var origin: String? = nil
+    var playable: Bool? = nil
+    var preview: Bool? = nil
+    var previewStartMs: Int? = nil
+    var previewEndMs: Int? = nil
+    var unplayableReason: String? = nil
+    var sortLetter: String? = nil
+    var isrc: String? = nil
+    var popularity: Double? = nil
+    var hasLyrics: Bool? = nil
+    var colors: [String]? = nil
 
     var durationLabel: String {
         guard let d = duration else { return "" }
@@ -214,6 +232,57 @@ final class LibraryStore: ObservableObject {
             connected = false
             status = error.localizedDescription
         }
+    }
+
+    // MARK: 译梦 Core
+    @Published var coreBase: URL?
+    @Published var coreServerName = ""
+    func bootstrapCore() async {
+        let cfg = SourceStore.shared.config(for: .core)
+        let svc = SourceKind.core.keychainService
+        if !cfg.host.isEmpty, let a = Keychain.get(service: svc, account: "access"), !a.isEmpty {
+            liveMode = true
+            try? await CoreClient.shared.configure(host: cfg.host)
+            await CoreClient.shared.restore(access: a, refresh: Keychain.get(service: svc, account: "refresh") ?? "")
+            await finishCore(username: cfg.username, host: cfg.host); return
+        }
+        #if DEBUG
+        // Sim/dev only: YIMENG_CORE_URL / _USER / _PASSWORD from the launch env (never logged); tokens then live in Keychain.
+        let env = ProcessInfo.processInfo.environment
+        if let u = env["YIMENG_CORE_URL"], let n = env["YIMENG_CORE_USER"], let p = env["YIMENG_CORE_PASSWORD"], !u.isEmpty, !n.isEmpty {
+            liveMode = true; await connectCore(host: u, username: n, password: p); return
+        }
+        #endif
+        status = "待连接译梦服务端"
+    }
+    func connectCore(host: String, username: String, password: String) async {
+        loading = true; status = "连接中…"
+        defer { loading = false }
+        do {
+            try await CoreClient.shared.configure(host: host)
+            try await CoreClient.shared.login(username: username, password: password)
+            await finishCore(username: username, host: host)
+        } catch { connected = false; status = error.localizedDescription }
+    }
+    private func finishCore(username: String, host: String) async {
+        let c = CoreClient.shared
+        do {
+            let info = try? await c.serverInfo()
+            coreServerName = info?.name ?? "译梦服务端"
+            coreBase = await c.snapshot().base
+            albums = try await c.albumList(type: "newest", offset: 0, size: 30)
+            artists = Array(try await c.artists().prefix(40))
+            connected = true; liveMode = true
+            user = username; self.host = coreBase?.absoluteString ?? host
+            songTotal = await c.songTotal()
+            status = ([coreServerName, songTotal.map { "\($0) 首歌曲" } ?? ""].filter { !$0.isEmpty }).joined(separator: " · ")
+            var cfg = SourceStore.shared.config(for: .core)
+            cfg.host = self.host; cfg.username = username; cfg.connected = true; cfg.statusNote = status
+            SourceStore.shared.upsert(cfg)
+            CoreEvents.shared.start()
+            await PlatformStore.shared.refresh()
+            Task { await YueqianStore.shared.maybeAutoShow() }
+        } catch { connected = false; status = error.localizedDescription }
     }
 
     // MARK: Emby / Jellyfin
@@ -383,6 +452,10 @@ final class LibraryStore: ObservableObject {
             guard let b = embyBase else { return nil }
             return EmbyClient.imageURL(base: b, id: id.hasPrefix("ar-") ? String(id.dropFirst(3)) : id, size: size)
         }
+        if NavidromeClient.core {
+            guard let b = coreBase else { return nil }
+            return CoreClient.coverURL(base: b, idOrURL: id, size: size)
+        }
         if NavidromeClient.fnos {
             guard let r = fnosRoot else { return nil }
             return id.hasPrefix("ar-") ? nil : FnosClient.coverURL(root: r, coverId: id, size: size)
@@ -405,6 +478,7 @@ final class LibraryStore: ObservableObject {
             return EmbyClient.streamURL(base: b, id: songId, token: embyToken, userId: embyUserId,
                                         maxKbps: UserDefaults.standard.integer(forKey: "ym.maxBitRate"), playSessionId: playSession(for: songId))
         }
+        if NavidromeClient.core { return coreBase.flatMap { CoreClient.streamURL(base: $0, id: songId) } }
         if NavidromeClient.fnos { return fnosRoot.flatMap { FnosClient.streamURL(root: $0, guid: songId) } }
         guard let base = coverBase, !coverToken.isEmpty else { return nil }
         return NavidromeClient.authedURL(base: base, method: "stream.view",

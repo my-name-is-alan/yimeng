@@ -20,6 +20,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: 译梦
         INFOPLIST_FILE: Config/Yimeng-Info.plist
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "把今日乐签保存到相册"
         INFOPLIST_KEY_NSLocalNetworkUsageDescription: "连接局域网里的飞牛 NAS / 音乐服务器"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

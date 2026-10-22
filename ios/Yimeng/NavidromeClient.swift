@@ -17,7 +17,8 @@ actor NavidromeClient {
     /// Active source is 飞牛音乐 → library calls are served by FnosClient (same ND models), so views stay source-agnostic.
     nonisolated static var fnos: Bool { MusicSources.activeId == SourceKind.fnos.rawValue }
     nonisolated static var emby: Bool { MusicSources.activeId == SourceKind.emby.rawValue }
-    nonisolated static var backend: (any LibraryBackend)? { fnos ? FnosClient.shared : (emby ? EmbyClient.shared : nil) }
+    nonisolated static var core: Bool { MusicSources.activeId == SourceKind.core.rawValue }
+    nonisolated static var backend: (any LibraryBackend)? { core ? CoreClient.shared : (fnos ? FnosClient.shared : (emby ? EmbyClient.shared : nil)) }
     private let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
         c.httpAdditionalHeaders = [
