@@ -91,7 +91,8 @@ final class PlayerStore: ObservableObject {
         guard let player else { return }
         if isPlaying { player.pause(); isPlaying = false; save() }
         else { player.defaultRate = rate; player.play(); isPlaying = true }
-        if let l = embyLive { embyReport(.progress, id: l.id, pos: elapsed, paused: !isPlaying) }
+        // Emby only persists PlaybackPositionTicks on Stopped → pause closes the session, resume opens a new one.
+        if let l = embyLive { embyReport(isPlaying ? .start : .stopped, id: l.id, pos: elapsed, paused: !isPlaying) }
         syncApp()
         pushNowPlaying()
     }
@@ -311,6 +312,14 @@ final class PlayerStore: ObservableObject {
     }
 
     private func startCurrent(autoplay: Bool, seek: TimeInterval?) {
+        #if DEBUG
+        // Sim verification: `-autopause N` pauses N s after the first track starts (exercises Emby Stopped + resume point).
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-autopause"), i + 1 < ProcessInfo.processInfo.arguments.count,
+           let n = Double(ProcessInfo.processInfo.arguments[i + 1]), !Self.autopaused {
+            Self.autopaused = true
+            Task { @MainActor [weak self] in try? await Task.sleep(for: .seconds(n)); if self?.isPlaying == true { self?.toggle() } }
+        }
+        #endif
         guard index >= 0, index < queue.count else { return }
         let s = queue[index]
         song = s
@@ -371,6 +380,16 @@ final class PlayerStore: ObservableObject {
         record(s)
         embyLive = (s.id, elapsed); embyLastProgress = Date().timeIntervalSinceReferenceDate
         embyReport(.start, id: s.id, pos: elapsed, paused: !autoplay)
+        if NavidromeClient.emby, (seek ?? 0) < 1 {
+            // Continue from Emby's saved position (set by this or another client), unless nearly finished.
+            let id = s.id
+            Task { [weak self] in
+                guard let pos = await EmbyClient.shared.resumePosition(id), pos > 5 else { return }
+                guard let self, self.song?.id == id, self.elapsed < 3, self.duration <= 0 || pos < self.duration - 10 else { return }
+                self.player?.seek(to: CMTime(seconds: pos, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in }
+                self.elapsed = pos; self.embyLive = (id, pos); self.pushNowPlaying()
+            }
+        }
         if autoplay {
             p.play(); isPlaying = true
             if AudioPrefs.crossfade > 0 { fade(to: vol, over: min(AudioPrefs.crossfade, 4)) }
@@ -401,12 +420,16 @@ final class PlayerStore: ObservableObject {
 
     // Emby/Jellyfin: report start / progress / stop so play counts, 最近播放 and resume work server-side.
     private var embyLive: (id: String, pos: TimeInterval)?
+    private static var autopaused = false
     private var embyLastProgress: TimeInterval = 0
     private func embyReport(_ e: EmbyClient.PlayEvent, id: String, pos: TimeInterval, paused: Bool) {
         guard NavidromeClient.emby else { return }
         let ps = LibraryStore.shared.playSession(for: id)
         let tr = UserDefaults.standard.integer(forKey: "ym.maxBitRate") > 0
-        Task { await EmbyClient.shared.report(e, id: id, position: pos, paused: paused, playSessionId: ps, transcoding: tr) }
+        Task {
+            await EmbyClient.shared.report(e, id: id, position: pos, paused: paused, playSessionId: ps, transcoding: tr)
+            if e == .stopped { await HomeStore.shared.refreshPlayed() }
+        }
     }
 
     private func tearDownPlayer() {

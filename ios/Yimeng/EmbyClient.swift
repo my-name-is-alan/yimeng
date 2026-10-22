@@ -222,6 +222,28 @@ actor EmbyClient {
     func report(_ e: PlayEvent, id: String, position: TimeInterval, paused: Bool, playSessionId: String, transcoding: Bool) async {
         guard !token.isEmpty else { return }
         _ = try? await json("POST", e.rawValue, body: Self.playBody(id: id, position: position, paused: paused, playSessionId: playSessionId, transcoding: transcoding))
+        // Emby ignores Stopped.PositionTicks for music (resume is audiobook/video-only server-side), so write the
+        // resume point straight into UserData; keep Played so the track stays in 最近播放.
+        if e == .stopped {
+            _ = try? await json("POST", "/Users/\(userId)/Items/\(id)/UserData",
+                                body: ["PlaybackPositionTicks": Int64(max(0, position) * Self.ticksPerSecond), "Played": true])
+        }
+    }
+    /// Signed-in user's display name + avatar tag (`/Users/{id}`).
+    func currentUser() async -> (name: String, imageTag: String?)? {
+        guard !userId.isEmpty, let o = try? await json("GET", "/Users/\(userId)") as? [String: Any], let n = o["Name"] as? String else { return nil }
+        return (n, o["PrimaryImageTag"] as? String)
+    }
+    nonisolated static func avatarURL(base: URL, userId: String, tag: String, size: Int = 160) -> URL? {
+        var c = URLComponents(url: base.appendingPathComponent("/Users/\(userId)/Images/Primary"), resolvingAgainstBaseURL: false)
+        c?.queryItems = [.init(name: "tag", value: tag), .init(name: "maxWidth", value: "\(size)"), .init(name: "quality", value: "90")]
+        return c?.url
+    }
+    /// Server-side resume point (UserData.PlaybackPositionTicks), fresh per play so other clients' progress counts.
+    func resumePosition(_ id: String) async -> TimeInterval? {
+        guard let o = try? await json("GET", "/Users/\(userId)/Items/\(id)") as? [String: Any],
+              let t = Self.num((o["UserData"] as? [String: Any])?["PlaybackPositionTicks"]), t > 0 else { return nil }
+        return Double(t) / Self.ticksPerSecond
     }
     func lyrics(_ id: String) async -> [(TimeInterval, String)] {
         guard product == "Jellyfin", let o = try? await json("GET", "/Audio/\(id)/Lyrics") as? [String: Any] else { return [] }
@@ -242,6 +264,17 @@ extension EmbyClient: LibraryBackend {
     }
     func albums(offset: Int, size: Int) async throws -> [NDAlbum] { try await albumList(type: "alphabeticalByName", offset: offset, size: size) }
     func albumList(type: String, offset: Int, size: Int) async throws -> [NDAlbum] {
+        // Emby marks tracks (not albums) played → derive 最近播放 / 常听 albums from played Audio.
+        if type == "recent" || type == "frequent" {
+            let tr = try await items(["IncludeItemTypes": "Audio", "Recursive": "true", "SortBy": type == "recent" ? "DatePlayed" : "PlayCount,DatePlayed", "SortOrder": "Descending",
+                                      "Filters": "IsPlayed", "Limit": "\(max(60, (offset + size) * 4))", "Fields": "UserData"]).list
+            var seen = Set<String>(); var ids: [String] = []
+            for t in tr { if let a = t["AlbumId"] as? String, seen.insert(a).inserted { ids.append(a) } }
+            let page = Array(ids.dropFirst(offset).prefix(size))
+            guard !page.isEmpty else { return [] }
+            let al = try await items(["Ids": page.joined(separator: ","), "Recursive": "true", "IncludeItemTypes": "MusicAlbum"]).list.compactMap(Self.parseAlbum)   // bare Ids returns [] on some servers
+            return page.compactMap { id in al.first { $0.id == id } }
+        }
         var q = Self.sort(type).merging(Self.paging(offset, size)) { $1 }
         q["IncludeItemTypes"] = "MusicAlbum"; q["Recursive"] = "true"
         return try await items(q).list.compactMap(Self.parseAlbum)

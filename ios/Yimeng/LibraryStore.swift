@@ -123,7 +123,7 @@ final class LibraryStore: ObservableObject {
 
     /// Source switched away: drop session + in-memory library.
     func reset() {
-        connected = false; liveMode = false; loading = false; fnosRoot = nil; fnosToken = ""; embyBase = nil; embyToken = ""; embyUserId = ""; embyUsers = []
+        connected = false; liveMode = false; loading = false; fnosRoot = nil; fnosToken = ""; embyBase = nil; embyToken = ""; embyUserId = ""; embyUsers = []; embyUserName = ""; embyAvatar = nil
         Task { await FnosClient.shared.logout() }
         albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
         status = ""; user = ""; host = ""
@@ -215,6 +215,8 @@ final class LibraryStore: ObservableObject {
     @Published var embyToken = ""
     @Published var embyUserId = ""
     @Published var embyProduct = "Emby"
+    @Published var embyUserName = ""
+    @Published var embyAvatar: URL?
     /// API key without a chosen user → list to pick from (form shows a picker).
     @Published var embyUsers: [EmbyClient.User] = []
     private var playSessions: [String: String] = [:]
@@ -278,6 +280,10 @@ final class LibraryStore: ObservableObject {
             if mode == .apiKey, let k = secret, !k.isEmpty { Keychain.set(k, service: svc, account: "apikey") }
             UserDefaults.standard.set(snap.userId, forKey: "ym.emby.userId")
             Self.embyMode = mode
+            if let me = await e.currentUser() {
+                embyUserName = me.name
+                embyAvatar = me.imageTag.flatMap { t in snap.base.flatMap { EmbyClient.avatarURL(base: $0, userId: snap.userId, tag: t) } }
+            }
             albums = try await e.albumList(type: "newest", offset: 0, size: 30)
             artists = Array(try await e.artists().prefix(40))
             connected = true; liveMode = true
@@ -287,6 +293,7 @@ final class LibraryStore: ObservableObject {
             var cfg = SourceStore.shared.config(for: .emby)
             cfg.host = self.host; cfg.username = username; cfg.connected = true; cfg.statusNote = status
             SourceStore.shared.upsert(cfg)
+            Task { await HomeStore.shared.refreshPlayed(); await StarStore.shared.load() }   // server-side plays / favorites from other clients
         } catch {
             connected = false
             if savedToken != nil { liveMode = false }

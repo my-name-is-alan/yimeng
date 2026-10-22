@@ -170,9 +170,11 @@ struct HomeLive: View {
 struct AvatarView: View {
     var size: CGFloat = 36
     @AppStorage("ym.avatarRev") private var rev = 0
+    @ObservedObject private var library = LibraryStore.shared
     var body: some View {
         Group {
-            if let img = AvatarStore.load() { Image(uiImage: img).resizable().scaledToFill() }
+            if NavidromeClient.emby, let u = library.embyAvatar { CoverImage(url: u, points: size) }   // Emby account avatar wins while Emby is active
+            else if let img = AvatarStore.load() { Image(uiImage: img).resizable().scaledToFill() }
             else { Image("ym_avatar").resizable().scaledToFill() }
         }
         .id(rev)

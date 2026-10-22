@@ -37,9 +37,23 @@ final class HomeStore: ObservableObject {
     func removePlaylist(_ id: String) { data.playlists.removeAll { $0.id == id }; persist() }
     private func persist() { if let d = try? JSONEncoder().encode(data) { try? d.write(to: Self.file, options: .atomic) } }
 
+    /// 最近播放 / 常听 change with every play (server-side play reports) → cheap refresh even when the rest is fresh.
+    func refreshPlayed() async {
+        let c = NavidromeClient.shared
+        async let r = c.albumList(type: "recent", offset: 0, size: 20)
+        async let f = c.albumList(type: "frequent", offset: 0, size: 20)
+        let (rr, ff) = ((try? await r), (try? await f))
+        guard rr != nil || ff != nil else { return }
+        var next = data; next.recent = rr ?? data.recent; next.frequent = ff ?? data.frequent
+        guard next.recent.map(\.id) != data.recent.map(\.id) || next.frequent.map(\.id) != data.frequent.map(\.id) else { return }
+        withAnimation(.smooth(duration: 0.35)) { data = next }
+        persist()
+    }
+
     /// Refresh silently if stale (or forced by pull-to-refresh). Never clears what's on screen.
     func refresh(force: Bool = false) async {
-        guard !refreshing, force || Date().timeIntervalSince(data.savedAt) > Self.ttl || data.isEmpty else { return }
+        guard !refreshing else { return }
+        guard force || Date().timeIntervalSince(data.savedAt) > Self.ttl || data.isEmpty else { await refreshPlayed(); return }
         refreshing = true; defer { refreshing = false }
         let c = NavidromeClient.shared
         async let n = c.albumList(type: "newest", offset: 0, size: 20)
@@ -100,17 +114,17 @@ final class StarStore: ObservableObject {
     func toggle(_ a: NDAlbum) {
         let on = !isStarred(album: a.id)
         withAnimation(.snappy) { if on { albums.insert(a, at: 0) } else { albums.removeAll { $0.id == a.id } } }
-        Task { do { try await NavidromeClient.shared.setStar(on, id: a.id, kind: .album) } catch { await load() } }
+        Task { do { try await NavidromeClient.shared.setStar(on, id: a.id, kind: .album); if NavidromeClient.emby { await load() } } catch { await load() } }
     }
     func toggle(_ s: NDSong) {
         let on = !isStarred(song: s.id)
         withAnimation(.snappy) { if on { songs.insert(s, at: 0) } else { songs.removeAll { $0.id == s.id } } }
-        Task { do { try await NavidromeClient.shared.setStar(on, id: s.id, kind: .song) } catch { await load() } }
+        Task { do { try await NavidromeClient.shared.setStar(on, id: s.id, kind: .song); if NavidromeClient.emby { await load() } } catch { await load() } }
     }
     func toggle(_ ar: NDArtist) {
         let on = !isStarred(artist: ar.id)
         withAnimation(.snappy) { if on { artists.insert(ar, at: 0) } else { artists.removeAll { $0.id == ar.id } } }
-        Task { do { try await NavidromeClient.shared.setStar(on, id: ar.id, kind: .artist) } catch { await load() } }
+        Task { do { try await NavidromeClient.shared.setStar(on, id: ar.id, kind: .artist); if NavidromeClient.emby { await load() } } catch { await load() } }
     }
 }
 

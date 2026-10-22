@@ -30,7 +30,7 @@ struct SettingsView: View {
                             sources.active.title, chevron: true)
                     }.buttonStyle(.plain)
                     divider
-                    row("server.rack", "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : "未连接")
+                    row("server.rack", NavidromeClient.emby ? library.embyProduct : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : "未连接")
                     divider
                     row("square.stack", "曲库", [library.albumTotal.map { "\($0) 张专辑" }, library.songTotal.map { "\($0) 首" }].compactMap { $0 }.joined(separator: " · "))
                 }
@@ -101,11 +101,11 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Button { editingName = true } label: {
                     HStack(spacing: 6) {
-                        Text(nickname.isEmpty ? "设置昵称" : nickname).font(.system(size: 22, weight: .bold))
+                        Text(!nickname.isEmpty ? nickname : (NavidromeClient.emby && !library.embyUserName.isEmpty ? library.embyUserName : "设置昵称")).font(.system(size: 22, weight: .bold))
                         Image(systemName: "pencil").font(.system(size: 13)).opacity(0.6)
                     }
                 }.buttonStyle(.plain)
-                Text(library.connected ? "\(library.user) @ \(library.host.replacingOccurrences(of: "https://", with: ""))" : "尚未连接音乐来源")
+                Text(library.connected ? "\(NavidromeClient.emby ? "\(library.embyProduct) · " + (library.embyUserName.isEmpty ? library.user : library.embyUserName) : library.user) @ \(library.host.replacingOccurrences(of: "https://", with: ""))" : "尚未连接音乐来源")
                     .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
             }
             Spacer()
