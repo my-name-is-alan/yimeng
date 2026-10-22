@@ -91,6 +91,7 @@ func newEnv(t *testing.T) *env {
 		Backup:    &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 		UserData:  &userdata.Store{DB: d},
 		Playlists: sc,
+		Admin:     sc,
 		System: &system.Collector{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Roots: sc.Roots,
 			CacheMaxBytes: 1 << 30, Transcoder: tc, Backup: &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 			LatestScan: sc.Latest, Version: "test", SchemaVersion: db.Latest(migrations.FS), Started: time.Now(),

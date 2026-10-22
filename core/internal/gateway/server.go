@@ -67,6 +67,7 @@ type Deps struct {
 	Playlists     PlaylistUseCases
 	System        *system.Collector
 	Presence      *Presence
+	Admin         AdminLibrary
 }
 
 type contextT = context.Context
@@ -126,6 +127,16 @@ func NewRouter(d Deps) http.Handler {
 
 	if d.System != nil {
 		mux.HandleFunc("GET /api/system", d.getSystem)
+	}
+	mux.HandleFunc("PATCH /api/devices/{id}", d.adminOnly(d.patchDevice))
+	if d.Admin != nil {
+		mux.HandleFunc("GET /api/settings/library-roots", d.adminOnly(d.getRoots))
+		mux.HandleFunc("PUT /api/settings/library-roots", d.adminOnly(d.putRoots))
+		mux.HandleFunc("GET /api/overrides/{type}/{id}", d.getOverride)
+		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.putOverride))
+		mux.HandleFunc("DELETE /api/overrides/{type}/{id}", d.adminOnly(d.deleteOverride))
+		mux.HandleFunc("POST /api/albums/merge", d.adminOnly(d.mergeAlbums))
+		mux.HandleFunc("POST /api/albums/split", d.adminOnly(d.splitAlbum))
 	}
 	if d.Playlists != nil {
 		mux.HandleFunc("GET /api/playlists", d.listPlaylists)

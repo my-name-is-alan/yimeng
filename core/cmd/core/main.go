@@ -218,6 +218,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Backup:          bk,
 			UserData:        ud,
 			Playlists:       scanner,
+			Admin:           scanner,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,

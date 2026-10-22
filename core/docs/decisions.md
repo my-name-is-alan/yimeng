@@ -94,3 +94,14 @@ alternative considered. Newest items at the bottom.
   and clears the source. Playing becomes paused on arrival so the new renderer
   can buffer before resume. Rejected: simultaneously keeping both playing
   (would require dual leases and split scrobbling).
+
+## D10 Admin APIs and override layer
+- Library roots are runtime-editable (admin), persisted in `settings`, loaded on
+  start (override config file roots). Absolute paths only.
+- `metadata_overrides` store a JSON patch per entity; whitelisted fields only.
+  Applied immediately and re-applied at the end of every Merge so rescans cannot
+  clobber user edits. Clearing an override lets the next scan restore tags.
+  Artwork/tag write-back remains out of scope (read-only library).
+- Album merge moves tracks then deletes source albums; split moves tracks to a
+  new/existing album and leaves an empty source (no auto-delete) so a mistaken
+  split can be merged back.

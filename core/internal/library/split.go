@@ -168,6 +168,16 @@ func (s *Scanner) LoadSettings(ctx context.Context) error {
 		return err
 	}
 	s.split.Store(NewSplitter(c))
+	var rootsJSON string
+	err = s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='library.roots'`).Scan(&rootsJSON)
+	if err == nil {
+		var roots []string
+		if json.Unmarshal([]byte(rootsJSON), &roots) == nil && len(roots) > 0 {
+			s.opts.Roots = roots
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	return nil
 }
 

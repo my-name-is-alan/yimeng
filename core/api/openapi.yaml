@@ -163,6 +163,24 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/devices/{id}:
+    patch:
+      tags: [pairing]
+      summary: Rename a device and/or set admin (admin only)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                admin: { type: boolean }
+      responses:
+        "200": { description: Updated device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Cannot demote the last admin }
     delete:
       tags: [pairing]
       summary: Revoke a device (its token stops working immediately)
@@ -1062,6 +1080,80 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: Source queue empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/settings/library-roots:
+    get:
+      tags: [settings]
+      summary: Configured library roots (admin)
+      responses:
+        "200": { description: Roots, content: { application/json: { schema: { type: object, properties: { roots: { type: array, items: { type: string } } } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [settings]
+      summary: Replace library roots (admin; persisted, survives restart)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [roots], properties: { roots: { type: array, items: { type: string }, minItems: 1 } } } } } }
+      responses:
+        "200": { description: Saved }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/overrides/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [catalog]
+      summary: Read the metadata override patch for an entity
+      responses:
+        "200": { description: Patch }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog]
+      summary: Set/merge a metadata override (admin; survives rescans)
+      description: Whitelisted fields only. Applied immediately and re-applied after every Merge.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        "200": { description: Updated entity }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [catalog]
+      summary: Clear overrides (admin); next rescan restores tags
+      responses:
+        "204": { description: Cleared }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums/merge:
+    post:
+      tags: [catalog]
+      summary: Merge albums into a target (admin)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [target, sources], properties: { target: { type: string }, sources: { type: array, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Target album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/albums/split:
+    post:
+      tags: [catalog]
+      summary: Move tracks from an album into a new (or existing) album (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, track_ids]
+              properties:
+                source: { type: string }
+                track_ids: { type: array, items: { type: string } }
+                title: { type: string, description: required when creating a new album }
+                artist_name: { type: string }
+                target_id: { type: string, description: existing album; omit to create }
+      responses:
+        "200": { description: Destination album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
 components:
   securitySchemes:
