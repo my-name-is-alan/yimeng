@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,7 +14,7 @@ import (
 // GET /api/v1/me/report?period=month|year&year=&month=&tz=&top= (D55)
 func (d Deps) getReport(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	loc := time.Local
+	loc := d.reportLocation()
 	if tz := q.Get("tz"); tz != "" {
 		l, err := time.LoadLocation(tz)
 		if err != nil {
@@ -190,4 +191,13 @@ func (d Deps) deleteLastFM(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reportLocation is the server's configured zone (YIMENG_TZ / runtime
+// setting time_zone, default Asia/Shanghai) — never the host's "Local".
+func (d Deps) reportLocation() *time.Location {
+	if d.ServerSettings != nil {
+		return d.ServerSettings.Get().Location()
+	}
+	return runtimecfg.Settings{}.Location()
 }

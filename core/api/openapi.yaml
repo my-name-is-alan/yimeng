@@ -908,7 +908,7 @@ paths:
         - { name: period, in: query, schema: { type: string, enum: [month, year], default: month } }
         - { name: year, in: query, schema: { type: integer }, description: "Default: current year in tz" }
         - { name: month, in: query, schema: { type: integer, minimum: 1, maximum: 12 }, description: "Default: current month; ignored for period=year" }
-        - { name: tz, in: query, schema: { type: string, example: Asia/Shanghai }, description: "IANA zone for bucketing; default the server zone" }
+        - { name: tz, in: query, schema: { type: string, example: Asia/Shanghai }, description: "IANA zone for bucketing; default is the server's configured time_zone (runtime setting / YIMENG_TZ, default Asia/Shanghai). The zone used is echoed in `tz`." }
         - { name: top, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
       responses:
         "200": { description: Report, content: { application/json: { schema: { $ref: "#/components/schemas/ListeningReport" } } } }
@@ -2395,6 +2395,7 @@ components:
         musicbrainz_contact: { type: string }
         fill_sources: { type: array, items: { type: string, enum: [spotify, netease, qq, kugou, musicbrainz] }, description: "ordered; empty = background fill off (default)" }
         fill_per_minute: { type: integer, minimum: 1, maximum: 120 }
+        time_zone: { type: string, example: Asia/Shanghai, description: "IANA zone used for reports (D55); seeded from YIMENG_TZ, default Asia/Shanghai" }
     ServerSettingsResponse:
       type: object
       properties:

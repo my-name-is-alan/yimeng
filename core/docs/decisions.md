@@ -456,7 +456,7 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - totals: plays, listened time, unique tracks/artists/albums, active days
   - top tracks, artists and albums (by play count, then listened time)
   - `by_hour` (24), `by_weekday` (Monday first) and `by_day` (days of the month, or 12 months).
-- Buckets use the client's `tz`; the default is the server zone. Online-track snapshots count like local tracks.
+- Buckets use the client's `tz` if given. Otherwise they use the server's `time_zone`: a runtime setting (web: 运行设置 → 时区), seeded from `YIMENG_TZ`, default `Asia/Shanghai`. It is never the host's `Local` zone. The response `tz` names the zone actually used. Online-track snapshots count like local tracks.
 - Web: the 听歌报告 page.
 
 ## D56 — Last.fm scrobbling (optional, per account)

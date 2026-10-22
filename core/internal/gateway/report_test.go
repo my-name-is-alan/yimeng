@@ -161,3 +161,31 @@ func TestLastFMFlow(t *testing.T) {
 	}
 	_ = time.Second
 }
+
+func TestReportTimeZoneSetting(t *testing.T) {
+	e := newEnv(t)
+	admin, alice, _ := e.accounts()
+	tz := func() string {
+		_, b := e.do("GET", "/api/me/report", "", alice)
+		var m struct{ TZ string }
+		json.Unmarshal(b, &m)
+		return m.TZ
+	}
+	if got := tz(); got != "Asia/Shanghai" {
+		t.Fatalf("default tz %q", got)
+	}
+	if res, b := e.do("PUT", "/api/settings/server", `{"time_zone":"Europe/Berlin"}`, admin); res.StatusCode != 200 {
+		t.Fatalf("put tz %d %s", res.StatusCode, b)
+	}
+	if got := tz(); got != "Europe/Berlin" {
+		t.Fatalf("tz after setting %q", got)
+	}
+	for _, bad := range []string{"Mars/Base", "Local"} {
+		if res, _ := e.do("PUT", "/api/settings/server", `{"time_zone":"`+bad+`"}`, admin); res.StatusCode != 400 {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+	if res, _ := e.do("GET", "/api/me/report?tz=UTC", "", alice); res.StatusCode != 200 {
+		t.Fatal("explicit tz")
+	}
+}

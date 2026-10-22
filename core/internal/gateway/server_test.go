@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/my-name-is-alan/yimeng/core/internal/lastfm"
+	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
 	"io"
@@ -102,7 +103,11 @@ func newEnvWith(t *testing.T, mut func(*Deps, *sql.DB, *library.Scanner)) *env {
 	}
 	lfm := &lastfm.Service{DB: d, Vault: vlt}
 	ud := &userdata.Store{DB: d, OnPlay: func(ctx context.Context, uid string, p userdata.Play) { lfm.Enqueue(ctx, uid, p.TrackID, p.PlayedAt) }}
-	deps := Deps{Library: &app.Library{Scanner: sc, BG: context.Background()},
+	rc := &runtimecfg.Store{DB: d}
+	if _, err := rc.Load(context.Background(), runtimecfg.Settings{WatchMode: "off", FillPerMinute: 20}); err != nil {
+		t.Fatal(err)
+	}
+	deps := Deps{ServerSettings: rc, Library: &app.Library{Scanner: sc, BG: context.Background()},
 		Playback: orch, Hub: hub, Auth: a, Log: log, Transcoder: tc, StreamPrefs: app.StreamPrefs{DB: d},
 		Backup:         &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 		UserData:       ud,

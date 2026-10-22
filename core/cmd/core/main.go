@@ -155,7 +155,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	// Runtime-editable settings (web console → settings table), applied live.
 	rcStore := &runtimecfg.Store{DB: database}
 	rcCur, err := rcStore.Load(ctx, runtimecfg.Settings{WatchMode: cfg.WatchMode, RescanInterval: cfg.RescanInterval.String(),
-		MusicBrainzEnabled: cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz"), MusicBrainzContact: cfg.MusicBrainz.Contact, FillPerMinute: 20})
+		MusicBrainzEnabled: cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz"), MusicBrainzContact: cfg.MusicBrainz.Contact, FillPerMinute: 20,
+		TimeZone: os.Getenv("YIMENG_TZ")})
 	if err != nil {
 		return err
 	}

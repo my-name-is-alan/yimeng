@@ -32,6 +32,22 @@ type Settings struct {
 	MusicBrainzContact string   `json:"musicbrainz_contact"`
 	FillSources        []string `json:"fill_sources"`    // ordered; empty = background fill off
 	FillPerMinute      int      `json:"fill_per_minute"` // 1..120
+	TimeZone           string   `json:"time_zone"`       // IANA zone for reports (D55); default Asia/Shanghai
+}
+
+// DefaultTimeZone is used when neither YIMENG_TZ nor the setting is set.
+const DefaultTimeZone = "Asia/Shanghai"
+
+// Location returns the configured zone (DefaultTimeZone on error).
+func (s Settings) Location() *time.Location {
+	if l, err := time.LoadLocation(s.TimeZone); err == nil && s.TimeZone != "" {
+		return l
+	}
+	l, err := time.LoadLocation(DefaultTimeZone)
+	if err != nil {
+		return time.FixedZone(DefaultTimeZone, 8*3600)
+	}
+	return l
 }
 
 func (s Settings) Rescan() time.Duration {
@@ -55,6 +71,16 @@ func (s *Settings) Validate() error {
 		return fmt.Errorf("%w: rescan_interval must be 0 or between 1m and 168h", ErrInvalid)
 	}
 	s.RescanInterval = d.String()
+	s.TimeZone = strings.TrimSpace(s.TimeZone)
+	if s.TimeZone == "" {
+		s.TimeZone = DefaultTimeZone
+	}
+	if s.TimeZone == "Local" || strings.Contains(s.TimeZone, "..") {
+		return fmt.Errorf("%w: time_zone must be an IANA zone such as Asia/Shanghai", ErrInvalid)
+	}
+	if _, err := time.LoadLocation(s.TimeZone); err != nil {
+		return fmt.Errorf("%w: time_zone must be an IANA zone such as Asia/Shanghai", ErrInvalid)
+	}
 	s.MusicBrainzContact = strings.TrimSpace(s.MusicBrainzContact)
 	if s.MusicBrainzContact != "" {
 		_, e1 := mail.ParseAddress(s.MusicBrainzContact)
@@ -111,7 +137,10 @@ func (st *Store) Load(ctx context.Context, def Settings) (Settings, error) {
 	err := st.DB.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, key).Scan(&raw)
 	if err == nil {
 		var saved Settings
-		if json.Unmarshal([]byte(raw), &saved) == nil && saved.Validate() == nil {
+		if json.Unmarshal([]byte(raw), &saved) == nil && saved.TimeZone == "" {
+			saved.TimeZone = def.TimeZone // saved before D55: take YIMENG_TZ / default
+		}
+		if saved.Validate() == nil {
 			cur = saved
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {

@@ -2,7 +2,6 @@
 import { h, icon, toast, errToast, confirmDlg, dialog, fmtNum } from "./ui.js";
 import { get, put, post, del, qs } from "./api.js";
 
-const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
 const WD = ["一", "二", "三", "四", "五", "六", "日"];
 const hrs = (ms) => (ms / 3600000).toFixed(ms >= 36000000 ? 0 : 1);
 
@@ -25,6 +24,7 @@ export async function reportPage(main) {
   const now = new Date();
   let period = "month", year = now.getFullYear(), month = now.getMonth() + 1;
   const body = h("div");
+  const sub = h("div", { class: "sub" }, "只统计你自己账号的播放记录");
   const title = h("b", { style: { minWidth: "8em", textAlign: "center" } });
   const seg = h("div", { class: "seg" }, [["month", "月度"], ["year", "年度"]].map(([v, l]) =>
     h("button", { "aria-pressed": String(v === period), onclick: (e) => { period = v; [...seg.children].forEach((b) => b.setAttribute("aria-pressed", b === e.currentTarget)); load(); } }, l)));
@@ -35,9 +35,11 @@ export async function reportPage(main) {
   };
   async function load() {
     title.textContent = period === "year" ? `${year} 年` : `${year} 年 ${month} 月`;
+    const setTz = (z) => { sub.textContent = `只统计你自己账号的播放记录 · 时区 ${z}`; };
     body.replaceChildren(h("p", { class: "muted" }, "加载中…"));
     try {
-      const r = await get(`/me/report${qs({ period, year, month, tz: TZ })}`);
+      const r = await get(`/me/report${qs({ period, year, month })}`);
+      setTz(r.tz);
       if (!r.plays) { body.replaceChildren(h("div", { class: "card" }, h("p", { class: "muted" }, "这段时间还没有播放记录。"))); return; }
       const dayLabels = period === "year" ? r.by_day.map((_, i) => `${i + 1}月`) : r.by_day.map((_, i) => String(i + 1));
       body.replaceChildren(
@@ -56,7 +58,7 @@ export async function reportPage(main) {
           h("div", { class: "card" }, h("h3", null, period === "year" ? "按月" : "按日"), bars(r.by_day, dayLabels, "播放分布"))));
     } catch (e) { errToast(e); body.replaceChildren(); }
   }
-  main.replaceChildren(h("div", { class: "page-head" }, h("div", { style: { flex: 1 } }, h("h1", null, "听歌报告"), h("div", { class: "sub" }, `只统计你自己账号的播放记录 · 时区 ${TZ}`)),
+  main.replaceChildren(h("div", { class: "page-head" }, h("div", { style: { flex: 1 } }, h("h1", null, "听歌报告"), sub),
     seg, h("button", { class: "btn icon sm", "aria-label": "上一段", onclick: () => step(-1) }, icon("chevL")), title, h("button", { class: "btn icon sm", "aria-label": "下一段", onclick: () => step(1) }, icon("chevR"))), body);
   load();
 }
