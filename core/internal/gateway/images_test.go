@@ -179,3 +179,16 @@ func TestDecorateOnlineArtistsAliases(t *testing.T) {
 		t.Fatal("disallowed host aliased")
 	}
 }
+
+func TestDecorateOnlinePlaylistUsesImageCache(t *testing.T) {
+	dir := t.TempDir()
+	d := Deps{Covers: &covers.Cache{Dir: dir, AllowHosts: []string{"p1.music.126.net", "music-file.y.qq.com"}, TTL: time.Hour, MaxBytes: 1 << 20}}
+	p := online.Playlist{CoverURL: "https://music-file.y.qq.com/x/pl.jpg", Tracks: []online.Track{{CoverURL: "http://p1.music.126.net/a.jpg"}}}
+	d.decorateOnlinePlaylist(&p)
+	if p.Cover == nil || !strings.HasPrefix(p.Cover.URL, "/api/v1/images/") {
+		t.Fatalf("playlist cover %+v", p.Cover)
+	}
+	if c := p.Tracks[0].Cover; c == nil || !strings.HasPrefix(c.URL, "/api/v1/images/") {
+		t.Fatalf("track cover %+v", c)
+	}
+}

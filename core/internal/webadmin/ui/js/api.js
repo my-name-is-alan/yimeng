@@ -46,6 +46,18 @@ const tok = () => encodeURIComponent(store.token);
 let coverBust = {};
 export const bustCover = (albumId) => { coverBust[albumId] = Date.now(); };
 export const coverURL = (albumId, size = 300) => albumId ? `/api/v1/albums/${albumId}/cover?size=${size}&access_token=${tok()}${coverBust[albumId] ? `&v=${coverBust[albumId]}` : ""}` : "";
+// D60: every image goes through Core (never a platform CDN). Prefers the
+// object's cover.url (/api/v1/images/{key}, public, preset sizes); falls back to
+// the library album cover; otherwise empty (placeholder).
+const PRESETS = [120, 300, 600, 1200];
+export const presetSize = (s) => PRESETS.find((p) => p >= s * (window.devicePixelRatio || 1)) || 1200;
+export const imgURL = (x, s = 300) => {
+  const u = x?.cover?.url;
+  if (u && u.startsWith("/api/v1/images/")) return `${u}?size=${presetSize(s)}`;
+  if (u && u.startsWith("/api/")) return u;
+  const aid = x?.album_id;
+  return aid && !String(aid).includes(":") ? coverURL(aid, s) : "";
+};
 export const artistImageURL = (ar, size) => ar?.image_updated_at ? `/api/v1/artists/${ar.id}/image?access_token=${tok()}&v=${encodeURIComponent(ar.image_updated_at)}` : "";
 export const avatarURL = (u) => u?.avatar_url ? `${u.avatar_url}&access_token=${tok()}` : "";
 export const streamURL = (trackId) => `/api/v1/stream/${trackId}?access_token=${tok()}`;

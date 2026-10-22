@@ -1,5 +1,5 @@
 // Reusable library widgets: album/artist cards, track lists with actions, editors.
-import { get, post, put, del, qs, coverURL, downloadURL, bustCover, artistImageURL } from "./api.js";
+import { get, post, put, del, qs, coverURL, downloadURL, bustCover, artistImageURL, imgURL, presetSize } from "./api.js";
 import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel, originName } from "./ui.js";
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
@@ -9,10 +9,9 @@ const ext = (id) => typeof id === "string" && id.includes(":");
 const extHref = (kind, id) => { const i = id.indexOf(":"); return `#/online/${id.slice(0, i)}/${kind}/${encodeURIComponent(id.slice(i + 1))}`; };
 export const albumHref = (id) => ext(id) ? extHref("album", id) : `#/album/${id}`;
 export const artistHref = (id) => ext(id) ? extHref("artist", id) : `#/artist/${id}`;
-const netImg = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
-const PRESET = [120, 300, 600, 1200];
-const cached = (u, s) => `${u}?size=${PRESET.find((p) => p >= s * (window.devicePixelRatio || 1)) || 1200}`;
-export const trackArt = (t, size = 80) => t.cover?.url?.startsWith("/api/v1/images/") ? cached(t.cover.url, size) : t.cover_url ? netImg(t.cover_url, size) : t.album_id ? coverURL(t.album_id, size) : "";
+export const trackArt = (t, size = 80) => imgURL(t, size);
+// Match candidates: only Core's cached preview (preview_url); never the provider URL.
+const prevURL = (c, s) => c.preview_url ? `${c.preview_url}?size=${presetSize(s)}` : "";
 // 试听 = small lime outlined pill (designer spec); unplayable rows are dimmed
 // instead of badged, and explain themselves on tap.
 export function playBadge(t) {
@@ -213,7 +212,7 @@ function mbPane(kind, obj, form, fields) {
       if (!r.items.length) return res.replaceChildren(h("p", { class: "muted" }, "没有找到候选。试试修改标题或艺人再搜。"));
       res.replaceChildren(...r.items.sort((a, b) => b.score - a.score).map((c) => {
         const b = h("button", { class: "cand", onclick: () => { [...res.children].forEach((x) => x.setAttribute("aria-selected", x === b)); showDiff(c); } },
-          h("div", { class: "row" }, c.cover_url ? h("img", { src: c.cover_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer", style: { width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover" } }) : null,
+          h("div", { class: "row" }, c.preview_url ? h("img", { src: prevURL(c, 36), alt: "", loading: "lazy", referrerpolicy: "no-referrer", style: { width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover" } }) : null,
             h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: `badge src-${c.provider || ""}` }, providerLabel(c.provider)), conf(c.score)),
           h("div", { class: "muted", style: { fontSize: "13px" } }, [c.artist, c.album, c.release_date || c.year, c.label, c.duration_ms ? fmtDur(c.duration_ms) : "", c.track_count ? `${c.track_count} 首` : ""].filter(Boolean).join(" · ")),
           h("div", { class: "dim mono" }, [c.isrc && `ISRC ${c.isrc}`, c.upc && `UPC ${c.upc}`, c.popularity ? `热度 ${c.popularity}` : "", (c.genres || []).slice(0, 3).join(" / "), c.mb_recording_id || c.mb_release_id || (c.provider === "musicbrainz" ? c.external_id : "")].filter(Boolean).join(" · ")));
@@ -235,7 +234,7 @@ function mbPane(kind, obj, form, fields) {
       rows.push(h("label", { class: `diff ${same ? "same" : ""}` }, cb, h("span", { class: "muted" }, label), h("span", { class: "old ellipsis" }, ov || "—"), "→", h("span", { class: "new ellipsis" }, nv)));
     }
     const coverBtn = kind === "album" && c.cover_url ? h("div", { class: "row", style: { gap: "10px", margin: "8px 0" } },
-      h("img", { src: c.cover_url, alt: "", referrerpolicy: "no-referrer", style: { width: "64px", height: "64px", borderRadius: "6px", objectFit: "cover" } }),
+      c.preview_url ? h("img", { src: prevURL(c, 64), alt: "", referrerpolicy: "no-referrer", style: { width: "64px", height: "64px", borderRadius: "6px", objectFit: "cover" } }) : h("div", { class: "art", style: { width: "64px", height: "64px", borderRadius: "6px" } }),
       h("button", { class: "btn sm", onclick: async () => { try { await post(`/albums/${obj.id}/cover/from-match`, { provider: c.provider, url: c.cover_url }); bustCover(obj.id); toast("封面已替换（本地覆盖，可在「封面」页恢复）"); } catch (e) { errToast(e); } } }, icon("album"), "使用此封面")) : null;
     diff.replaceChildren(h("h3", { style: { margin: "6px 0" } }, "应用到表单"), ...rows, coverBtn,
       h("div", { class: "row", style: { marginTop: "10px" } }, h("span", { class: "spacer" }),
@@ -327,7 +326,7 @@ export async function editArtistImage(ar, onChange) {
     cands.replaceChildren(...(r.items.length ? r.items.map((c) => h("button", { class: "ai-cand", title: `${providerLabel(c.provider)} · ${c.name}`, onclick: async (e) => {
       e.currentTarget.disabled = true;
       try { const a = await post(`/artists/${ar.id}/image/from-match`, { provider: c.provider, url: c.image_url }); toast(`已使用 ${providerLabel(c.provider)} 的图片`); done(a.artist || a); } catch (err) { errToast(err); } finally { e.currentTarget.disabled = false; }
-    } }, h("img", { src: c.image_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer" }), h("span", { class: "n ellipsis" }, c.name), h("span", { class: "src-text" }, providerLabel(c.provider))))
+    } }, (c.preview_url ? h("img", { src: prevURL(c, 120), alt: "", loading: "lazy", referrerpolicy: "no-referrer" }) : h("div", { class: "art" })), h("span", { class: "n ellipsis" }, c.name), h("span", { class: "src-text" }, providerLabel(c.provider))))
       : [h("p", { class: "muted" }, "没有找到候选图片，可以手动上传。")]));
   } catch (e) { cands.replaceChildren(h("p", { class: "muted" }, e.status === 503 ? "没有可用的元数据来源（可在设置中启用）。" : `查找失败：${e.message}`)); }
 }

@@ -1,6 +1,6 @@
 // Web player: plays original streams (/api/stream supports HTTP Range → seekable), local queue,
 // shuffle/repeat, Media Session, scrobbles to /api/scrobble, synced lyrics.
-import { get, post, streamURL, coverURL } from "./api.js";
+import { get, post, streamURL, coverURL, imgURL } from "./api.js";
 import { h, icon, cover, fmtDur, setRangeFill, $, toast, isLocal, NOT_LOCAL_MSG } from "./ui.js";
 
 const SKEY = "yimeng.player";
@@ -169,7 +169,7 @@ export const player = {
 };
 const isOnline = (id) => typeof id === "string" && id.includes(":");
 // Cover for a queue item: online DTOs carry a CDN URL; library items use the album cover endpoint.
-export const artURL = (t, s = 120) => t?.cover_url ? (/music\.126\.net/.test(t.cover_url) ? `${t.cover_url.replace(/^http:/, "https:")}?param=${s}y${s}` : t.cover_url) : t?.album_id ? coverURL(t.album_id, s) : "";
+export const artURL = (t, s = 120) => t ? imgURL(t, s) : "";
 export function entBadge(ent) {
   if (!ent) return null;
   if (ent.entitlement === "preview") return h("span", { class: "pill-pv", title: "当前账号仅能播放平台提供的官方试听片段" }, "试听");
@@ -180,7 +180,7 @@ export function entBadge(ent) {
 }
 function onAudio(type, fn) { for (const a of [audio, spare]) a.addEventListener(type, (e) => { if (e.target === audio) fn(e); }); }
 export const slim = (t) => ({ id: t.id, title: t.title, artist_name: t.artist_name, album_id: t.album_id, album_title: t.album_title, duration_ms: t.duration_ms, format: t.format,
-  origin: t.origin, cover_url: t.cover_url, playable: t.playable, entitlement: t.entitlement, preview: t.preview, local_id: t.local_id,
+  origin: t.origin, cover_url: t.cover_url, cover: t.cover, playable: t.playable, entitlement: t.entitlement, preview: t.preview, local_id: t.local_id,
   rg: t.rg || t.audio?.replaygain || t.stream?.replaygain || undefined,
   stream: t.stream ? { lossless: t.stream.lossless, sample_rate: t.stream.sample_rate, bit_depth: t.stream.bit_depth, bitrate_kbps: t.stream.bitrate_kbps } : undefined });
 

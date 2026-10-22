@@ -1,7 +1,7 @@
 // Online sources (音源插件): plugin settings, online home sections, charts,
 // external album/artist/playlist pages, first-run mode wizard.
 // Credentials are posted straight to Core; nothing secret is kept in the page.
-import { get, post, put, del, qs } from "./api.js";
+import { get, post, put, del, qs, imgURL } from "./api.js";
 import { h, icon, cover, fmtNum, empty, toast, errToast, dialog, confirmDlg, originName } from "./ui.js";
 import { player } from "./player.js";
 import { trackList } from "./components.js";
@@ -13,7 +13,7 @@ export const onlineHref = (kind, id) => { const [o, n] = split(id); return `#/on
 const ERR = { plugin_login_required: "需要登录", risk_control: "平台风控，稍后再试", not_supported: "不支持", plugin_disabled: "未启用", upstream: "平台暂不可用" };
 
 // Normalize an online Track DTO to the library track shape used by trackList/player.
-export const normTrack = (t) => ({ ...t, album_id: t.album?.id || t.album_id || "", album_title: t.album?.name || t.album_title || "", cover_url: t.cover_url });
+export const normTrack = (t) => ({ ...t, album_id: t.album?.id || t.album_id || "", album_title: t.album?.name || t.album_title || "", cover_url: t.cover_url, cover: t.cover });
 export const normTracks = (ts) => (ts || []).map(normTrack);
 
 export function playableCounts(ts) {
@@ -189,22 +189,22 @@ export function pluginLogin(p, done) {
 // ── cards / shelves ──
 export function onlinePlaylistCard(pl) {
   return h("a", { class: "album-card", href: onlineHref("playlist", pl.id) },
-    h("div", { class: "art" }, cover(pl.cover_url ? sized(pl.cover_url, 300) : "", pl.name),
+    h("div", { class: "art" }, cover(imgURL(pl, 300), pl.name),
       h("button", { class: "play-circle hover-play", "aria-label": `播放 ${pl.name}`, onclick: async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await get(`/online/${split(pl.id).join("/playlists/")}`); playOnline(normTracks(r.playlist.tracks)); } catch (err) { errToast(err); } } }, icon("play"))),
     h("div", { class: "t ellipsis", title: pl.name }, pl.name, pl.kind === "liked" ? h("span", { class: "badge src" }, "我喜欢") : null),
     h("div", { class: "s ellipsis" }, pl.subtitle || [pl.owner, pl.track_count ? `${pl.track_count} 首` : "", pl.play_count ? `${fmtCount(pl.play_count)} 次播放` : ""].filter(Boolean).join(" · ")));
 }
 export function onlineAlbumCard(al) {
-  return h("a", { class: "album-card", href: onlineHref("album", al.id) }, h("div", { class: "art" }, cover(al.cover_url ? sized(al.cover_url, 300) : "", al.title)),
+  return h("a", { class: "album-card", href: onlineHref("album", al.id) }, h("div", { class: "art" }, cover(imgURL(al, 300), al.title)),
     h("div", { class: "t ellipsis" }, al.title), h("div", { class: "s ellipsis" }, [al.artist_name, al.year].filter(Boolean).join(" · ")));
 }
 export function onlineArtistCard(ar) {
-  return h("a", { href: onlineHref("artist", ar.id) }, cover(ar.picture_url ? sized(ar.picture_url, 200) : "", ar.name, "round"),
+  return h("a", { href: onlineHref("artist", ar.id) }, cover(imgURL(ar, 200), ar.name, "round"),
     h("div", { class: "t ellipsis" }, ar.name), h("div", { class: "s" }, ar.album_count ? `${ar.album_count} 张专辑` : originName(ar.origin)));
 }
 const fmtCount = (n) => n >= 1e8 ? `${(n / 1e8).toFixed(1)}亿` : n >= 1e4 ? `${Math.round(n / 1e4)}万` : fmtNum(n);
 // NetEase image CDN supports ?param=WxH; other hosts ignore unknown params.
-export const sized = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
+export const sized = (x, s) => imgURL(x, s); // legacy name; objects only, never raw CDN URLs
 
 export function playOnline(tracks, start = 0) {
   const ok = tracks.filter((t) => !(t.playable === false || t.entitlement === "unavailable"));
@@ -260,7 +260,7 @@ export async function detail(main, origin, kind, native) {
   const x = kind === "playlist" ? raw.playlist : raw;
   const tracks = normTracks(kind === "artist" ? x.top_tracks : x.tracks);
   const c = playableCounts(tracks);
-  const title = x.title || x.name, img = x.cover_url || x.picture_url;
+  const title = x.title || x.name, img = x.cover?.url ? x : null;
   const facts = [originName(origin), kind === "album" ? [x.artist_name, x.year].filter(Boolean).join(" · ") : kind === "playlist" ? x.owner : "", `${tracks.length} 首`].filter(Boolean);
   const status = h("div", { class: "row wrap", style: { gap: "6px" } },
     c.full ? h("span", { class: "badge ok" }, `${c.full} 首可完整播放`) : null,
@@ -271,8 +271,8 @@ export async function detail(main, origin, kind, native) {
   if (kind === "playlist") actions.push(h("button", { class: "btn", onclick: () => clone(origin, native, x) }, icon("plus"), "克隆为本地歌单"),
     h("button", { class: "btn", onclick: () => importInto(origin, native) }, icon("list"), "导入到已有歌单"));
   main.replaceChildren(
-    h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: img ? `url("${sized(img, 300)}")` : "none" } }),
-      h("div", { class: "hero-row" }, cover(img ? sized(img, 600) : "", title, kind === "artist" ? "round" : ""),
+    h("section", { class: "hero" }, h("div", { class: "bloom", style: { backgroundImage: img ? `url("${imgURL(img, 300)}")` : "none" } }),
+      h("div", { class: "hero-row" }, cover(img ? imgURL(img, 600) : "", title, kind === "artist" ? "round" : ""),
         h("div", { class: "hero-meta" }, h("div", { class: "eyebrow" }, { album: "专辑", artist: "艺人", playlist: x.kind === "chart" ? "排行榜" : "歌单" }[kind], " ", h("span", { class: "badge src" }, originName(origin))),
           h("h1", null, title), h("div", { class: "facts" }, facts.join(" · ")),
           x.description ? h("div", { class: "facts ellipsis", style: { maxWidth: "640px" }, title: x.description }, x.description) : null, status,
