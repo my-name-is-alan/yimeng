@@ -7,7 +7,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -15,22 +14,21 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.NativePaint
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathMeasure
+import android.graphics.PathMeasure as AndroidPathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
@@ -64,27 +62,23 @@ fun DoodleLayer(
                 tSec = wall * (if (reduceMotion) 0.08f else 1f)
                 if (drawn < 1f) {
                     val p = (wall / 1.6f).coerceIn(0f, 1f)
-                    drawn = cubicBezierEase(p) // cubic-bezier(0.42,0,0.58,1)
+                    drawn = cubicBezierEase(p) // cubic-bezier(0.42, 0, 0.58, 1)
                 }
-            }
-            if (drawn >= 1f && !realPlayback && !reduceMotion) {
-                // keep looping for demo pulse only
             }
         }
     }
     DisposableEffect(Unit) { onDispose { running = false } }
 
-    val density = LocalContext.current.resources.displayMetrics.density
+    val density = LocalDensity.current.density
     Canvas(modifier) {
         val slot = coverSlot(track.layout, size.width)
-        val full = rememberPath(track, slot, size.width, size.height)
-        val measure = PathMeasure().apply { setPath(full, false) }
-        val dst = Path()
-        measure.getSegment(0f, measure.length * drawn, dst, true)
-
-        val strokePx = track.strokeDp * density
+        val full = motifPath(track, slot, size.width, size.height)
+        // Trim ALL contours together (not just the first PathMeasure contour).
+        val trimmed = trimAllContours(full, drawn)
         val wobbleAmp = track.jitter * intensity * (if (reduceMotion) 0.08f else 1f)
+        val dst = if (wobbleAmp > 0.01f) wobblePath(trimmed, wobbleAmp, tSec) else trimmed
 
+        val strokePx = track.strokeDp * density // 1.6 + energy×1.4 dp
         val pulse = when {
             reduceMotion -> 0f
             realPlayback -> 0.04f * intensity * exp(-7.0 * lastBeatAgoSec.toDouble()).toFloat()
@@ -94,34 +88,108 @@ fun DoodleLayer(
         val pivot = Offset(slot.center.x, slot.center.y)
 
         scale(sc, sc, pivot) {
-            // Glow: same path again, soft wide stroke ≈ BlurMaskFilter 4dp white 50%
-            drawPath(
-                path = dst,
-                color = Color.White.copy(alpha = 0.50f),
-                style = Stroke(width = strokePx + 4.dp.toPx() * 2f, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+            // Glow = white 50% + BlurMaskFilter 4dp (real mask, not fake wide stroke)
+            drawIntoCanvas { canvas ->
+                val glow = Paint().asFrameworkPaint().apply {
+                    isAntiAlias = true
+                    style = android.graphics.Paint.Style.STROKE
+                    strokeWidth = strokePx
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                    strokeJoin = android.graphics.Paint.Join.ROUND
+                    color = android.graphics.Color.argb(128, 255, 255, 255) // 50%
+                    maskFilter = BlurMaskFilter(4.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
+                }
+                canvas.nativeCanvas.drawPath(dst.asAndroidPath(), glow)
+            }
+            // Main stroke alpha 0.6+0.3×intensity, width 1.6+energy×1.4 dp
             drawPath(
                 path = dst,
                 color = Color.White.copy(alpha = 0.6f + 0.3f * intensity),
                 style = Stroke(width = strokePx, cap = StrokeCap.Round, join = StrokeJoin.Round),
             )
         }
-        // wobbleAmp reserved for AGSL/shader port; path is stable for golden checks
-        @Suppress("UNUSED_VARIABLE") val _w = wobbleAmp
     }
 }
 
+/** cubic-bezier(0.42, 0, 0.58, 1) — unit curve via Newton on x, then y. */
 private fun cubicBezierEase(t: Float): Float {
-    // Approximate cubic-bezier(0.42, 0, 0.58, 1) with smoothstep-ish ease-in-out
-    val u = t.coerceIn(0f, 1f)
-    return u * u * (3f - 2f * u)
+    val x1 = 0.42f; val y1 = 0f; val x2 = 0.58f; val y2 = 1f
+    fun bez(a: Float, b: Float, c: Float, d: Float, u: Float): Float {
+        val s = 1f - u
+        return s * s * s * a + 3f * s * s * u * b + 3f * s * u * u * c + u * u * u * d
+    }
+    fun dbez(a: Float, b: Float, c: Float, d: Float, u: Float): Float {
+        val s = 1f - u
+        return 3f * s * s * (b - a) + 6f * s * u * (c - b) + 3f * u * u * (d - c)
+    }
+    var u = t.coerceIn(0f, 1f)
+    repeat(10) {
+        val x = bez(0f, x1, x2, 1f, u)
+        val dx = dbez(0f, x1, x2, 1f, u)
+        if (abs(dx) < 1e-6f) return@repeat
+        u = (u - (x - t) / dx).coerceIn(0f, 1f)
+    }
+    return bez(0f, y1, y2, 1f, u)
+}
+
+/** Android PathMeasure walks one contour at a time — trim across ALL contours together. */
+private fun trimAllContours(src: Path, fraction: Float): Path {
+    val f = fraction.coerceIn(0f, 1f)
+    val out = Path()
+    if (f <= 0f) return out
+    val srcA = android.graphics.Path(src.asAndroidPath())
+    val pm = AndroidPathMeasure(srcA, false)
+    val lengths = ArrayList<Float>()
+    do { lengths.add(pm.length) } while (pm.nextContour())
+    val total = lengths.sum()
+    if (total <= 0f) return out
+    val target = total * f
+    pm.setPath(srcA, false)
+    val outA = out.asAndroidPath()
+    var acc = 0f
+    var i = 0
+    do {
+        val len = lengths[i]
+        val chunk = android.graphics.Path()
+        when {
+            target >= acc + len -> pm.getSegment(0f, len, chunk, true)
+            target > acc -> pm.getSegment(0f, target - acc, chunk, true)
+        }
+        outA.addPath(chunk)
+        acc += len
+        i++
+    } while (pm.nextContour())
+    return out
+}
+
+/** Wire up wobble: perpendicular sine offset along each contour (amp = jitter×intensity). */
+private fun wobblePath(src: Path, amp: Float, phase: Float): Path {
+    val out = Path()
+    val pm = AndroidPathMeasure(android.graphics.Path(src.asAndroidPath()), false)
+    do {
+        val len = pm.length
+        if (len >= 1f) {
+            val steps = max(2, (len / 3.5f).toInt())
+            val pos = FloatArray(2)
+            val tan = FloatArray(2)
+            for (i in 0..steps) {
+                val d = len * i / steps
+                pm.getPosTan(d, pos, tan)
+                val nx = -tan[1]; val ny = tan[0]
+                val wob = sin(d * 0.085f + phase * 2.4f) * amp
+                val x = pos[0] + nx * wob
+                val y = pos[1] + ny * wob
+                if (i == 0) out.moveTo(x, y) else out.lineTo(x, y)
+            }
+        }
+    } while (pm.nextContour())
+    return out
 }
 
 private data class Slot(val rect: Rect) {
     val center get() = rect.center
 }
 
-/** Positions from 402-wide design; y also × w/402. */
 private fun coverSlot(layout: DreamLayout, w: Float): Slot {
     val k = w / 402f
     return when (layout) {
@@ -131,7 +199,7 @@ private fun coverSlot(layout: DreamLayout, w: Float): Slot {
     }
 }
 
-private fun rememberPath(track: DreamTrack, slot: Slot, w: Float, h: Float): Path {
+private fun motifPath(track: DreamTrack, slot: Slot, w: Float, h: Float): Path {
     val rc = slot.rect
     val s = rc.width
     val x = rc.left
@@ -166,6 +234,7 @@ private fun rememberPath(track: DreamTrack, slot: Slot, w: Float, h: Float): Pat
 }
 
 private fun Rect.inflate(v: Float) = Rect(left - v, top - v, right + v, bottom + v)
+
 
 /** Line-by-line port of iOS DoodlePaths. */
 object DoodlePaths {

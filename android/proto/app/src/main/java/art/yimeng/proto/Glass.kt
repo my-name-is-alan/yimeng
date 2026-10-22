@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.HazeState
@@ -32,7 +31,10 @@ import dev.chrisbanes.haze.hazeEffect
 
 private val Base = Color(0xFF0A0A0C)
 
-/** Designer review: HazeStyle(bg=#0A0A0C, no tints, blur=20) + alpha 0.35; black 14%; soft shadow; glassRim. */
+/**
+ * Real hazeEffect α=0.35 (do NOT substitute black 14% for that alpha).
+ * Stack: haze(α=0.35, blur=20, no material tint) + black 14% + optional Base 55% (mini) + rim + shadow black30% r14 y6.
+ */
 @Composable
 fun GlassCapsule(
     hazeState: HazeState,
@@ -54,17 +56,27 @@ fun GlassCapsule(
                         state = hazeState,
                         style = HazeStyle(
                             backgroundColor = Base,
-                            tints = emptyList(),
+                            tints = emptyList(), // no material tint
                             blurRadius = blurRadius,
                         ),
-                    )
+                    ) {
+                        // Real haze alpha — not faked by black overlay alone.
+                        alpha = 0.35f
+                    }
                     else -> Modifier.background(Base.copy(alpha = 0.70f))
                 },
             )
-            // hazeEffect itself; enforce 0.35 feel with black 14% tint always
+            // Keep black 14% tint (separate from haze α)
             .background(Color.Black.copy(alpha = 0.14f))
+            // Mini player: Base #0A0A0C 55%
             .then(if (miniPlayerExtra) Modifier.background(Base.copy(alpha = 0.55f)) else Modifier)
-            .then(if (api in 31..32) Modifier.glassRimStroke() else if (api >= 33) Modifier.glassRimApprox() else Modifier.glassRimFallback())
+            .then(
+                when {
+                    api >= 33 -> Modifier.glassRimApprox()
+                    api >= 31 -> Modifier.glassRimStroke()
+                    else -> Modifier.glassRimFallback()
+                },
+            )
             .drawWithContent {
                 drawContent()
                 drawRect(
@@ -96,7 +108,12 @@ fun GlassOrb(
                 drawIntoCanvas { canvas ->
                     val p = Paint().asFrameworkPaint().apply {
                         isAntiAlias = true
-                        color = android.graphics.Color.argb((255 * glowA).toInt(), tint.red.times(255).toInt(), tint.green.times(255).toInt(), tint.blue.times(255).toInt())
+                        color = android.graphics.Color.argb(
+                            (255 * glowA).toInt(),
+                            (tint.red * 255).toInt(),
+                            (tint.green * 255).toInt(),
+                            (tint.blue * 255).toInt(),
+                        )
                         maskFilter = BlurMaskFilter(glowBlur.toPx(), BlurMaskFilter.Blur.NORMAL)
                     }
                     canvas.nativeCanvas.drawCircle(size.width / 2f, size.height / 2f + 4f, size.minDimension / 2f, p)
@@ -109,9 +126,10 @@ fun GlassOrb(
                     Modifier.hazeEffect(
                         state = hazeState,
                         style = HazeStyle(backgroundColor = Base, tints = emptyList(), blurRadius = 20.dp),
-                    )
+                    ) { alpha = 0.35f }
                 } else Modifier.background(Base.copy(alpha = 0.70f)),
             )
+            .background(Color.Black.copy(alpha = 0.14f))
             .background(tint)
             .drawWithContent {
                 drawContent()
@@ -128,6 +146,7 @@ fun GlassOrb(
     )
 }
 
+/** Shadow black 30%, r14, y6. */
 private fun Modifier.glassSoftShadow(
     shapeCorner: Dp,
     blur: Dp = 14.dp,
@@ -146,7 +165,6 @@ private fun Modifier.glassSoftShadow(
     }
 }
 
-/** API 33+ approx of glassRim (full AGSL later); TL/BR bright ~1.6px + inner 10px glow 10%. */
 private fun Modifier.glassRimApprox(): Modifier = drawWithCache {
     val stroke = 1.6f
     onDrawWithContent {
@@ -167,7 +185,6 @@ private fun Modifier.glassRimApprox(): Modifier = drawWithCache {
     }
 }
 
-/** API 31–32: 1dp stroke white gradient 40%/15%. */
 private fun Modifier.glassRimStroke(): Modifier = drawWithCache {
     onDrawWithContent {
         drawContent()
@@ -182,7 +199,6 @@ private fun Modifier.glassRimStroke(): Modifier = drawWithCache {
     }
 }
 
-/** <31: base already 70%; highlight + rim. */
 private fun Modifier.glassRimFallback(): Modifier = drawWithContent {
     drawContent()
     drawRoundRect(

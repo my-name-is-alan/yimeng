@@ -1,7 +1,6 @@
 package art.yimeng.proto
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,15 +21,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.Person
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,9 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -54,20 +44,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.provider.Settings
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Text
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
-import kotlin.math.sin
-import kotlin.math.PI
 
-private data class Tab(val label: String, val icon: ImageVector)
+private data class Tab(val label: String)
 
 @Composable
 fun ProtoScreen() {
     val haze = remember { HazeState() }
     var tab by remember { mutableIntStateOf(0) }
     val track = DreamMock.orange
-    val left = listOf(Tab("首页", Icons.Rounded.Home), Tab("曲库", Icons.Rounded.LibraryMusic))
-    val right = listOf(Tab("搜索", Icons.Rounded.Search), Tab("我的", Icons.Rounded.Person))
+    val left = listOf(Tab("首页"), Tab("曲库"))
+    val right = listOf(Tab("搜索"), Tab("我的"))
     val ctx = LocalContext.current
     val reduce = remember {
         Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
@@ -80,16 +70,14 @@ fun ProtoScreen() {
                 val dt = (now - last) / 1e9f
                 last = now
                 beatAgo += dt
-                // demo beats at bpm
                 val period = 60f / track.bpm
                 if (beatAgo >= period) beatAgo -= period
             }
         }
     }
-    var blurCmp by remember { mutableIntStateOf(20) } // 12/16/20/24 comparison
+    var blurCmp by remember { mutableIntStateOf(20) }
 
     Box(Modifier.fillMaxSize().background(YmTheme.base)) {
-        // Background + cover in hazeSource; doodle OUTSIDE hazeSource per review
         Box(Modifier.fillMaxSize().hazeSource(haze)) {
             DreamField(track, Modifier.fillMaxSize(), realPlayback = true, lastBeatAgoSec = beatAgo, reduceMotion = reduce)
             Box(
@@ -101,7 +89,7 @@ fun ProtoScreen() {
                     .background(Brush.linearGradient(track.blobs.take(3))),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("封面", color = Color.White.copy(0.7f), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                TextSafe("封面", Color.White.copy(0.7f), 18.sp, FontWeight.SemiBold)
             }
         }
         DoodleLayer(
@@ -116,18 +104,18 @@ fun ProtoScreen() {
         Column(
             Modifier.align(Alignment.TopStart).statusBarsPadding().padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
-            Text("译梦 · 玻璃 + 涂鸦 PoC", color = YmTheme.fg, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Haze ${blurCmp}dp · motif=${track.motif} · " + if (glassBlurActive()) "API≥31" else "API<31",
-                color = YmTheme.secondary, fontSize = 13.sp,
+            TextSafe("译梦 · 玻璃 + 涂鸦 PoC", YmTheme.fg, 20.sp, FontWeight.Bold)
+            TextSafe(
+                "Haze ${blurCmp}dp α=0.35 · motif=${track.motif} · " + if (glassBlurActive()) "API≥31" else "API<31",
+                YmTheme.secondary, 13.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(12, 16, 20, 24).forEach { r ->
-                    Text(
+                    TextSafe(
                         "${r}dp",
-                        color = if (blurCmp == r) YmTheme.accent else YmTheme.secondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        if (blurCmp == r) YmTheme.accent else YmTheme.secondary,
+                        12.sp,
+                        FontWeight.SemiBold,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (blurCmp == r) Color.White.copy(0.12f) else Color.Transparent)
@@ -156,14 +144,13 @@ fun ProtoScreen() {
                     Box(Modifier.size(40.dp).clip(CircleShape).background(track.blobs[1]))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(track.title, color = YmTheme.fg, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(track.artist, color = YmTheme.fg.copy(0.7f), fontSize = 12.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        TextSafe(track.title, YmTheme.fg, 14.sp, FontWeight.SemiBold, maxLines = 1)
+                        TextSafe(track.artist, YmTheme.fg.copy(0.7f), 12.sp, maxLines = 1)
                     }
-                    Icon(Icons.Rounded.Pause, null, tint = YmTheme.fg, modifier = Modifier.size(22.dp))
+                    // No Material icons — geometric transport marks only.
+                    PauseMark(color = YmTheme.fg, size = 22.dp)
                     Spacer(Modifier.width(14.dp))
-                    Icon(Icons.Rounded.SkipNext, null, tint = YmTheme.fg, modifier = Modifier.size(20.dp))
+                    SkipMark(color = YmTheme.fg, size = 20.dp)
                 }
             }
 
@@ -192,6 +179,26 @@ fun ProtoScreen() {
 }
 
 @Composable
+private fun TextSafe(
+    text: String,
+    color: Color,
+    size: androidx.compose.ui.unit.TextUnit,
+    weight: FontWeight = FontWeight.Normal,
+    maxLines: Int = Int.MAX_VALUE,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = size,
+        fontWeight = weight,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier,
+    )
+}
+
+@Composable
 private fun TabItem(t: Tab, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier
@@ -202,9 +209,19 @@ private fun TabItem(t: Tab, selected: Boolean, onClick: () -> Unit, modifier: Mo
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(t.icon, t.label, tint = if (selected) YmTheme.accent else YmTheme.fg.copy(0.75f), modifier = Modifier.size(19.dp))
-            Text(t.label, color = if (selected) YmTheme.accent else YmTheme.fg.copy(0.75f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Transition: dream-ring + spark brand mark only (await iOS shared icon set).
+            DreamRingSpark(
+                color = if (selected) YmTheme.accent else YmTheme.fg,
+                size = 19.dp,
+                selected = selected,
+            )
+            TextSafe(
+                t.label,
+                if (selected) YmTheme.accent else YmTheme.fg.copy(0.75f),
+                10.sp,
+                FontWeight.SemiBold,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -245,15 +262,30 @@ private fun CollectionOrb(
                 )
             },
     ) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Box {
-                Text("☽", fontSize = 22.sp, color = Color.White.copy(0.90f), modifier = Modifier.rotate(if (selected) -12f else 0f))
-                Text("✧", fontSize = 9.sp, color = Color.White.copy(0.90f),
-                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-2).dp).scale(starScale.value))
-                Text("☽", fontSize = 22.sp, color = Color.White.copy(0.35f),
-                    modifier = Modifier.offset(x = 0.8.dp, y = (-0.6).dp).rotate(if (selected) -12f else 0f))
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            // Moon + star as paths + Crayon double-stroke — no emoji.
+            Box(Modifier.size(30.dp, 26.dp)) {
+                Canvas(Modifier.fillMaxSize().rotate(if (selected) -12f else 0f)) {
+                    val r = 11.dp.toPx()
+                    val moonP = moonPath(Offset(size.width * 0.42f, size.height * 0.58f), r)
+                    crayonStroke(moonP, Color.White, 2.2.dp.toPx())
+                }
+                Canvas(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 2.dp, y = (-2).dp)
+                        .size(9.dp)
+                        .scale(starScale.value),
+                ) {
+                    val spark = starSparkPath(Offset(size.width / 2f, size.height / 2f), size.minDimension / 2f)
+                    crayonStroke(spark, Color.White, 1.6.dp.toPx())
+                }
             }
-            Text("典藏", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(0.92f))
+            TextSafe("典藏", Color.White.copy(0.92f), 10.sp, FontWeight.SemiBold)
             if (selected) {
                 Box(Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape).background(YmTheme.accent))
             }

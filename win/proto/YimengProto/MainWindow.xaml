@@ -7,8 +7,10 @@
     Title="译梦 · 玻璃 + 涂鸦 PoC">
 
   <Grid x:Name="RootGrid" Background="#FF0A0A0C">
-    <canvas:CanvasControl x:Name="FieldCanvas" Draw="FieldCanvas_Draw"/>
-    <canvas:CanvasControl x:Name="DoodleCanvas" Draw="DoodleCanvas_Draw" CreateResources="DoodleCanvas_CreateResources"/>
+    <!-- Opaque fill — never see-through to desktop -->
+    <Rectangle x:Name="OpaqueBase" Fill="#FF0A0A0C" IsHitTestVisible="False"/>
+    <canvas:CanvasControl x:Name="FieldCanvas" Draw="FieldCanvas_Draw" Margin="0,0,0,160" IsHitTestVisible="False"/>
+    <canvas:CanvasControl x:Name="DoodleCanvas" Draw="DoodleCanvas_Draw" CreateResources="DoodleCanvas_CreateResources" Margin="0,0,0,160" IsHitTestVisible="False"/>
 
     <Grid VerticalAlignment="Bottom" Margin="20,0,20,16" RowSpacing="12">
       <Grid.RowDefinitions>
@@ -16,9 +18,9 @@
         <RowDefinition Height="62"/>
       </Grid.RowDefinitions>
 
-      <!-- Glass via Composition BackdropBrush+GaussianBlur (code-behind); no AcrylicBrush / no Mica -->
-      <Border x:Name="MiniPlayerGlass" Grid.Row="0" CornerRadius="28" Padding="8,0,16,0" Background="#24000000">
-        <Grid>
+      <!-- Mini: Base #0A0A0C 55% (#8C0A0A0C) + black 14% overlay; ApplyBlur stacks same -->
+      <Border x:Name="MiniPlayerGlass" Grid.Row="0" CornerRadius="28" Background="#8C0A0A0C">
+        <Grid Background="#24000000" Padding="8,0,16,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="40"/><ColumnDefinition Width="12"/>
             <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
@@ -29,8 +31,8 @@
             <TextBlock Text="陈粒" Foreground="#B3FFFFFF" FontSize="12" TextTrimming="CharacterEllipsis"/>
           </StackPanel>
           <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-            <FontIcon Glyph="&#xE769;" Foreground="White" FontSize="18"/>
-            <FontIcon Glyph="&#xE893;" Foreground="White" FontSize="16"/>
+            <canvas:CanvasControl Width="22" Height="22" Draw="PauseMark_Draw"/>
+            <canvas:CanvasControl Width="20" Height="20" Draw="SkipMark_Draw"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -43,30 +45,42 @@
               <ColumnDefinition/><ColumnDefinition/>
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Height="54" CornerRadius="27" Background="#20FFFFFF" Margin="2,0">
-              <TextBlock Text="首页" Foreground="#FFC8F542" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10" FontWeight="SemiBold"/>
+              <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                <canvas:CanvasControl Width="19" Height="19" Draw="DreamRingSelected_Draw"/>
+                <TextBlock Text="首页" Foreground="#FFC8F542" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              </StackPanel>
             </Border>
-            <TextBlock Grid.Column="1" Text="曲库" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
-            <TextBlock Grid.Column="3" Text="搜索" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
-            <TextBlock Grid.Column="4" Text="我的" Foreground="#BFFFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="10"/>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <canvas:CanvasControl Width="19" Height="19" Draw="DreamRing_Draw"/>
+              <TextBlock Text="曲库" Foreground="#BFFFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <canvas:CanvasControl Width="19" Height="19" Draw="DreamRing_Draw"/>
+              <TextBlock Text="搜索" Foreground="#BFFFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+              <canvas:CanvasControl Width="19" Height="19" Draw="DreamRing_Draw"/>
+              <TextBlock Text="我的" Foreground="#BFFFFFFF" FontSize="10" HorizontalAlignment="Center"/>
+            </StackPanel>
           </Grid>
         </Border>
         <Border x:Name="OrbGlass" Width="64" Height="64" CornerRadius="32" VerticalAlignment="Top"
                 Margin="0,-18,0,0" HorizontalAlignment="Center" BorderBrush="#66FFFFFF" BorderThickness="0.8"
                 Background="#6B6B4BD8">
-          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-            <TextBlock Text="☽" Foreground="#E6FFFFFF" FontSize="22" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-              <TextBlock.RenderTransform><RotateTransform Angle="-12"/></TextBlock.RenderTransform>
-            </TextBlock>
-            <TextBlock Text="典藏" Foreground="#EBFFFFFF" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            <Ellipse Width="5" Height="5" Fill="#FFC8F542" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-          </StackPanel>
+          <Grid>
+            <canvas:CanvasControl x:Name="OrbCanvas" Draw="OrbCanvas_Draw"/>
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,8">
+              <TextBlock Text="典藏" Foreground="#EBFFFFFF" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <Ellipse Width="5" Height="5" Fill="#FFC8F542" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Grid>
         </Border>
       </Grid>
     </Grid>
 
     <StackPanel Margin="20,16,20,0" VerticalAlignment="Top">
       <TextBlock Text="译梦 · 玻璃 + 涂鸦 PoC" Foreground="White" FontSize="20" FontWeight="Bold"/>
-      <TextBlock Text="Composition BackdropBrush + GaussianBlur；无 Acrylic / 无 Mica；Win2D 涂鸦"
+      <TextBlock Text="haze α=0.35 + Base55% · DoodlePaths full · Screen r=420 · no Segoe"
                  Foreground="#99FFFFFF" FontSize="13" TextWrapping="WrapWholeWords"/>
     </StackPanel>
   </Grid>
