@@ -19,6 +19,7 @@ targets:
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_UIBackgroundModes: "audio"
@@ -28,8 +29,8 @@ targets:
         "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Yimeng/Yimeng.entitlements
-        MARKETING_VERSION: "0.3.5"
-        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"
   YimengWidgets:
     type: app-extension
     platform: iOS
@@ -42,8 +43,8 @@ targets:
       path: YimengWidgets/Info.plist
       properties:
         CFBundleDisplayName: 译梦
-        CFBundleShortVersionString: "0.3.5"
-        CFBundleVersion: "8"
+        CFBundleShortVersionString: "0.3.6"
+        CFBundleVersion: "9"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -57,5 +58,5 @@ targets:
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         SKIP_INSTALL: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
-        MARKETING_VERSION: "0.3.5"
-        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"

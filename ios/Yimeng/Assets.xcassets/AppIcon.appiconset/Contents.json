@@ -1,1 +1,8 @@
-{"images":[{"filename":"icon.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}}
+{
+  "images" : [
+    { "filename" : "icon-ring-any.png", "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" },
+    { "appearances" : [ { "appearance" : "luminosity", "value" : "dark" } ], "filename" : "icon-ring-dark.png", "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" },
+    { "appearances" : [ { "appearance" : "luminosity", "value" : "tinted" } ], "filename" : "icon-ring-tinted.png", "idiom" : "universal", "platform" : "ios", "size" : "1024x1024" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

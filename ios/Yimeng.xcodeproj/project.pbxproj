@@ -439,7 +439,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Yimeng/Yimeng.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -449,7 +449,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.5;
+				MARKETING_VERSION = 0.3.6;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -464,7 +464,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = YimengWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -472,7 +472,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.5;
+				MARKETING_VERSION = 0.3.6;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -488,7 +488,7 @@
 				CODE_SIGNING_ALLOWED = NO;
 				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = YimengWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -496,7 +496,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.5;
+				MARKETING_VERSION = 0.3.6;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -514,7 +514,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Yimeng/Yimeng.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -524,7 +524,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.5;
+				MARKETING_VERSION = 0.3.6;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
