@@ -58,9 +58,10 @@ svg.fillsvg { fill: currentColor; stroke: none; }
 .brand { display: flex; gap: 12px; align-items: center; padding: 0 8px; }
 .brand b { display: block; font-size: 20px; letter-spacing: .02em; }
 .brand small { color: var(--fg-3); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
-.brand-orb { width: 36px; height: 36px; border-radius: 50%; flex: none; background:
-  radial-gradient(circle at 35% 30%, #fff 0 8%, transparent 9%), radial-gradient(circle at 60% 55%, var(--lime), #5b7d00 60%, #1a2400);
-  box-shadow: 0 0 24px rgb(200 245 66 / .35), inset 0 0 8px rgb(0 0 0 / .4); }
+/* Brand: the app's 「梦境环」 icon (iOS AppIcon, designer commit 5f50078) */
+.brand-orb { width: 36px; height: 36px; border-radius: 22.5%; flex: none; background: url(brand/icon-ring-96.png) center / cover no-repeat;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / .06), 0 6px 18px rgb(0 0 0 / .35); }
+.login-card .brand-orb { background-image: url(brand/icon-ring-192.png); }
 .side-search { display: flex; align-items: center; gap: 8px; background: var(--fill); border-radius: 999px; padding: 0 14px; height: 40px; }
 .side-search svg { width: 16px; height: 16px; color: var(--fg-3); }
 .side-search input { border: 0; background: none; outline: none; width: 100%; font-size: 14px; }
@@ -462,3 +463,40 @@ dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: blur(6px); }
 .hs-wrap.can-l > .hs-el { -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px); mask-image: linear-gradient(90deg, transparent, #000 48px); }
 .hs-wrap.can-r > .hs-el { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
 .hs-wrap.can-l.can-r > .hs-el { -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+
+/* ── Custom controls (replace native select/checkbox/radio/number/file) ── */
+.ym-select { position: relative; display: inline-block; min-width: 140px; max-width: 100%; vertical-align: middle; }
+.ym-native { position: absolute !important; opacity: 0; pointer-events: none; width: 1px !important; height: 1px; inset: 0; }
+.ym-select-btn { display: flex; align-items: center; gap: 10px; justify-content: space-between; text-align: left; cursor: pointer; white-space: nowrap; }
+.ym-select-btn:disabled { opacity: .5; cursor: default; }
+.ym-select-btn:focus-visible { border-color: rgb(200 245 66 / .6); }
+.ym-select-val { overflow: hidden; text-overflow: ellipsis; }
+.ym-select-chev { width: 8px; height: 8px; flex: none; border-right: 1.6px solid var(--fg-2, #aaa); border-bottom: 1.6px solid var(--fg-2, #aaa); transform: translateY(-2px) rotate(45deg); transition: transform .15s; }
+.ym-select.open .ym-select-chev { transform: translateY(2px) rotate(-135deg); }
+.ym-select-list { position: absolute; z-index: 60; left: 0; top: calc(100% + 6px); min-width: 100%; width: max-content; max-width: min(420px, 90vw); max-height: 300px; overflow: auto;
+  margin: 0; padding: 6px; list-style: none; border-radius: 14px; background: var(--base-2, #17171b); border: 1px solid var(--divider); box-shadow: 0 14px 40px rgb(0 0 0 / .5);
+  scrollbar-width: none; animation: ym-pop .12s ease-out; }
+.ym-select.up .ym-select-list { top: auto; bottom: calc(100% + 6px); }
+.ym-select-list li { padding: 8px 12px 8px 30px; border-radius: 9px; cursor: pointer; position: relative; font-size: 13.5px; }
+.ym-select-list li.active { background: var(--fill-2); }
+.ym-select-list li[aria-selected=true] { color: var(--lime); }
+.ym-select-list li[aria-selected=true]::before { content: ""; position: absolute; left: 12px; top: 50%; width: 5px; height: 9px; border: solid var(--lime); border-width: 0 2px 2px 0; transform: translateY(-65%) rotate(45deg); }
+.ym-select-list li[aria-disabled=true] { opacity: .4; cursor: default; }
+@keyframes ym-pop { from { opacity: 0; transform: translateY(-4px); } }
+select.input { appearance: none; }
+/* checkbox + radio */
+.chk, input[type=checkbox]:not(.switch), input[type=radio] { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; flex: none; margin: 0; cursor: pointer;
+  border: 1.6px solid var(--fg-3); border-radius: 6px; background: transparent; display: inline-grid; place-content: center; transition: background .15s, border-color .15s; vertical-align: middle; }
+input[type=radio] { border-radius: 50%; }
+.chk:checked, input[type=checkbox]:not(.switch):checked { background: var(--lime); border-color: var(--lime); }
+.chk:checked::after, input[type=checkbox]:not(.switch):checked::after { content: ""; width: 4px; height: 9px; border: solid #0A0A0C; border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+input[type=radio]:checked { border-color: var(--lime); }
+input[type=radio]:checked::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--lime); }
+.chk:disabled, input[type=checkbox]:disabled, input[type=radio]:disabled { opacity: .35; cursor: default; }
+.chk:focus-visible, input[type=checkbox]:focus-visible, input[type=radio]:focus-visible { outline: 2px solid rgb(200 245 66 / .6); outline-offset: 2px; }
+/* number: no native spinners */
+input[type=number] { -moz-appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* file inputs are always hidden behind buttons; guard any stray one */
+input[type=file]:not([hidden]) { font-size: 13px; }
+input[type=file]::file-selector-button { border: 0; border-radius: 999px; background: var(--fill-2); color: inherit; padding: 6px 14px; margin-right: 10px; cursor: pointer; }

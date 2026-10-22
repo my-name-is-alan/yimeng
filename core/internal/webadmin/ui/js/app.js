@@ -9,6 +9,7 @@ import { lyricsPage } from "./lyrics.js";
 import { metadataPage } from "./metadata.js";
 import * as onl from "./online.js";
 import { initHScroll } from "./hscroll.js";
+import { initSelects } from "./select.js";
 
 adm.applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", adm.applyTheme);
@@ -163,4 +164,5 @@ async function boot() {
 }
 onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
 initHScroll();
+initSelects();
 boot();
