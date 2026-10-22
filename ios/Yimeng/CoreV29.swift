@@ -19,7 +19,19 @@ struct CoreSecurityAlert: Codable, Hashable, Sendable, Identifiable {
         }
     }
 }
-struct CoreCloneResult: Codable, Sendable { var playlist: CorePlaylist?; var tracks: Int?; var linkedLocal: Int?; var skipped: Int?; var unavailable: Int? }
+struct CoreCloneResult: Codable, Sendable { var playlist: CorePlaylist?; var tracks: Int?; var added: Int?; var skippedDuplicates: Int?; var linkedLocal: Int?; var skipped: Int?; var unavailable: Int? }
+
+extension CoreCloneResult {
+    /// 「导入 80 首，跳过 20 首重复，3 首不可播」
+    static func summary(_ r: CoreCloneResult) -> String {
+        let a = r.added ?? r.tracks ?? 0, d = r.skippedDuplicates ?? 0, u = r.unavailable ?? 0
+        if a == 0 && d > 0 { return "没有新歌，\(d) 首都已在歌单里" }
+        var s = "导入 \(a) 首"
+        if d > 0 { s += "，跳过 \(d) 首重复" }
+        if u > 0 { s += "，\(u) 首不可播" }
+        return s
+    }
+}
 
 // MARK: - Endpoints
 
@@ -246,6 +258,8 @@ struct CloneSheet: View {
     @State private var mine: [NDPlaylist] = []
     @State private var into: String?
     @State private var busy = false
+    @State private var debugKeep = false
+    @State private var lastResult: String?
     var body: some View {
         NavigationStack {
             List {
@@ -266,6 +280,15 @@ struct CloneSheet: View {
         .task {
             let all = (try? await CoreClient.shared.playlists(scope: "local")) ?? []
             mine = all.map(CoreClient.nd).filter { $0.isMine && ($0.origin ?? "local") == "local" }
+            #if DEBUG
+            let a = ProcessInfo.processInfo.arguments
+            if let i = a.firstIndex(of: "-cloneInto"), i + 1 < a.count, let p = mine.first(where: { $0.name == a[i + 1] }) {
+                into = p.id; try? await Task.sleep(for: .seconds(1)); debugKeep = true; await run()
+            }
+            #endif
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let lastResult { Text(lastResult).font(.system(size: 15, weight: .semibold)).padding(14).frame(maxWidth: .infinity).background(Capsule().fill(Theme.lime.opacity(0.9))).foregroundStyle(.black).padding() }
         }
     }
     private func pick(_ t: String, on: Bool) -> some View {
@@ -275,10 +298,9 @@ struct CloneSheet: View {
         busy = true; defer { busy = false }
         do {
             let r = try await CoreClient.shared.clone(origin: origin, playlistId: playlistId, into: into, name: into == nil ? name : nil)
-            let n = r.tracks ?? 0, u = r.unavailable ?? 0
-            SheetCenter.shared.say((into == nil ? "已新建歌单" : "已导入") + " · \(n) 首" + (u > 0 ? "，\(u) 首暂不可播" : ""))
+            SheetCenter.shared.say(CoreCloneResult.summary(r))
             await HomeStore.shared.refresh(force: true)
-            dismiss()
+            if debugKeep { lastResult = CoreCloneResult.summary(r) } else { dismiss() }
         } catch let e as CoreAPIError where e.status == 404 {
             SheetCenter.shared.say("目标歌单不存在或已被删除")
         } catch { SheetCenter.shared.say("导入失败") }

@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Yimeng
 
 final class CoreClientTests: XCTestCase {
@@ -19,6 +20,24 @@ final class CoreClientTests: XCTestCase {
         // Core signs path+device+exp only, so the size param may be rewritten.
         XCTAssertEqual(CoverCache.sized(u, points: 44).query?.contains("sig=ab"), true)
         XCTAssertEqual(CoverCache.key(u), CoverCache.key(URL(string: "http://h/api/covers/al1?size=600&exp=2&sig=cd")!))
+    }
+    func testD58EntitlementAndImport() throws {
+        // `unavailable` wins over any preview hint: greyed, no 试听.
+        let j = ##"{"id":"netease:1","title":"t","preview":true,"playable":true,"entitlement":"unavailable"}"##
+        let s = CoreClient.nd(try CoreClient.decoder.decode(CoreTrack.self, from: Data(j.utf8)))
+        XCTAssertEqual(s.preview, false); XCTAssertEqual(s.playable, false); XCTAssertTrue(s.isUnplayable)
+        let f = CoreClient.nd(try CoreClient.decoder.decode(CoreTrack.self, from: Data(#"{"id":"netease:2","title":"t","entitlement":"full"}"#.utf8)))
+        XCTAssertEqual(f.preview, false); XCTAssertFalse(f.isUnplayable)
+        let r = try CoreClient.decoder.decode(CoreCloneResult.self, from: Data(#"{"tracks":80,"added":80,"skipped_duplicates":20,"unavailable":3}"#.utf8))
+        XCTAssertEqual(CoreCloneResult.summary(r), "导入 80 首，跳过 20 首重复，3 首不可播")
+        let n = try CoreClient.decoder.decode(CoreCloneResult.self, from: Data(#"{"tracks":0,"added":0,"skipped_duplicates":67}"#.utf8))
+        XCTAssertEqual(CoreCloneResult.summary(n), "没有新歌，67 首都已在歌单里")
+        let me = try CoreClient.decoder.decode(CoreMe.self, from: Data(#"{"id":"usr_1","username":"u","nickname":"N","avatar_url":"/api/v1/users/usr_1/avatar?v=1","role":"user"}"#.utf8))
+        XCTAssertEqual(me.avatarUrl, "/api/v1/users/usr_1/avatar?v=1")
+        let big = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 1600), format: { let f = UIGraphicsImageRendererFormat(); f.scale = 1; return f }()).image { c in UIColor.systemPink.setFill(); c.fill(CGRect(x: 0, y: 0, width: 3000, height: 1600)) }
+        let d = try XCTUnwrap(CoreProfileStore.prepare(big))
+        let out = try XCTUnwrap(UIImage(data: d))
+        XCTAssertEqual(out.size.width, 512); XCTAssertEqual(out.size.height, 512); XCTAssertLessThan(d.count, 1_048_576)
     }
     func testLiveShapes() throws {
         let j = ##"{"id":"qq:1","title":"t","artist_name":"A","album":{"id":"qq:al","name":"B"},"preview":false,"entitlement":"preview","cover_url":"https://x/c.jpg"}"##

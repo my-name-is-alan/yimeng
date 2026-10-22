@@ -348,8 +348,8 @@ final class AvatarResolver: ObservableObject {
         key = k; url = nil
         if NavidromeClient.emby { url = lib.embyAvatar; return }
         if NavidromeClient.core {
-            if let u = await CoreClient.shared.meAvatar() { url = u; return }
-            if let p = CoreState.platforms.first(where: { $0.active && ($0.avatarUrl?.isEmpty == false) }), let s = p.avatarUrl { url = URL(string: s) }
+            // D58: /me avatar (CoreProfileStore, authenticated bytes) → monogram. Platform avatars only on 个人资料.
+            await CoreProfileStore.shared.load()
             return
         }
         if !NavidromeClient.fnos, let u = lib.navidromeAvatarURL() {
@@ -368,9 +368,11 @@ struct AvatarView: View {
     @ObservedObject private var avatar = AvatarResolver.shared
     @ObservedObject private var library = LibraryStore.shared
     @AppStorage("ym.nickname") private var nickname = ""
+    @ObservedObject private var profile = CoreProfileStore.shared
     var body: some View {
         Group {
-            if NavidromeClient.emby, let u = library.embyAvatar { CoverImage(url: u, points: size) }
+            if NavidromeClient.core { if let a = profile.avatar { Image(uiImage: a).resizable().scaledToFill() } else { MonogramAvatar(name: profile.displayName ?? library.user, size: size) } }
+            else if NavidromeClient.emby, let u = library.embyAvatar { CoverImage(url: u, points: size) }
             else if let u = avatar.url { CoverImage(url: u, points: size) }
             else { MonogramAvatar(name: displayName, size: size) }
         }

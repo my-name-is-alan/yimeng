@@ -279,7 +279,14 @@ final class SheetCenter: ObservableObject {
     @Published var addToPlaylist: NDSong?
     @Published var alternatives: NDSong?
     /// Greyed track tapped: on Core offer other platforms' copies (D50), elsewhere just explain.
-    func unplayable(_ s: NDSong) { if NavidromeClient.core { alternatives = s } else { say(s.unplayableToast) } }
+    /// Unplayable (D58 `unavailable`): open alternatives when Core has any, otherwise an empty-state toast.
+    func unplayable(_ s: NDSong) {
+        guard NavidromeClient.core else { say(s.unplayableToast); return }
+        Task { @MainActor in
+            let alts = ((try? await CoreClient.shared.alternatives(s.id)) ?? []).filter { $0.playable != "unavailable" }
+            if alts.isEmpty { self.say(s.unplayableToast + "，其他平台也没找到") } else { self.alternatives = s }
+        }
+    }
     @Published var toast: String?
     func say(_ s: String) {
         withAnimation(.snappy) { toast = s }

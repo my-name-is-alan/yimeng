@@ -15,6 +15,8 @@ struct SettingsView: View {
     @State private var showReport = false
     @State private var showLastfm = false
     @State private var showAlerts = false
+    @State private var showProfile = false
+    @ObservedObject private var coreMe = CoreProfileStore.shared
     @ObservedObject private var acct = CoreAccountStore.shared
     @State private var confirmLogout = false
     @State private var showSources = false
@@ -114,13 +116,16 @@ struct SettingsView: View {
         #if DEBUG
         .task {
             let a = ProcessInfo.processInfo.arguments
-            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } }
+            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } else if a[i + 1] == "profile" { showProfile = true } }
+            if let i = a.firstIndex(of: "-uploadAvatarFrom"), i + 1 < a.count, let img = UIImage(contentsOfFile: a[i + 1]) { try? await Task.sleep(for: .seconds(3)); await ProfileView.upload(img) }
+            if let i = a.firstIndex(of: "-setNick"), i + 1 < a.count { try? await Task.sleep(for: .seconds(3)); try? await CoreProfileStore.shared.rename(a[i + 1]) }
         }
         #endif
         .fullScreenCover(isPresented: $showReport) { ListeningReportView() }
         .sheet(isPresented: $showLastfm) { NavigationStack { LastfmView() } }
         .sheet(isPresented: $showSwitch) { NavigationStack { SourceSwitchView() } }
         .sheet(isPresented: $showAlerts) { NavigationStack { SecurityAlertsView() } }
+        .sheet(isPresented: $showProfile) { NavigationStack { ProfileView() } }
         .alert("已重置", isPresented: $showReplay) { Button("好", role: .cancel) {} } message: { Text("下次冷启动会从启动动画开始。") }
         .alert("昵称", isPresented: $editingName) {
             TextField("昵称", text: $nickname)
@@ -131,12 +136,12 @@ struct SettingsView: View {
 
     var profile: some View {
         HStack(spacing: 16) {
-            AvatarView(size: 72)
+            AvatarView(size: 72).onTapGesture { if NavidromeClient.core { showProfile = true } }
             VStack(alignment: .leading, spacing: 4) {
-                Button { editingName = true } label: {
+                Button { if NavidromeClient.core { showProfile = true } else { editingName = true } } label: {
                     HStack(spacing: 6) {
-                        Text(!nickname.isEmpty ? nickname : (NavidromeClient.emby && !library.embyUserName.isEmpty ? library.embyUserName : "设置昵称")).font(.system(size: 22, weight: .bold))
-                        Image(systemName: "pencil").font(.system(size: 13)).opacity(0.6)
+                        Text(NavidromeClient.core ? (coreMe.displayName ?? library.user) : !nickname.isEmpty ? nickname : (NavidromeClient.emby && !library.embyUserName.isEmpty ? library.embyUserName : "设置昵称")).font(.system(size: 22, weight: .bold))
+                        Image(systemName: NavidromeClient.core ? "chevron.right" : "pencil").font(.system(size: 13)).opacity(0.6)
                     }
                 }.buttonStyle(.plain)
                 Text(library.connected ? "\(NavidromeClient.emby ? "\(library.embyProduct) · " + (library.embyUserName.isEmpty ? library.user : library.embyUserName) : library.user) @ \(library.host.replacingOccurrences(of: "https://", with: ""))" : "尚未连接音乐来源")

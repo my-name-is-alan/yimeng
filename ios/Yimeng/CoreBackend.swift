@@ -17,7 +17,9 @@ extension CoreClient {
         if s.suffix == nil { s.suffix = t.format?.lowercased() }
         s.origin = t.origin ?? (t.id.contains(":") ? String(t.id.split(separator: ":")[0]) : "local")
         s.playable = t.playable.map { $0 && t.entitlement != "unavailable" } ?? (t.entitlement == "unavailable" ? false : nil)
-        s.preview = t.entitlement == "preview" || t.preview == .flag(true) || (t.preview?.window != nil)
+        // D58: only `preview` gets 试听; `unavailable` always wins (greyed, never a preview).
+        s.preview = t.entitlement == "unavailable" ? false
+            : t.entitlement == "preview" || (t.entitlement == nil && (t.preview == .flag(true) || t.preview?.window != nil))
         let w = t.preview?.window ?? t.previewWindow
         s.previewStartMs = w?.startMs; s.previewEndMs = w?.endMs
         s.unplayableReason = t.unplayableReason; s.sortLetter = t.sortLetter; s.isrc = t.isrc; s.popularity = t.popularity

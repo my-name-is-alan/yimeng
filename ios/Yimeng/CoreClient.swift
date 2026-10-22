@@ -113,21 +113,21 @@ actor CoreClient {
         return c?.url
     }
     private func raw(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil, auth: Bool = true,
-                     etag: String? = nil) async throws -> (Data, Int, HTTPURLResponse?) {
+                     etag: String? = nil, contentType: String = "application/json") async throws -> (Data, Int, HTTPURLResponse?) {
         guard let base, let u = Self.url(base, path, query) else { throw NavidromeError.badURL }
         var r = URLRequest(url: u); r.httpMethod = method
         if auth, !accessToken.isEmpty { r.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         if let etag { r.setValue(etag, forHTTPHeaderField: "If-None-Match") }
-        if let body { r.httpBody = body; r.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        if let body { r.httpBody = body; r.setValue(contentType, forHTTPHeaderField: "Content-Type") }
         let (d, resp) = try await session.data(for: r)
         let h = resp as? HTTPURLResponse
         return (d, h?.statusCode ?? 0, h)
     }
     /// Authenticated call with one refresh-and-retry on 401.
     private func call(_ method: String, _ path: String, query: [String: String] = [:], body: Data? = nil, auth: Bool = true,
-                      etag: String? = nil) async throws -> (Data, Int, HTTPURLResponse?) {
-        var res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag)
-        if auth, res.1 == 401, await refresh() { res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag) }
+                      etag: String? = nil, contentType: String = "application/json") async throws -> (Data, Int, HTTPURLResponse?) {
+        var res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag, contentType: contentType)
+        if auth, res.1 == 401, await refresh() { res = try await raw(method, path, query: query, body: body, auth: auth, etag: etag, contentType: contentType) }
         if !(200..<300).contains(res.1), res.1 != 304,
            let j = try? JSONSerialization.jsonObject(with: res.0) as? [String: Any], let code = (j["code"] ?? j["error"]) as? String {
             let msg = j["message"] as? String ?? ""
@@ -348,5 +348,30 @@ enum CoreETagCache {
     static func write(_ key: String, etag: String, body: Data) {
         var d = Data(etag.utf8); d.append(10); d.append(body)
         try? d.write(to: file(key), options: .atomic)
+    }
+}
+
+
+// MARK: - Profile (D58)
+
+extension CoreClient {
+    /// Raw image upload (PUT /me/avatar); body is JPEG/PNG/WebP bytes.
+    func putAvatar(_ data: Data, mime: String) async throws -> CoreMe {
+        let (d, _, _) = try await call("PUT", "/api/v1/me/avatar", body: data, contentType: mime)
+        return try Self.decoder.decode(CoreMe.self, from: d)
+    }
+    /// Authenticated image bytes for a Core-relative avatar_url (no token in URLs).
+    func imageData(_ path: String) async throws -> Data {
+        if path.hasPrefix("http"), let u = URL(string: path), let b = base, u.host != b.host {
+            return try await session.data(from: u).0
+        }
+        // Relative "/api/v1/users/{id}/avatar?v=…": keep the cache-busting query out of the path component.
+        guard let c = URLComponents(string: path) else { throw NavidromeError.badURL }
+        var q: [String: String] = [:]
+        for i in c.queryItems ?? [] { q[i.name] = i.value ?? "" }
+        let p = c.path
+        let (d, code, _) = try await call("GET", p.hasPrefix("/") ? p : "/" + p, query: q)
+        guard code == 200 else { throw NavidromeError.http(code) }
+        return d
     }
 }

@@ -44,6 +44,7 @@
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0DA447B96C02C374E060E1 /* CoreV29.swift */; };
 		81A2CEB572C553218B29556B /* Yueqian.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39E1D191594AA3C9B06D6B1C /* Yueqian.swift */; };
+		875E3EF53D003C1B9CA5D998 /* CoreV31.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B229F1CDC38307B30739F1 /* CoreV31.swift */; };
 		876F76F65B3D8F8A2B7CE26E /* CoreBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = A272403B835110F9DA3A860E /* CoreBackend.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		8E2244E63F7491AD7D68F714 /* ZCOOLKuaiLe-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4FF4BC6C0C352F47778E6963 /* ZCOOLKuaiLe-Regular.ttf */; };
@@ -196,6 +197,7 @@
 		E9712EB28EE125918AEB1DEF /* DebugSnap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSnap.swift; sourceTree = "<group>"; };
 		EAAB15991187EA958380E419 /* OFL-SmileySans.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-SmileySans.txt"; sourceTree = "<group>"; };
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
+		F1B229F1CDC38307B30739F1 /* CoreV31.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV31.swift; sourceTree = "<group>"; };
 		F1B679B920A57BE24DC98F91 /* Yimeng.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yimeng.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F547F27332371C22460671A9 /* OFL-ZCOOLKuaiLe.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-ZCOOLKuaiLe.txt"; sourceTree = "<group>"; };
 		FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengActivityAttributes.swift; sourceTree = "<group>"; };
@@ -284,6 +286,7 @@
 				72941A55FA85EAEF903A950A /* CoreV28.swift */,
 				1E0DA447B96C02C374E060E1 /* CoreV29.swift */,
 				0EA012D947A622EE3B2895EF /* CoreV30.swift */,
+				F1B229F1CDC38307B30739F1 /* CoreV31.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
@@ -515,6 +518,7 @@
 				C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */,
 				79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */,
 				B50FB6E420D000449557C2DF /* CoreV30.swift in Sources */,
+				875E3EF53D003C1B9CA5D998 /* CoreV31.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
