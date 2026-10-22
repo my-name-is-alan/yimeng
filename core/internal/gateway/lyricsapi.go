@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -160,7 +161,12 @@ func (d Deps) rankedLyrics(w http.ResponseWriter, r *http.Request) (rank.Query, 
 		writeErr(w, http.StatusBadRequest, "bad_request", err.Error())
 		return q, nil, false
 	}
+	tid := r.URL.Query().Get("track_id")
+	own := library.IsExternalID(tid) && d.Online != nil
 	key := lyricsKey(q)
+	if own {
+		key += "|" + tid
+	}
 	if items, ok := lyricsAPI.get(key); ok {
 		w.Header().Set("X-Yimeng-Cache", "hit")
 		return q, items, true
@@ -189,8 +195,16 @@ func (d Deps) rankedLyrics(w http.ResponseWriter, r *http.Request) (rank.Query, 
 			remote, _ = d.LyricsSearch(ctx, "", q.Title, q.Artist) // partial results are fine
 		}()
 	}
+	var self []providers.Candidate
+	if own {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			self = d.ownLyricsCandidate(ctx, q, tid)
+		}()
+	}
 	wg.Wait()
-	items := append(local, remote...)
+	items := append(append(self, local...), remote...)
 	kept := items[:0]
 	for _, c := range items {
 		if c.Instrumental || (strings.TrimSpace(c.SyncedLyrics) == "" && strings.TrimSpace(c.PlainLyrics) == "") {
@@ -198,7 +212,11 @@ func (d Deps) rankedLyrics(w http.ResponseWriter, r *http.Request) (rank.Query, 
 		}
 		kept = append(kept, c)
 	}
-	items = rank.CapPerProvider(rank.Rank(q, kept), 5)
+	items = rank.Rank(q, kept)
+	if own {
+		items = preferOwn(items, tid)
+	}
+	items = rank.CapPerProvider(items, 5)
 	if items == nil {
 		items = []providers.Candidate{}
 	}
@@ -362,4 +380,36 @@ func firstNonEmpty(ss ...string) string {
 		}
 	}
 	return ""
+}
+
+// ownLyricsCandidate is the platform's own lyrics for an online track id:
+// same recording, so it carries the track's own metadata and duration.
+func (d Deps) ownLyricsCandidate(ctx context.Context, q rank.Query, id string) []providers.Candidate {
+	l, err := d.Online.Lyrics(ctx, id)
+	if err != nil || (strings.TrimSpace(l.LRC) == "" && len(l.Words) == 0) {
+		return nil
+	}
+	origin, ref, _ := strings.Cut(id, ":")
+	c := providers.Candidate{Provider: origin, Ref: ref, Title: q.Title, Artist: q.Artist, Album: q.Album,
+		DurationMs: q.DurationMs, Translation: l.Translation, Roma: l.Roma, Words: l.Words, HasWords: len(l.Words) > 0}
+	if l.Synced {
+		c.Synced, c.SyncedLyrics = true, l.LRC
+	} else {
+		c.PlainLyrics = l.LRC
+	}
+	return []providers.Candidate{c}
+}
+
+// ownLyricsBonus lifts the track's own platform lyrics above look-alikes.
+const ownLyricsBonus = 15
+
+func preferOwn(items []providers.Candidate, id string) []providers.Candidate {
+	origin, ref, _ := strings.Cut(id, ":")
+	for i := range items {
+		if items[i].Provider == origin && items[i].Ref == ref {
+			items[i].Score = min(100, items[i].Score+ownLyricsBonus)
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Score > items[j].Score })
+	return items
 }

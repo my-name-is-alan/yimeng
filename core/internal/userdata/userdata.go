@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"time"
 )
 
@@ -83,8 +84,12 @@ func (s *Store) Record(ctx context.Context, p Play) error {
 	if p.PlayerID != "" {
 		pid = p.PlayerID
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO plays(track_id, player_id, played_at, duration_ms, completed, source) VALUES (?,?,?,?,?,?)`,
-		p.TrackID, pid, at, p.DurationMs, p.Completed, p.Source); err != nil {
+	// D49: a play belongs to the caller's account, or (background recording
+	// by the player orchestrator) to the account that owns the player.
+	o := owner.From(ctx)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO plays(track_id, player_id, played_at, duration_ms, completed, source, user_id)
+		VALUES (?,?,?,?,?,?, CASE WHEN ? THEN ? ELSE COALESCE((SELECT user_id FROM players WHERE id=?), '') END)`,
+		p.TrackID, pid, at, p.DurationMs, p.Completed, p.Source, o.Set, o.ID, pid); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO track_stats(track_id, play_count, last_played_at) VALUES (?,1,?)
@@ -107,9 +112,9 @@ type HistoryItem struct {
 // History lists plays newest first.
 func (s *Store) History(ctx context.Context, playerID string, limit, offset int) ([]HistoryItem, int, error) {
 	limit, offset = clamp(limit, offset)
-	where, args := "", []any{}
+	where, args := " WHERE p.user_id=?", []any{owner.From(ctx).ID}
 	if playerID != "" {
-		where, args = " WHERE p.player_id=?", append(args, playerID)
+		where, args = where+" AND p.player_id=?", append(args, playerID)
 	}
 	var total int
 	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM plays p`+where, args...).Scan(&total); err != nil {
@@ -155,17 +160,17 @@ func (s *Store) Top(ctx context.Context, kind string, since time.Time, limit int
 	switch kind {
 	case "", "track":
 		q = `SELECT t.id, t.title, COALESCE(t.artist_name,''), count(*) c FROM plays p JOIN tracks t ON t.id=p.track_id
-			WHERE p.played_at>=? GROUP BY t.id ORDER BY c DESC, t.title LIMIT ?`
+			WHERE p.user_id=? AND p.played_at>=? GROUP BY t.id ORDER BY c DESC, t.title LIMIT ?`
 	case "album":
 		q = `SELECT al.id, al.title, COALESCE(al.artist_name,''), count(*) c FROM plays p JOIN tracks t ON t.id=p.track_id
-			JOIN albums al ON al.id=t.album_id WHERE p.played_at>=? GROUP BY al.id ORDER BY c DESC, al.title LIMIT ?`
+			JOIN albums al ON al.id=t.album_id WHERE p.user_id=? AND p.played_at>=? GROUP BY al.id ORDER BY c DESC, al.title LIMIT ?`
 	case "artist":
 		q = `SELECT a.id, a.name, '', count(*) c FROM plays p JOIN track_artists ta ON ta.track_id=p.track_id AND ta.role='primary'
-			JOIN artists a ON a.id=ta.artist_id WHERE p.played_at>=? GROUP BY a.id ORDER BY c DESC, a.name LIMIT ?`
+			JOIN artists a ON a.id=ta.artist_id WHERE p.user_id=? AND p.played_at>=? GROUP BY a.id ORDER BY c DESC, a.name LIMIT ?`
 	default:
 		return nil, fmt.Errorf("%w: type must be track|album|artist", ErrBad)
 	}
-	rows, err := s.DB.QueryContext(ctx, q, since.UnixMilli(), limit)
+	rows, err := s.DB.QueryContext(ctx, q, owner.From(ctx).ID, since.UnixMilli(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -203,14 +208,14 @@ func (s *Store) SetFavorite(ctx context.Context, typ, id string, fav bool) error
 		if _, ok := tables[typ]; !ok {
 			return fmt.Errorf("%w: type must be track|album|artist", ErrBad)
 		}
-		_, err := s.DB.ExecContext(ctx, `DELETE FROM favorites WHERE entity_type=? AND entity_id=?`, typ, id)
+		_, err := s.DB.ExecContext(ctx, `DELETE FROM favorites WHERE user_id=? AND entity_type=? AND entity_id=?`, owner.From(ctx).ID, typ, id)
 		return err
 	}
 	if err := s.exists(ctx, typ, id); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO favorites(entity_type, entity_id, created_at) VALUES (?,?,?)`,
-		typ, id, s.now().UnixMilli())
+	_, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO favorites(user_id, entity_type, entity_id, created_at) VALUES (?,?,?,?)`,
+		owner.From(ctx).ID, typ, id, s.now().UnixMilli())
 	return err
 }
 
@@ -223,15 +228,15 @@ func (s *Store) SetRating(ctx context.Context, typ, id string, rating int) error
 		if _, ok := tables[typ]; !ok {
 			return fmt.Errorf("%w: type must be track|album|artist", ErrBad)
 		}
-		_, err := s.DB.ExecContext(ctx, `DELETE FROM ratings WHERE entity_type=? AND entity_id=?`, typ, id)
+		_, err := s.DB.ExecContext(ctx, `DELETE FROM ratings WHERE user_id=? AND entity_type=? AND entity_id=?`, owner.From(ctx).ID, typ, id)
 		return err
 	}
 	if err := s.exists(ctx, typ, id); err != nil {
 		return err
 	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO ratings(entity_type, entity_id, rating, updated_at) VALUES (?,?,?,?)
-		ON CONFLICT(entity_type, entity_id) DO UPDATE SET rating=excluded.rating, updated_at=excluded.updated_at`,
-		typ, id, rating, s.now().UnixMilli())
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO ratings(user_id, entity_type, entity_id, rating, updated_at) VALUES (?,?,?,?,?)
+		ON CONFLICT(user_id, entity_type, entity_id) DO UPDATE SET rating=excluded.rating, updated_at=excluded.updated_at`,
+		owner.From(ctx).ID, typ, id, rating, s.now().UnixMilli())
 	return err
 }
 
@@ -245,13 +250,13 @@ type Favorite struct {
 
 func (s *Store) Favorites(ctx context.Context, typ string, limit, offset int) ([]Favorite, error) {
 	limit, offset = clamp(limit, offset)
-	args := []any{}
-	where := ""
+	args := []any{owner.From(ctx).ID}
+	where := " WHERE f.user_id=?"
 	if typ != "" {
 		if _, ok := tables[typ]; !ok {
 			return nil, fmt.Errorf("%w: type must be track|album|artist", ErrBad)
 		}
-		where, args = " WHERE f.entity_type=?", append(args, typ)
+		where, args = where+" AND f.entity_type=?", append(args, typ)
 	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT f.entity_type, f.entity_id, f.created_at,
 		COALESCE(t.title, al.title, a.name, ''), COALESCE(t.id, al.id, a.id) IS NOT NULL

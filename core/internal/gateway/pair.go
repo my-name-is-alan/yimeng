@@ -26,7 +26,16 @@ func (d Deps) pairRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) newPairCode(w http.ResponseWriter, r *http.Request) {
-	code, exp, err := d.Auth.NewCode()
+	// optional {"user_id"}: pair the device into another account (admin only route)
+	var b struct {
+		UserID string `json:"user_id"`
+	}
+	_ = decodeBody(r, &b)
+	me, _ := DeviceFrom(r.Context())
+	if b.UserID == "" {
+		b.UserID = me.UserID
+	}
+	code, exp, err := d.Auth.NewCodeFor(b.UserID)
 	if errors.Is(err, auth.ErrTooManyCodes) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", err.Error())
 		return

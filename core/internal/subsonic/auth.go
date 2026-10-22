@@ -2,6 +2,7 @@ package subsonic
 
 import (
 	"encoding/hex"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"net/http"
 	"strings"
 
@@ -56,6 +57,6 @@ func withAuth(svc *auth.Service, next func(http.ResponseWriter, *http.Request, a
 			writeErr(w, r, 40, "wrong username or password")
 			return
 		}
-		next(w, r, dev)
+		next(w, r.WithContext(owner.With(r.Context(), dev.UserID, dev.Admin)), dev)
 	}
 }

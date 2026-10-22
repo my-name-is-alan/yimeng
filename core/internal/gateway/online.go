@@ -585,7 +585,9 @@ func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope st
 	if flat == nil {
 		flat = []any{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "groups": out, "items": flat, "total": len(flat), "next_cursor": nil})
+	page, total, off, next := pageSlice(r, flat)
+	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "groups": out, "items": page, "total": total, "offset": off,
+		"cursor": encodeCursor(off, listFingerprint(r)), "next_cursor": next})
 	return true
 }
 

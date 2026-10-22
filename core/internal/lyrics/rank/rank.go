@@ -4,6 +4,7 @@
 package rank
 
 import (
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"math"
 	"regexp"
 	"sort"
@@ -112,6 +113,7 @@ func Score(q Query, c providers.Candidate) (int, providers.ScoreBreakdown) {
 	if st == 0 {
 		b.Penalty = 0.3
 	}
+	b.Penalty *= durationPenalty(q.DurationMs, b.DurationDeltaMs) * coveragePenalty(q.DurationMs, c)
 	sum := b.Title + b.Artist + b.Album + b.Duration + b.Synced + b.Translation + b.Reliability
 	total := int(math.Round(sum * b.Penalty))
 	total = max(0, min(100, total))
@@ -168,4 +170,53 @@ func CapPerProvider(cs []providers.Candidate, n int) []providers.Candidate {
 		}
 	}
 	return out
+}
+
+// durationPenalty strongly demotes a candidate whose length differs a lot
+// from the track (live vs studio cut, extended mix …).
+func durationPenalty(trackMs, deltaMs int64) float64 {
+	if trackMs <= 0 || deltaMs < 0 {
+		return 1
+	}
+	switch {
+	case deltaMs > 45000:
+		return 0.3
+	case deltaMs > 20000:
+		return 0.55
+	case deltaMs > 10000:
+		return 0.8
+	}
+	return 1
+}
+
+// coveragePenalty checks the last synced timestamp against the track: lyrics
+// that run past the end, or stop well before it, belong to another version.
+func coveragePenalty(trackMs int64, c providers.Candidate) float64 {
+	if trackMs < 60000 || strings.TrimSpace(c.SyncedLyrics) == "" {
+		return 1
+	}
+	last, n := lastTime(c.SyncedLyrics)
+	if last <= 0 || n < 5 { // too short to judge
+		return 1
+	}
+	switch {
+	case last > trackMs+5000:
+		return 0.4
+	case float64(last) < 0.55*float64(trackMs):
+		return 0.6
+	}
+	return 1
+}
+
+// lastTime is the timestamp of the last non-empty synced line and the count
+// of non-empty lines.
+func lastTime(lrc string) (last int64, n int) {
+	for _, l := range lyrics.Parse(lrc).Lines {
+		if strings.TrimSpace(l.Text) == "" {
+			continue
+		}
+		n++
+		last = max(last, l.TimeMs)
+	}
+	return last, n
 }

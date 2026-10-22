@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -30,6 +31,8 @@ func (d Deps) playbackResult(w http.ResponseWriter, v any, err error) {
 
 func (d Deps) listPlayers(w http.ResponseWriter, r *http.Request) {
 	st, err := d.Playback.States(r.Context())
+	me, _ := DeviceFrom(r.Context())
+	st = d.filterStates(r.Context(), me, st)
 	for i := range st {
 		st[i].Online = d.Presence.Online(st[i].PlayerID)
 	}
@@ -111,6 +114,10 @@ func (d Deps) playerAction(action string) http.HandlerFunc {
 				writeErr(w, http.StatusBadRequest, "invalid_body", "to (destination player id) required")
 				return
 			}
+			if me, _ := DeviceFrom(ctx); !d.canControl(ctx, me, b.To) {
+				writeErr(w, http.StatusNotFound, "not_found", "player not found")
+				return
+			}
 			st, err = d.Playback.Transfer(ctx, pid, b.To)
 		case "queue":
 			var b playback.QueueOp
@@ -172,6 +179,19 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 		c.Close(websocket.StatusInternalError, "state")
 		return
 	}
+	states = d.filterStates(ctx, dev, states)
+	allowed := map[string]bool{}
+	var allowMu sync.Mutex
+	may := func(pid string) bool {
+		allowMu.Lock()
+		defer allowMu.Unlock()
+		if v, ok := allowed[pid]; ok {
+			return v
+		}
+		v := d.canControl(ctx, dev, pid)
+		allowed[pid] = v
+		return v
+	}
 	if err := writeWS(ctx, c, "hello", map[string]any{
 		"device_id": dev.ID, "players": states, "online": d.Presence.Snapshot(),
 	}); err != nil {
@@ -192,6 +212,9 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 			pid := in.Data.PlayerID
 			if pid == "" {
 				pid = dev.ID // a device reports for its own player by default
+			}
+			if !may(pid) {
+				continue
 			}
 			switch in.Type {
 			case "player.progress":
@@ -218,6 +241,9 @@ func (d Deps) ws(w http.ResponseWriter, r *http.Request) {
 			}
 			data, ok := eventFor(dev, e.Data)
 			if !ok {
+				continue
+			}
+			if pid := eventPlayer(data); pid != "" && !may(pid) {
 				continue
 			}
 			if err := writeWS(ctx, c, e.Type, data); err != nil {

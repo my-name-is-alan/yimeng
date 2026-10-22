@@ -1009,7 +1009,7 @@ paths:
     post:
       tags: [history]
       summary: Record a play reported by a client that played the track itself
-      description: Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is.
+      description: Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is, per account (D49). Online ids (netease:…, qq:…) are accepted: a snapshot of the track (title, artists, album, cover, duration) is stored so history / 最近播放 / 常听 keep working.
       requestBody:
         required: true
         content:
@@ -1133,12 +1133,15 @@ paths:
   /api/v1/playlists:
     get:
       tags: [playlists]
-      summary: All playlists (static and smart) with counts. With ?scope=mine|recommend|discover|charts returns external playlists grouped by platform ({scope, groups})
+      summary: The caller's playlists (static and smart) with counts. With ?scope=mine|recommend|discover|charts returns external playlists grouped by platform ({scope, groups}); scope=all|online also returns a flat paged items list (local first).
+      description: Per account (D49) — only the caller's own playlists are listed; other accounts' playlists are 404 everywhere. Paged with limit + cursor; next_cursor is null on the last page.
       parameters:
-        - { name: scope, in: query, schema: { type: string, enum: [local, mine, recommend, discover, charts] } }
+        - { name: scope, in: query, schema: { type: string, enum: [local, all, online, mine, recommend, discover, charts] } }
         - { name: origin, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500 } }
+        - { name: cursor, in: query, schema: { type: string } }
       responses:
-        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } } } } } } }
+        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } }, total: { type: integer }, next_cursor: { type: string, nullable: true } } } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [playlists]
@@ -1242,6 +1245,7 @@ paths:
       tags: [system]
       summary: Version, library stats, scan state, ffmpeg/loudness caps, root diagnostics
       description: |
+        Non-admin callers get a redacted view (D49): root paths/errors, scan job, diagnostics, DB/backup/device figures and go_version are blanked.
         Available to every paired device. Reports version/uptime, library counts, latest scan,
         per-root reachability and free space, database size, transcoder formats and cache size,
         loudness analysis queue, backup freshness, and self-diagnostics (permission errors,
@@ -2495,6 +2499,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        owner_id: { type: string, description: "Owning user account (D49); empty on installs without accounts" }
         name: { type: string }
         comment: { type: string }
         smart: { type: boolean }

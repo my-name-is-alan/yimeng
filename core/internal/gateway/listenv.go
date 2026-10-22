@@ -158,3 +158,27 @@ func (d Deps) decorateArtists(ctx context.Context, as []library.Artist) {
 		}
 	}
 }
+
+// pageSlice pages an in-memory list with ?limit= (default all, max 500) and
+// ?cursor= / ?offset=. It returns the page, total, offset and next cursor.
+func pageSlice[T any](r *http.Request, all []T) (page []T, total, offset int, next any) {
+	q := r.URL.Query()
+	total = len(all)
+	limit := total
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = min(v, 500)
+	}
+	fp := listFingerprint(r)
+	if c := q.Get("cursor"); c != "" {
+		offset, _ = decodeCursor(c, fp)
+	} else if v, err := strconv.Atoi(q.Get("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	offset = min(offset, total)
+	end := min(offset+limit, total)
+	page = all[offset:end]
+	if end < total {
+		next = encodeCursor(end, fp)
+	}
+	return page, total, offset, next
+}

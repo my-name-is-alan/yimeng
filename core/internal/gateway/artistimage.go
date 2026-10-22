@@ -96,15 +96,15 @@ func (d Deps) artistImageCandidates(w http.ResponseWriter, r *http.Request) {
 	}
 	out := []ArtistImageCandidate{}
 	for _, in := range infos {
-		for _, u := range in.ImageURLs {
-			sc := 0.8
-			if in.Name == name {
-				sc = 1
-			}
-			out = append(out, ArtistImageCandidate{Provider: string(in.Provider), ExternalID: in.ExternalID, Name: in.Name,
-				ImageURL: u, Followers: in.Followers, Score: sc})
-			break
+		if len(in.ImageURLs) == 0 {
+			continue
 		}
+		sc := 0.8
+		if in.Name == name {
+			sc = 1
+		}
+		out = append(out, ArtistImageCandidate{Provider: string(in.Provider), ExternalID: in.ExternalID, Name: in.Name,
+			ImageURL: in.ImageURLs[0], Followers: in.Followers, Score: sc})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})

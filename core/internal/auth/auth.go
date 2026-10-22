@@ -55,6 +55,7 @@ type Device struct {
 type codeEntry struct {
 	hash    [32]byte
 	expires time.Time
+	user    string // account the paired device will belong to ("" = first admin)
 }
 
 type window struct {
@@ -170,7 +171,10 @@ func bump(m map[string]*window, key string, now time.Time) int {
 }
 
 // NewCode issues a pairing code. The plaintext is returned once and never stored.
-func (s *Service) NewCode() (string, time.Time, error) {
+func (s *Service) NewCode() (string, time.Time, error) { return s.NewCodeFor("") }
+
+// NewCodeFor issues a pairing code whose device will belong to userID.
+func (s *Service) NewCodeFor(userID string) (string, time.Time, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
@@ -180,7 +184,7 @@ func (s *Service) NewCode() (string, time.Time, error) {
 	}
 	code := randomCode()
 	exp := now.Add(s.ttl)
-	s.codes = append(s.codes, codeEntry{hash: hashCode(code), expires: exp})
+	s.codes = append(s.codes, codeEntry{hash: hashCode(code), expires: exp, user: userID})
 	return code, exp, nil
 }
 
@@ -235,6 +239,7 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 		s.mu.Unlock()
 		return Device{}, "", ErrInvalidCode
 	}
+	owner := s.codes[idx].user
 	s.codes = append(s.codes[:idx], s.codes[idx+1:]...) // single use
 	delete(s.fails, ip)
 	s.mu.Unlock()
@@ -257,13 +262,24 @@ func (s *Service) Pair(ctx context.Context, ip, code, name, deviceType string) (
 	var idb [16]byte
 	rand.Read(idb[:])
 	d := Device{ID: "dev_" + hex.EncodeToString(idb[:]), Name: name, DeviceType: deviceType, CreatedAt: now.UTC().Truncate(time.Millisecond)}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO players(id, name, device_type, token_hash, created_at, last_seen_at, is_admin)
-		VALUES (?,?,?,?,?,?, NOT EXISTS (SELECT 1 FROM players WHERE is_admin=1 AND token_hash IS NOT NULL))`,
-		d.ID, d.Name, nullStr(deviceType), HashToken(token), now.UnixMilli(), now.UnixMilli())
+	// The device belongs to the account that issued the code; console codes
+	// (and admin codes without a target) go to the first admin account.
+	_, err := s.db.ExecContext(ctx, `INSERT INTO players(id, name, device_type, token_hash, created_at, last_seen_at, is_admin, user_id)
+		SELECT ?,?,?,?,?,?,
+		    CASE WHEN o.id IS NOT NULL THEN o.role = 'admin'
+		         ELSE NOT EXISTS (SELECT 1 FROM players WHERE is_admin=1 AND token_hash IS NOT NULL) END,
+		    o.id
+		FROM (SELECT 1) LEFT JOIN (SELECT id, role FROM users
+		    WHERE id = COALESCE((SELECT id FROM users WHERE id=NULLIF(?, '')), (SELECT id FROM users WHERE role='admin' ORDER BY created_at, id LIMIT 1))) o`,
+		d.ID, d.Name, nullStr(deviceType), HashToken(token), now.UnixMilli(), now.UnixMilli(), owner)
 	if err != nil {
 		return Device{}, "", err
 	}
-	s.db.QueryRowContext(ctx, `SELECT is_admin FROM players WHERE id=?`, d.ID).Scan(&d.Admin)
+	if full, err := s.DeviceByID(ctx, d.ID); err == nil {
+		d = full
+	} else {
+		s.db.QueryRowContext(ctx, `SELECT is_admin FROM players WHERE id=?`, d.ID).Scan(&d.Admin)
+	}
 	d.LastSeenAt = d.CreatedAt
 	return d, token, nil
 }

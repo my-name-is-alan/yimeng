@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"net/http"
@@ -39,6 +40,17 @@ func (d Deps) scrobble(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dev, _ := DeviceFrom(r.Context())
+	// online tracks: store a snapshot row (title, artists, album, cover,
+	// duration) so history / 最近播放 / 常听 work after the cache expires
+	if library.IsExternalID(b.TrackID) {
+		if ex, ok := d.Playlists.(interface {
+			EnsureExternal(context.Context, []string) error
+		}); ok {
+			if err := ex.EnsureExternal(r.Context(), []string{b.TrackID}); err != nil {
+				d.Log.Info("scrobble snapshot failed", "track", b.TrackID, "err", err)
+			}
+		}
+	}
 	p := userdata.Play{TrackID: b.TrackID, PlayerID: dev.ID, DurationMs: b.DurationMs, Completed: b.Completed, Source: "scrobble"}
 	if b.PlayedAt != nil {
 		p.PlayedAt = *b.PlayedAt

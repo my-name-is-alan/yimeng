@@ -405,7 +405,7 @@ func (p *Provider) LookupTrack(ctx context.Context, q metadata.TrackQuery) ([]me
 		}
 		items = r.Tracks.Items
 	}
-	names := map[string]float64{}
+	var names map[string]float64
 	if len(items) == 0 {
 		if strings.TrimSpace(q.Title) == "" {
 			return nil, nil

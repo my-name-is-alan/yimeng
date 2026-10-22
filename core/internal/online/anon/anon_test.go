@@ -2,13 +2,14 @@ package anon
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
 )
 
-type fakeCat struct{ lyricsCalls int }
+type fakeCat struct{ lyricsCalls atomic.Int32 }
 
 func (f *fakeCat) Search(ctx context.Context, q string, limit int) (online.SearchResult, error) {
 	return online.SearchResult{
@@ -27,7 +28,7 @@ func (f *fakeCat) Playlist(context.Context, string) (online.Playlist, error) {
 	return online.Playlist{}, nil
 }
 func (f *fakeCat) Lyrics(_ context.Context, id string) (online.Lyrics, error) {
-	f.lyricsCalls++
+	f.lyricsCalls.Add(1)
 	if id == "x3" {
 		return online.Lyrics{}, nil
 	}

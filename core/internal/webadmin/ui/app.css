@@ -455,7 +455,7 @@ html, body, *, *::before, *::after { scrollbar-width: none !important; -ms-overf
 ::-webkit-scrollbar, *::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; background: transparent; }
 .hs-wrap { position: relative; min-width: 0; }
 .hs-wrap > .hs-btn { position: absolute; top: var(--hs-top, 50%); transform: translateY(-50%); z-index: 3; width: 34px; height: 34px; border-radius: 50%;
-  border: 1px solid var(--divider); background: color-mix(in srgb, var(--base) 88%, transparent); color: var(--text, #fff); display: none;
+  border: 1px solid var(--divider); background: color-mix(in srgb, var(--base) 88%, transparent); color: var(--fg); display: none;
   align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.35); font-size: 18px; line-height: 1; padding: 0; }
 .hs-wrap > .hs-btn:hover { background: var(--fill); }
 .hs-wrap > .hs-btn:focus-visible { outline: 2px solid var(--accent, #7aa2ff); }
@@ -564,3 +564,8 @@ input[type=file]::file-selector-button { border: 0; border-radius: 999px; backgr
 /* server settings */
 .fill-src { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--fill); border-radius: 12px; }
 .fill-src .grow { flex: 1; }
+
+/* App tooltip (replaces native title tooltips, see js/tooltip.js) */
+.ym-tip { position: fixed; z-index: 1000; max-width: 280px; padding: 6px 10px; border-radius: 8px; background: var(--fill-2, #1c1c20); color: var(--fg);
+  font-size: 12px; line-height: 1.4; box-shadow: 0 6px 20px rgb(0 0 0 / .35); pointer-events: none; white-space: pre-line; animation: ym-pop .12s ease-out; }
+.ym-tip[hidden] { display: none; }

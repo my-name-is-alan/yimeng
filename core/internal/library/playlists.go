@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"io"
 	"net/url"
 	"path/filepath"
@@ -18,6 +19,7 @@ var ErrSmartReadOnly = errors.New("smart playlists have no editable items")
 
 type Playlist struct {
 	ID         string    `json:"id"`
+	OwnerID    string    `json:"owner_id"`
 	Name       string    `json:"name"`
 	Comment    string    `json:"comment,omitempty"`
 	Smart      bool      `json:"smart"`
@@ -49,8 +51,12 @@ func (s *Scanner) loadPlaylist(ctx context.Context, q querier, id string) (Playl
 	var p Playlist
 	var comment, rules sql.NullString
 	var c, u int64
-	err := q.QueryRowContext(ctx, `SELECT id, name, comment, rules, created_at, updated_at FROM playlists WHERE id=?`, id).
-		Scan(&p.ID, &p.Name, &comment, &rules, &c, &u)
+	// D49: a playlist is visible to its owner; admins (and internal callers
+	// without a request identity) may reach any playlist by id.
+	o := owner.From(ctx)
+	err := q.QueryRowContext(ctx, `SELECT id, owner_id, name, comment, rules, created_at, updated_at FROM playlists
+		WHERE id=? AND (owner_id=? OR ?)`, id, o.ID, !o.Set || o.Admin).
+		Scan(&p.ID, &p.OwnerID, &p.Name, &comment, &rules, &c, &u)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, ErrNotFound
 	}
@@ -82,7 +88,7 @@ func (s *Scanner) smartIDs(ctx context.Context, r Rules) ([]string, error) {
 	if where != "" {
 		where = " WHERE " + where
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT t.id`+trackFrom+where+order+` LIMIT ?`, append(args, limit)...)
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id`+trackFrom(ctx)+where+order+` LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +153,7 @@ func (s *Scanner) fillCounts(ctx context.Context, p *Playlist) error {
 }
 
 func (s *Scanner) ListPlaylists(ctx context.Context) ([]Playlist, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM playlists ORDER BY lower(name), id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM playlists WHERE owner_id=? ORDER BY lower(name), id`, owner.From(ctx).ID)
 	if err != nil {
 		return nil, err
 	}
@@ -272,8 +278,8 @@ func (s *Scanner) CreatePlaylist(ctx context.Context, in PlaylistInput) (Playlis
 	if in.Comment != nil {
 		comment = *in.Comment
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO playlists(id, name, comment, rules, created_at, updated_at) VALUES (?,?,?,?,?,?)`,
-		id, name, nz(comment), rules, now, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO playlists(id, owner_id, name, comment, rules, created_at, updated_at) VALUES (?,?,?,?,?,?,?)`,
+		id, owner.From(ctx).ID, name, nz(comment), rules, now, now); err != nil {
 		return Playlist{}, err
 	}
 	if err := writeItems(ctx, tx, id, in.TrackIDs); err != nil {
@@ -349,7 +355,8 @@ func (s *Scanner) UpdatePlaylist(ctx context.Context, id string, in PlaylistInpu
 }
 
 func (s *Scanner) DeletePlaylist(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM playlists WHERE id=?`, id)
+	o := owner.From(ctx)
+	res, err := s.db.ExecContext(ctx, `DELETE FROM playlists WHERE id=? AND (owner_id=? OR ?)`, id, o.ID, !o.Set || o.Admin)
 	if err != nil {
 		return err
 	}

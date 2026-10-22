@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,10 +280,20 @@ var albumSorts = map[string]string{
 	"year": "al.year, lower(al.title)", "added": "al.created_at, al.id",
 }
 
-const albumCols = `al.id, al.title, COALESCE(al.artist_name,''), COALESCE(al.year,0), COALESCE(al.genre,''),
+// albumCols selects an album with the caller's favorite flag and rating (D49).
+func albumCols(ctx context.Context) string {
+	o := ownerLit(ctx)
+	return `al.id, al.title, COALESCE(al.artist_name,''), COALESCE(al.year,0), COALESCE(al.genre,''),
 	al.track_count, COALESCE(al.disc_count,1), al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at,
-	EXISTS(SELECT 1 FROM favorites f WHERE f.entity_type='album' AND f.entity_id=al.id),
-	COALESCE((SELECT rating FROM ratings r WHERE r.entity_type='album' AND r.entity_id=al.id),0), al.origin`
+	EXISTS(SELECT 1 FROM favorites f WHERE f.user_id=` + o + ` AND f.entity_type='album' AND f.entity_id=al.id),
+	COALESCE((SELECT rating FROM ratings r WHERE r.user_id=` + o + ` AND r.entity_type='album' AND r.entity_id=al.id),0), al.origin`
+}
+
+// ownerLit is the caller's owner id as an SQL string literal (ids are
+// server-generated; quoting still escapes any quote).
+func ownerLit(ctx context.Context) string {
+	return "'" + strings.ReplaceAll(owner.From(ctx).ID, "'", "''") + "'"
+}
 
 func scanAlbum(r interface{ Scan(...any) error }) (Album, error) {
 	var a Album
@@ -304,7 +315,7 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 		w.add(`al.origin=?`, p.Origin)
 	}
 	if p.Favorite {
-		w.add(`al.id IN (SELECT entity_id FROM favorites WHERE entity_type='album')`)
+		w.add(`al.id IN (SELECT entity_id FROM favorites WHERE user_id=? AND entity_type='album')`, owner.From(ctx).ID)
 	}
 	if p.ArtistID != "" {
 		w.add(`al.id IN (SELECT album_id FROM album_artists WHERE artist_id=?
@@ -314,7 +325,7 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM albums al`+w.sql(), w.args); err != nil {
 		return out, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+albumCols+` FROM albums al`+w.sql()+ob+` LIMIT ? OFFSET ?`,
+	rows, err := s.db.QueryContext(ctx, `SELECT `+albumCols(ctx)+` FROM albums al`+w.sql()+ob+` LIMIT ? OFFSET ?`,
 		append(w.args, p.Limit, p.Offset)...)
 	if err != nil {
 		return out, err
@@ -337,7 +348,7 @@ func (s *Scanner) ListAlbums(ctx context.Context, p ListParams) (Page[Album], er
 }
 
 func (s *Scanner) GetAlbum(ctx context.Context, id string) (Album, error) {
-	a, err := scanAlbum(s.db.QueryRowContext(ctx, `SELECT `+albumCols+` FROM albums al WHERE al.id=?`, id))
+	a, err := scanAlbum(s.db.QueryRowContext(ctx, `SELECT `+albumCols(ctx)+` FROM albums al WHERE al.id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}
@@ -390,11 +401,15 @@ const trackCols = `t.id, t.title, COALESCE(t.artist_name,''), COALESCE(t.album_i
 const bestSource = `(SELECT l.source_track_id FROM track_links l JOIN source_tracks s2 ON s2.id=l.source_track_id
 	WHERE l.track_id=t.id ORDER BY l.confidence DESC, CASE s2.format WHEN 'flac' THEN 0 ELSE 1 END, s2.path LIMIT 1)`
 
-const trackFrom = ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id
+// trackFrom joins the caller's favorite/rating (D49).
+func trackFrom(ctx context.Context) string {
+	o := ownerLit(ctx)
+	return ` FROM tracks t LEFT JOIN albums al ON al.id=t.album_id
 	LEFT JOIN track_stats ts ON ts.track_id=t.id
-	LEFT JOIN favorites fv ON fv.entity_type='track' AND fv.entity_id=t.id
-	LEFT JOIN ratings rt ON rt.entity_type='track' AND rt.entity_id=t.id
+	LEFT JOIN favorites fv ON fv.user_id=` + o + ` AND fv.entity_type='track' AND fv.entity_id=t.id
+	LEFT JOIN ratings rt ON rt.user_id=` + o + ` AND rt.entity_type='track' AND rt.entity_id=t.id
 	LEFT JOIN source_tracks st ON st.id=` + bestSource
+}
 
 func scanTrack(r interface{ Scan(...any) error }) (Track, error) {
 	var t Track
@@ -453,9 +468,9 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 		w.add(`t.id IN (SELECT track_id FROM track_artists WHERE artist_id=?)`, p.ArtistID)
 	}
 	if p.Favorite {
-		w.add(`t.id IN (SELECT entity_id FROM favorites WHERE entity_type='track')`)
+		w.add(`t.id IN (SELECT entity_id FROM favorites WHERE user_id=? AND entity_type='track')`, owner.From(ctx).ID)
 	}
-	from := trackFrom
+	from := trackFrom(ctx)
 	out := Page[Track]{Items: []Track{}, Limit: p.Limit, Offset: p.Offset}
 	// counting needs no per-row source/stat joins
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM tracks t LEFT JOIN albums al ON al.id=t.album_id`+w.sql(), w.args); err != nil {
@@ -483,7 +498,7 @@ func (s *Scanner) ListTracks(ctx context.Context, p ListParams) (Page[Track], er
 }
 
 func (s *Scanner) GetTrack(ctx context.Context, id string) (Track, error) {
-	t, err := scanTrack(s.db.QueryRowContext(ctx, `SELECT `+trackCols+trackFrom+` WHERE t.id=?`, id))
+	t, err := scanTrack(s.db.QueryRowContext(ctx, `SELECT `+trackCols+trackFrom(ctx)+` WHERE t.id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, ErrNotFound
 	}

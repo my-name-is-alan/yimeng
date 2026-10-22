@@ -190,6 +190,7 @@ func rsaRaw(msg []byte) string {
 
 // rsaPKCS1 is RSAES-PKCS1-v1_5 (hex).
 func rsaPKCS1(msg []byte) string {
+	//lint:ignore SA1019 the Kugou protocol mandates PKCS1 v1.5 (interop only)
 	ct, err := rsa.EncryptPKCS1v15(rand.Reader, pubKey, msg)
 	if err != nil {
 		return ""

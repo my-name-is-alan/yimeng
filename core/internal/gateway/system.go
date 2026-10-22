@@ -3,6 +3,7 @@ package gateway
 import (
 	"errors"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"net/http"
 	"os"
 	"strconv"
@@ -105,5 +106,21 @@ func (d Deps) getSystem(w http.ResponseWriter, r *http.Request) {
 		d.internal(w, "system", err)
 		return
 	}
+	if me, _ := DeviceFrom(r.Context()); !me.Admin {
+		redactSystem(&in) // D49: no host paths/ops detail for non-admins
+	}
 	writeJSON(w, http.StatusOK, in)
+}
+
+// redactSystem strips host paths, errors and operational detail.
+func redactSystem(in *system.Info) {
+	for i := range in.Roots {
+		in.Roots[i].Path, in.Roots[i].Error, in.Roots[i].FreeBytes = "", "", 0
+	}
+	in.Scan = nil
+	in.Diagnostics = []system.Diagnostic{}
+	in.Database.SizeBytes, in.Database.WALBytes, in.Database.FreeBytes = 0, 0, 0
+	in.Backups.Count, in.Backups.Last = 0, nil
+	in.Devices.Paired, in.Devices.Active = 0, 0
+	in.GoVersion = ""
 }

@@ -59,7 +59,9 @@ func (d Deps) listPlaylists(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.decoratePlaylists(r, l)
-	writeJSON(w, http.StatusOK, map[string]any{"items": l, "total": len(l), "next_cursor": nil})
+	page, total, off, next := pageSlice(r, l)
+	writeJSON(w, http.StatusOK, map[string]any{"items": page, "total": total, "offset": off,
+		"cursor": encodeCursor(off, listFingerprint(r)), "next_cursor": next})
 }
 
 func (d Deps) getPlaylist(w http.ResponseWriter, r *http.Request) {

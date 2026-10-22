@@ -512,6 +512,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			},
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
 	}
 	errc := make(chan error, 1)
 	go func() {

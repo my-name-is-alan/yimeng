@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"io"
 	"log/slog"
@@ -202,12 +203,12 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/rooms/{id}/events", d.roomEvents)
 	mux.HandleFunc("GET /room/{code}", d.roomPage)
 	mux.HandleFunc("POST /api/sessions/handoff", d.handoff)
-	mux.HandleFunc("GET /api/players/{id}", d.playerState)
-	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
+	mux.HandleFunc("GET /api/players/{id}", d.ownPlayer(d.playerState))
+	mux.HandleFunc("GET /api/players/{id}/queue", d.ownPlayer(d.playerQueue))
 	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer", "sleep"} {
-		mux.HandleFunc("POST /api/players/{id}/"+a, d.playerAction(a))
+		mux.HandleFunc("POST /api/players/{id}/"+a, d.ownPlayer(d.playerAction(a)))
 	}
-	mux.HandleFunc("POST /api/players/{id}/radio", d.playerRadio)
+	mux.HandleFunc("POST /api/players/{id}/radio", d.ownPlayer(d.playerRadio))
 	mux.HandleFunc("GET /ws", d.ws)
 
 	mux.HandleFunc("GET /api/tracks/{id}/dream", d.trackDream)
@@ -292,6 +293,11 @@ func NewRouter(d Deps) http.Handler {
 
 type ctxKey struct{}
 
+// withDevice attaches the device and its owning account (D49).
+func withDevice(ctx context.Context, dev auth.Device) context.Context {
+	return owner.With(context.WithValue(ctx, ctxKey{}, dev), dev.UserID, dev.Admin)
+}
+
 func DeviceFrom(ctx context.Context) (auth.Device, bool) {
 	dv, ok := ctx.Value(ctxKey{}).(auth.Device)
 	return dv, ok
@@ -349,7 +355,7 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 			// signed media URL (path-scoped HMAC, expiring)
 			if id, ok := d.Auth.VerifyURL(r.URL.Path, r.URL.Query()); ok {
 				if dev, err := d.Auth.DeviceByID(r.Context(), id); err == nil {
-					next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, dev)))
+					next.ServeHTTP(w, r.WithContext(withDevice(r.Context(), dev)))
 					return
 				}
 			}
@@ -368,7 +374,7 @@ func (d Deps) requireAuth(next http.Handler) http.Handler {
 			return
 		}
 		noteDevice(r.Context(), dev.ID)
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, dev)))
+		next.ServeHTTP(w, r.WithContext(withDevice(r.Context(), dev)))
 	})
 }
 
@@ -377,6 +383,11 @@ func securityHeaders(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		if h.Get("Content-Security-Policy") == "" {
+			h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

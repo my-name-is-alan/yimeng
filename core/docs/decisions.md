@@ -365,3 +365,20 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - **Web page:** `/room/{code}`.
 - **Search streaming:** `/search?stream=1` streams local results first, then each platform as it finishes.
 - **NetEase login:** SMS login added (captcha/sent + w/login/cellphone with the PC identity). QR keeps the iPhone identity by default; PC identity is opt-in via YIMENG_NETEASE_QR_PC=1 (it got -462 on polling).
+
+## D49 — Per-account isolation
+- **Owned per user account:** playlists (`owner_id`), favorites, ratings, play history and scrobbles (`plays.user_id`), and progress.
+- **Devices:** a device belongs to the account that issued its pairing code. Web logins belong to the logged-in account.
+- **Migration 0021:** existing rows move to the first admin account.
+- **Admin access:** an admin may open, edit or delete any playlist by id. Listings show only the caller's own data, including for admin.
+- **Other accounts' data:** playlists, devices and players return **404**, never 403, so ids cannot be probed.
+- **Player control:** player control, queue, transfer, handoff and sessions are limited to devices of the same account, plus admin. WebSocket `hello` and `player.*` / `queue.*` events are filtered the same way.
+  - Players that are not a paired device (server outputs) stay shared.
+  - Installs without accounts stay one shared household.
+- **Rooms (一起听):** unchanged. Anyone with the code can join. Members can only send 弹幕 and follow; only the host controls.
+- **/system:** non-admins get a redacted view with no host paths, diagnostics or ops figures.
+- **Stays server-wide:** platform logins, online caches and `/stats` aggregates.
+- **Lyrics ranking:**
+  - A duration mismatch now multiplies the score: ×0.8 above 10 s, ×0.55 above 20 s, ×0.3 above 45 s.
+  - The last synced timestamp is checked against the track: lyrics that run past the end get ×0.4; lyrics that end before 55 % of the track get ×0.6. This needs ≥5 lines and a track of ≥60 s.
+  - For an online track id, that platform's own lyrics are added as a candidate with a +15 bonus.

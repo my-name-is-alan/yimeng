@@ -1,6 +1,6 @@
 // 译梦 web console: shell, username/password sign-in, hash router.
 import { get, post, store, connectWS, closeWS, onUnauthorized, onEvent, wsState } from "./api.js";
-import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues } from "./ui.js";
+import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues, confirmDlg } from "./ui.js";
 import { state, isAdmin } from "./state.js";
 import { player, mountNowBar, closeNP } from "./player.js";
 import * as lib from "./library.js";
@@ -10,6 +10,7 @@ import { metadataPage } from "./metadata.js";
 import * as onl from "./online.js";
 import { initHScroll } from "./hscroll.js";
 import { initSelects } from "./select.js";
+import { initTooltips } from "./tooltip.js";
 
 adm.applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", adm.applyTheme);
@@ -28,7 +29,7 @@ function shell() {
   $("#nav").replaceChildren(...NAV.flatMap(([sec, items]) => [h("div", { class: "nav-sec" }, sec), ...items.filter((x) => !(hideLocal && x[3] === "local")).map(([href, label, ic]) => h("a", { class: "nav-item", href }, icon(ic), label))]));
   $("#tabbar").replaceChildren(...TABS.map(([href, label, ic, raised]) => h("a", { href, class: raised ? "raised" : "" }, raised ? h("span", { class: "orb" }, icon(ic)) : icon(ic), raised ? null : label)));
   const wsDot = h("span", { class: "dot" });
-  const syncWs = () => { wsDot.className = `dot ${wsState.connected ? "ok" : "err"}`; wsDot.title = wsState.connected ? "实时连接正常" : "实时连接断开，重连中"; };
+  const syncWs = () => { wsDot.className = `dot ${wsState.connected ? "ok" : "err"}`; wsDot.dataset.tip = wsState.connected ? "实时连接正常" : "实时连接断开，重连中"; };
   onEvent("ws.status", syncWs); syncWs();
   $("#sideFoot").replaceChildren(
     h("div", { class: "row" }, wsDot, h("span", { class: "ellipsis", style: { flex: 1 } }, state.me.name), h("span", { class: `badge ${isAdmin() ? "ok" : ""}` }, isAdmin() ? "管理员" : "成员")),
@@ -43,7 +44,7 @@ function shell() {
 }
 
 async function logout() {
-  if (!confirm("确定退出登录？")) return;
+  if (!(await confirmDlg("退出登录", "确定退出登录？", "退出"))) return;
   try { await post("/auth/logout"); } catch {}
   store.token = ""; closeWS(); player.clear(); location.hash = "#/"; location.reload();
 }
@@ -166,4 +167,5 @@ async function boot() {
 onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
 initHScroll();
 initSelects();
+initTooltips();
 boot();
