@@ -49,6 +49,10 @@ struct LiveLyricsView: View {
     @ObservedObject private var fonts = LyricFontStore.shared
     @AppStorage("ym.lyricTrans") private var showTrans = true
     @AppStorage("ym.lyricRoma") private var showRoma = false
+    /// Pinch-to-size, persisted (0.7…1.6).
+    @AppStorage("ym.lyricScale") private var scale: Double = 1
+    @GestureState private var pinch: CGFloat = 1
+    private var k: CGFloat { CGFloat(min(1.6, max(0.7, scale * Double(pinch)))) }
 
     var body: some View {
         let ms = Int(time * 1000)
@@ -66,6 +70,8 @@ struct LiveLyricsView: View {
                                 ForEach(Array(store.lines.enumerated()), id: \.offset) { i, l in
                                     line(l, ms: ms, d: abs(i - idx), active: i == idx)
                                         .frame(maxWidth: .infinity, alignment: .leading).id(i)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { Haptics.tick(); PlayerStore.shared.seek(to: Double(l.tMs) / 1000 + 0.01) }
                                 }
                             }
                             .padding(.horizontal, 28)
@@ -77,6 +83,9 @@ struct LiveLyricsView: View {
                         .onChange(of: idx) { _, n in withAnimation(.smooth(duration: 0.6)) { proxy.scrollTo(n, anchor: UnitPoint(x: 0, y: 0.36)) } }
                     }
                     .frame(width: g.size.width, height: g.size.height)
+                    .simultaneousGesture(MagnificationGesture()
+                        .updating($pinch) { v, st, _ in st = v }
+                        .onEnded { v in scale = min(1.6, max(0.7, scale * Double(v))) })
                     .mask(LinearGradient(stops: [.init(color: .clear, location: 0.08), .init(color: .black, location: 0.2),
                                                  .init(color: .black, location: 0.8), .init(color: .clear, location: 0.9)], startPoint: .top, endPoint: .bottom))
                 }
@@ -112,14 +121,14 @@ struct LiveLyricsView: View {
                 if active, let w = l.words, !w.isEmpty { Text(Self.karaoke(w, ms: ms, accent: accent)) }
                 else { Text(l.text) }
             }
-            .font(fonts.font(size: active ? 24 : 21))
+            .font(fonts.font(size: (active ? 24 : 21) * k))
             .background(alignment: .leading) {
                 if active && (l.words ?? []).isEmpty {
                     RoundedRectangle(cornerRadius: 4).fill(accent.opacity(0.32)).padding(.vertical, 4).padding(.horizontal, -4)
                 }
             }
-            if showRoma, let r = l.roma, !r.isEmpty { Text(r).font(.system(size: 12)).opacity(0.55) }
-            if showTrans, let t = l.trans, !t.isEmpty { Text(t).font(.system(size: 13)).opacity(0.6) }
+            if showRoma, let r = l.roma, !r.isEmpty { Text(r).font(.system(size: 12 * k)).opacity(0.55) }
+            if showTrans, let t = l.trans, !t.isEmpty { Text(t).font(.system(size: 13 * k)).opacity(0.6) }
         }
         .opacity(active ? 1 : (d == 1 ? 0.55 : 0.4))
         .blur(radius: d >= 3 ? 2.5 : (d == 2 ? 1 : 0))

@@ -83,6 +83,7 @@ struct HomeLive: View {
                                     }
                                     .frame(width: 90)
                                     .onTapGesture { state.path.append(.ndArtist(ar)) }
+                                    .artistMenu(ar)
                                 }
                             }.padding(.horizontal, Theme.margin)
                         }.motionIn(stagger(6))
@@ -100,6 +101,7 @@ struct HomeLive: View {
                                     .frame(width: 132)
                                     .contentShape(Rectangle())
                                     .onTapGesture { state.path.append(.ndPlaylist(pl)) }
+                                    .playlistMenu(pl)
                                 }
                             }.padding(.horizontal, Theme.margin)
                         }.motionIn(stagger(7))

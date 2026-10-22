@@ -78,6 +78,7 @@ struct ArtistDetailView: View {
                                     Text(a.year.map(String.init) ?? "").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                                 }
                             }.buttonStyle(.plain)
+                            .albumMenu(a)
                         }
                     }.padding(.horizontal, Theme.margin)
                 }
@@ -92,6 +93,7 @@ struct ArtistDetailView: View {
                                         Text(s.name).font(.system(size: 12)).lineLimit(1).frame(width: 84).foregroundStyle(Theme.fg(scheme))
                                     }
                                 }.buttonStyle(.plain)
+                                .artistMenu(s)
                             }
                         }.padding(.horizontal, Theme.margin)
                     }

@@ -24,6 +24,7 @@ extension CoreClient {
         s.previewStartMs = w?.startMs; s.previewEndMs = w?.endMs
         s.unplayableReason = t.unplayableReason; s.sortLetter = t.sortLetter; s.isrc = t.isrc; s.popularity = t.popularity
         s.hasLyrics = t.hasLyrics; s.colors = t.cover?.colors
+        s.artistId = t.artists?.first?.id ?? { if case .ref(let r) = t.artist { return r.id } else { return nil } }()
         return s
     }
     nonisolated static func nd(_ a: CoreAlbum) -> NDAlbum {

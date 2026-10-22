@@ -86,7 +86,6 @@ struct PlaylistDetailView: View {
                     PlayerStore.shared.play(songs: songs, startAt: i, coverURL: nil)
                     withAnimation(.ui) { state.nowPlaying = true }
                 }
-                .songMenu(s)
                 .listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
             .onDelete(perform: shown.isMine ? remove : nil)

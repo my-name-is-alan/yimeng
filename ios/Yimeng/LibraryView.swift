@@ -190,7 +190,6 @@ struct SongRowPlay: View {
                  showCover: showCover, coverURL: showCover ? LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) : nil) {
             PlayerStore.shared.play(songs: songs, startAt: i)
         }
-        .songMenu(s)
     }
 }
 
@@ -268,6 +267,7 @@ private struct AlbumsGrid: View {
                             Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                         }
                     }.buttonStyle(.plain)
+                    .albumMenu(a)
                     .id(a.id)
                     .onAppear { if i >= albums.count - 20 { Task { await cache.more(key) } } }
                 }
@@ -311,6 +311,7 @@ private struct ArtistsList: View {
                     .foregroundStyle(Theme.fg(scheme))
                     .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
                 }.buttonStyle(.plain)
+                .artistMenu(ar)
                 .id(ar.id)
             }
         }
@@ -347,6 +348,7 @@ private struct PlaylistsList: View {
                         .foregroundStyle(Theme.fg(scheme))
                         .padding(.horizontal, Theme.margin).frame(height: 68).contentShape(Rectangle())
                     }.buttonStyle(.plain)
+                    .playlistMenu(pl)
                 }
             } else {
                 DoodleLoader(text: "正在整理歌单…")

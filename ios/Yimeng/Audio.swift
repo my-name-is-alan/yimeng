@@ -323,10 +323,29 @@ struct SongMenu: ViewModifier {
             Button { PlayerStore.shared.playNext(song); SheetCenter.shared.say("将在下一首播放") } label: { Label("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward") }
             Button { PlayerStore.shared.enqueue(song); SheetCenter.shared.say("已加入播放队列") } label: { Label("加入播放队列", systemImage: "text.badge.plus") }
             Button { SheetCenter.shared.addToPlaylist = song } label: { Label("添加到歌单…", systemImage: "music.note.list") }
-            Button { StarStore.shared.toggle(song) } label: {
+            Button { Nav.album(of: song) } label: { Label("前往专辑", systemImage: "square.stack") }.disabled(song.albumId == nil)
+            Button { Nav.artist(of: song) } label: { Label("前往歌手", systemImage: "music.mic") }
+            Button { StarStore.shared.toggle(song); Haptics.tap() } label: {
                 Label(StarStore.shared.isStarred(song: song.id) ? "取消收藏" : "收藏", systemImage: "heart")
             }
+        } preview: {
+            SongMenuPreview(song: song)
         }
+    }
+}
+struct SongMenuPreview: View {
+    let song: NDSong
+    var body: some View {
+        HStack(spacing: 12) {
+            CoverImage(url: LibraryStore.shared.coverArtURL(id: song.coverId ?? song.albumId, size: 300), points: 64)
+                .frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(song.title).font(.system(size: 16, weight: .semibold)).lineLimit(2)
+                Text([song.artist, song.album].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 6) { SourceBadge(origin: song.origin); if song.preview == true { PreviewCapsule() }; Text(song.durationLabel).font(.system(size: 12)).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+        }.padding(14).frame(width: 300).background(Color(uiColor: .systemBackground))
     }
 }
 extension View { func songMenu(_ s: NDSong) -> some View { modifier(SongMenu(song: s)) } }

@@ -81,6 +81,7 @@ struct GenreView: View {
                                 Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                             }
                         }.buttonStyle(.plain)
+                        .albumMenu(a)
                         .onAppear { if i >= albums.count - 10 { Task { await cache.more(genre.name) } } }
                     }
                 }.padding(.horizontal, Theme.margin)

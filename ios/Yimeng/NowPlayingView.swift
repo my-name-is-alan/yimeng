@@ -67,6 +67,7 @@ struct NowPlayingView: View {
             .foregroundStyle(.white)
             .animation(.spring(response: 0.55, dampingFraction: 0.85), value: state.ambience)
         }
+        .modifier(CollapseSwipe())
         #if DEBUG
         .task { if ProcessInfo.processInfo.arguments.contains("-np-sheet") { try? await Task.sleep(for: .seconds(4)); showAmbience = true } }
         .task { if ProcessInfo.processInfo.arguments.contains("-np-more") { try? await Task.sleep(for: .seconds(5)); showMore = true } }
@@ -105,6 +106,7 @@ struct NowPlayingView: View {
         Group {
             if let ns { art.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { art }
         }
+        .modifier(CoverSwipe())
         .offset(x: slot.rect.minX, y: slot.rect.minY)
         .motionIn(0.08, from: .scale)
     }
@@ -182,7 +184,7 @@ struct NowPlayingView: View {
                 .frame(width: 40, height: 34)
                 .overlay(alignment: .bottom) { if on { Circle().fill(Theme.lime).frame(width: 4, height: 4).offset(y: 2) } }
                 .contentShape(Rectangle())
-        }
+        }.accessibilityIdentifier(icon)
     }
 
     var controls: some View {

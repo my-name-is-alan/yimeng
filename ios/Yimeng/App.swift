@@ -300,7 +300,7 @@ struct Shell: View {
     var chrome: some View {
         VStack(spacing: 12) {
             if player.hasRealPlayback {
-                MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }
+                MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }.modifier(MiniSwipe())
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             ZStack(alignment: .bottom) {

@@ -25,6 +25,7 @@
 		3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26134EFA3C10B18CD7770A97 /* LibraryCache.swift */; };
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
+		4174A2343A33535F95EDA60D /* GestureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 065726152CF03E6FD2BF5A3A /* GestureTests.swift */; };
 		44A550802F50D7B26FDED7F1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		44B2579B22172C9943151E90 /* PlaylistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467FC43FBCB3BD63A480440A /* PlaylistDetailView.swift */; };
 		48B39070769FD76DEE1C831A /* LiveLyrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F48F48AC5D21B981D4F21F /* LiveLyrics.swift */; };
@@ -77,6 +78,7 @@
 		E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B459A03FE9FB71837E459E /* Motion.swift */; };
 		E3831141F414E0FC94D37566 /* CoreEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D481EB1947F216689FAC4AF5 /* CoreEvents.swift */; };
 		E7990172E8CD58DD0DBC86E4 /* CoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B281F963BA1B878DC8E377 /* CoreClient.swift */; };
+		E87F3750B9CD9C0171F3B144 /* GesturesV32.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13CABBAF07443E6A8FD95F91 /* GesturesV32.swift */; };
 		E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7AA12279A810579DDAD711 /* GenreView.swift */; };
 		EBB1A10BDC92B222F4152ED5 /* Banner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C66FE3A48511F18C8FF2DEF /* Banner.swift */; };
 		EF1FC146616E6E61611329A2 /* EmbyClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED964AE3DE286A79F131CBA /* EmbyClient.swift */; };
@@ -104,6 +106,13 @@
 			remoteGlobalIDString = 684AFA6F6859FAFB66C8BEAD;
 			remoteInfo = Yimeng;
 		};
+		CC92CB2582E49EAD3799690F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9143D217C1B9D8FEBCD6E6F2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 684AFA6F6859FAFB66C8BEAD;
+			remoteInfo = Yimeng;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -123,12 +132,15 @@
 /* Begin PBXFileReference section */
 		033899009C62F1F8197A0B44 /* Doodle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Doodle.swift; sourceTree = "<group>"; };
 		03744E138A2E6A2C16E3F4C2 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
+		065726152CF03E6FD2BF5A3A /* GestureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureTests.swift; sourceTree = "<group>"; };
+		0835E14DC973DC92549A924A /* YimengUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YimengUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		08E1C7C7E078182DCBB5B668 /* YimengWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengWidgets.swift; sourceTree = "<group>"; };
 		0962E95E6B55BCB808D64B49 /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
 		0E250285D45C295C91932A00 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		0EA012D947A622EE3B2895EF /* CoreV30.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV30.swift; sourceTree = "<group>"; };
 		0ED964AE3DE286A79F131CBA /* EmbyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyClient.swift; sourceTree = "<group>"; };
 		10344A37F4E7381B0AA3FBD7 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		13CABBAF07443E6A8FD95F91 /* GesturesV32.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GesturesV32.swift; sourceTree = "<group>"; };
 		15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-sysinfo.json"; sourceTree = "<group>"; };
 		16EAA934AB97BEE0902D11F2 /* MeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeView.swift; sourceTree = "<group>"; };
 		184013605DC0F6EEC27F5170 /* YimengWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YimengWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -206,6 +218,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		2EB51112BB9C749BD6990279 /* YimengUITests */ = {
+			isa = PBXGroup;
+			children = (
+				065726152CF03E6FD2BF5A3A /* GestureTests.swift */,
+			);
+			path = YimengUITests;
+			sourceTree = "<group>";
+		};
 		416552256942BFE9A95705C8 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
@@ -237,6 +257,7 @@
 				416552256942BFE9A95705C8 /* Shared */,
 				A1698FBD18401288FE2B1498 /* Yimeng */,
 				7F632480824F1FEF77789F46 /* YimengTests */,
+				2EB51112BB9C749BD6990279 /* YimengUITests */,
 				AB95D4DD651112BF89637B28 /* YimengWidgets */,
 				83C83E9C79A3D06FAA6C1809 /* Products */,
 			);
@@ -258,6 +279,7 @@
 			children = (
 				F1B679B920A57BE24DC98F91 /* Yimeng.app */,
 				9743CD154042418ED809DFA6 /* YimengTests.xctest */,
+				0835E14DC973DC92549A924A /* YimengUITests.xctest */,
 				184013605DC0F6EEC27F5170 /* YimengWidgets.appex */,
 			);
 			name = Products;
@@ -298,6 +320,7 @@
 				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
 				A14B0D85AF014834401939FD /* FnosClient.swift */,
 				CB7AA12279A810579DDAD711 /* GenreView.swift */,
+				13CABBAF07443E6A8FD95F91 /* GesturesV32.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
 				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
@@ -391,6 +414,24 @@
 			productReference = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		82ACD182F8C48CDE957154E6 /* YimengUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6D43C7A6E2C29BD570A70926 /* Build configuration list for PBXNativeTarget "YimengUITests" */;
+			buildPhases = (
+				235F3A3E9EFF6020F4DF9238 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3D88F0BD1005C1BBF9270911 /* PBXTargetDependency */,
+			);
+			name = YimengUITests;
+			packageProductDependencies = (
+			);
+			productName = YimengUITests;
+			productReference = 0835E14DC973DC92549A924A /* YimengUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		BF4387F73AADECAF45257D71 /* YimengTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E79851F46ED8D025B6962776 /* Build configuration list for PBXNativeTarget "YimengTests" */;
@@ -419,6 +460,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					82ACD182F8C48CDE957154E6 = {
+						TestTargetID = 684AFA6F6859FAFB66C8BEAD;
+					};
 				};
 			};
 			buildConfigurationList = 17249EAD505EF555D135984D /* Build configuration list for PBXProject "Yimeng" */;
@@ -438,6 +482,7 @@
 				684AFA6F6859FAFB66C8BEAD /* Yimeng */,
 				829E2B72F0534C7CEFFD4D36 /* YimengWidgets */,
 				BF4387F73AADECAF45257D71 /* YimengTests */,
+				82ACD182F8C48CDE957154E6 /* YimengUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -485,6 +530,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		235F3A3E9EFF6020F4DF9238 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4174A2343A33535F95EDA60D /* GestureTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		928AE546E888248B21921276 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -530,6 +583,7 @@
 				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
 				C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */,
 				E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */,
+				E87F3750B9CD9C0171F3B144 /* GesturesV32.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
 				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,
@@ -575,6 +629,11 @@
 			target = 829E2B72F0534C7CEFFD4D36 /* YimengWidgets */;
 			targetProxy = 4C31823F9C9B2FF0E99BCDCC /* PBXContainerItemProxy */;
 		};
+		3D88F0BD1005C1BBF9270911 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 684AFA6F6859FAFB66C8BEAD /* Yimeng */;
+			targetProxy = CC92CB2582E49EAD3799690F /* PBXContainerItemProxy */;
+		};
 		67030B387C2013E7F4657CD5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 684AFA6F6859FAFB66C8BEAD /* Yimeng */;
@@ -583,6 +642,23 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		0EDE8356E1D087D6361BF793 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.YimengUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Yimeng;
+			};
+			name = Release;
+		};
 		3109F7364F5A8AC6083E231B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -707,6 +783,23 @@
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng";
+			};
+			name = Debug;
+		};
+		73B076DBB574412F57F7EC94 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.YimengUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Yimeng;
 			};
 			name = Debug;
 		};
@@ -861,6 +954,15 @@
 			buildConfigurations = (
 				937B595C18F2B255B0AD7EE2 /* Debug */,
 				780A084BBDD89C83AABE8BEE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6D43C7A6E2C29BD570A70926 /* Build configuration list for PBXNativeTarget "YimengUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				73B076DBB574412F57F7EC94 /* Debug */,
+				0EDE8356E1D087D6361BF793 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

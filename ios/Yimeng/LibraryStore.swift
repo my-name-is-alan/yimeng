@@ -79,6 +79,7 @@ struct NDSong: Identifiable, Hashable, Codable {
     var popularity: Double? = nil
     var hasLyrics: Bool? = nil
     var colors: [String]? = nil
+    var artistId: String? = nil
 
     var durationLabel: String {
         guard let d = duration else { return "" }

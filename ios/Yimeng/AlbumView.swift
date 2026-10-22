@@ -128,7 +128,6 @@ struct NDAlbumView: View {
                                     PlayerStore.shared.playAlbum(shown, songs: songs, startAt: i)
                                     withAnimation(.ui) { state.nowPlaying = true }
                                 }
-                                .songMenu(t)
                                 .opacity(revealed ? 1 : 0)
                                 .offset(y: revealed ? 0 : 16)
                                 .animation(.snappy(duration: 0.45).delay(revealed ? 0.12 + Double(i % 8) * 0.04 : 0), value: revealed)
@@ -278,6 +277,7 @@ struct LibrarySearchView: View {
                                 .foregroundStyle(Theme.fg(scheme))
                                 .padding(.horizontal, Theme.margin).frame(height: 60).contentShape(Rectangle())
                             }.buttonStyle(.plain)
+                            .playlistMenu(pl)
                         }
                     }
                     if !artists.isEmpty {
@@ -294,6 +294,7 @@ struct LibrarySearchView: View {
                             .padding(.horizontal, Theme.margin).padding(.vertical, 8)
                             .contentShape(Rectangle())
                             .onTapGesture { state.path.append(.ndArtist(ar)) }
+                            .artistMenu(ar)
                         }
                     }
                     if albums.isEmpty && songs.isEmpty && artists.isEmpty && !q.isEmpty && !searching {

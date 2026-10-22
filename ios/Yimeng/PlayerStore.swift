@@ -107,6 +107,24 @@ final class PlayerStore: ObservableObject {
         startCurrent(autoplay: true, seek: nil)
     }
 
+    /// User seek (progress bar drag, lyric tap).
+    func seek(to t: TimeInterval) {
+        let pos = max(0, duration > 0 ? min(t, duration - 0.5) : t)
+        guard let player else { pendingSeek = pos; elapsed = pos; pushNowPlaying(); return }
+        player.seek(to: CMTime(seconds: pos, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in }
+        elapsed = pos; pushNowPlaying()
+    }
+    func playNext(_ ss: [NDSong]) {
+        let ok = ss.filter { !$0.isUnplayable }; guard !ok.isEmpty else { return }
+        guard song != nil else { play(songs: ok); return }
+        queue.insert(contentsOf: ok, at: min(index + 1, queue.count)); save()
+    }
+    func enqueue(_ ss: [NDSong]) {
+        let ok = ss.filter { !$0.isUnplayable }; guard !ok.isEmpty else { return }
+        guard song != nil else { play(songs: ok); return }
+        queue.append(contentsOf: ok); save()
+    }
+
     // MARK: Queue
 
     func playNext(_ s: NDSong) {
@@ -328,6 +346,7 @@ final class PlayerStore: ObservableObject {
         elapsed = snap.elapsed
         pendingSeek = snap.elapsed
         isPlaying = false
+        LyricsStore.shared.load(s)
         syncApp()
         pushNowPlaying()
     }

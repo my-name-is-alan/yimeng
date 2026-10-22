@@ -83,7 +83,13 @@ struct TrackRow: View {
         .opacity(song?.isUnplayable == true ? 0.4 : 1)
         .contentShape(Rectangle())
         .onTapGesture { if let s = song, s.isUnplayable { SheetCenter.shared.unplayable(s) } else { onTap?() } }
+        .modifier(OptionalSongMenu(song: song))
     }
+}
+
+struct OptionalSongMenu: ViewModifier {
+    let song: NDSong?
+    @ViewBuilder func body(content: Content) -> some View { if let song { content.songMenu(song) } else { content } }
 }
 
 struct RemoteCover: View {
@@ -118,6 +124,7 @@ struct RemoteAlbumRow: View {
                     .scrollReveal(.horizontal)
                     .contentShape(Rectangle())
                     .onTapGesture { state.path.append(.ndAlbum(a)) }
+                    .albumMenu(a)
                 }
             }.padding(.horizontal, Theme.margin)
         }

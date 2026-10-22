@@ -75,12 +75,26 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  YimengUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - YimengUITests
+    dependencies:
+      - target: Yimeng
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Yimeng
+        TARGETED_DEVICE_FAMILY: "1,2"
 schemes:
   Yimeng:
     build:
       targets:
         Yimeng: all
         YimengTests: [test]
+        YimengUITests: [test]
     test:
       targets:
         - YimengTests
+        - YimengUITests

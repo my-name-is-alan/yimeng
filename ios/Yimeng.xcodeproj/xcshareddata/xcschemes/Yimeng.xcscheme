@@ -35,6 +35,20 @@
                ReferencedContainer = "container:Yimeng.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "82ACD182F8C48CDE957154E6"
+               BuildableName = "YimengUITests.xctest"
+               BlueprintName = "YimengUITests"
+               ReferencedContainer = "container:Yimeng.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -61,6 +75,17 @@
                BlueprintIdentifier = "BF4387F73AADECAF45257D71"
                BuildableName = "YimengTests.xctest"
                BlueprintName = "YimengTests"
+               ReferencedContainer = "container:Yimeng.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "82ACD182F8C48CDE957154E6"
+               BuildableName = "YimengUITests.xctest"
+               BlueprintName = "YimengUITests"
                ReferencedContainer = "container:Yimeng.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -47,6 +47,7 @@ struct CollectionView: View {
                                     Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
                                 }
                             }.buttonStyle(.plain)
+                            .albumMenu(a)
                         }
                     }
                     .padding(.horizontal, Theme.margin).padding(.top, 20)
