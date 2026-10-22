@@ -44,6 +44,7 @@
 		DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */; };
 		DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
 		E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B459A03FE9FB71837E459E /* Motion.swift */; };
+		E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB7AA12279A810579DDAD711 /* GenreView.swift */; };
 		EBB1A10BDC92B222F4152ED5 /* Banner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C66FE3A48511F18C8FF2DEF /* Banner.swift */; };
 		F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */; };
 		F56243364D38BE09D937684A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3855754257202630A564173A /* App.swift */; };
@@ -116,6 +117,7 @@
 		B727C7B6B00ECD4C014811FE /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
+		CB7AA12279A810579DDAD711 /* GenreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenreView.swift; sourceTree = "<group>"; };
 		E96BD4E0C93F027C9E0B46E7 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
 		E9712EB28EE125918AEB1DEF /* DebugSnap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSnap.swift; sourceTree = "<group>"; };
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
@@ -170,6 +172,7 @@
 				ADFCEC6EA2D41604DD20F029 /* Effects.swift */,
 				4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */,
 				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
+				CB7AA12279A810579DDAD711 /* GenreView.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
 				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
@@ -317,6 +320,7 @@
 				3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */,
 				F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */,
 				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
+				E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
 				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,

@@ -84,14 +84,12 @@ struct HomeLive: View {
                         }.motionIn(stagger(7))
                     }
                     if !genres.isEmpty {
-                        header("按流派", more: false) {}.motionIn(stagger(8))
+                        header("按流派") { state.path.append(.genres) }.motionIn(stagger(8))
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
                                 ForEach(Array(genres.enumerated()), id: \.element.id) { i, g in
                                     let c = Self.genreColors[i % Self.genreColors.count]
-                                    Button {
-                                        Task { if let s = try? await NavidromeClient.shared.songsByGenre(g.name), !s.isEmpty { PlayerStore.shared.play(songs: s.shuffled()) } }
-                                    } label: {
+                                    Button { state.path.append(.genre(g)) } label: {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(g.name).font(.system(size: 15, weight: .bold)).lineLimit(1)
                                             Text("\(g.songCount) 首").font(.system(size: 11)).opacity(0.75)
@@ -120,6 +118,10 @@ struct HomeLive: View {
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, args[i + 1].hasPrefix("playlist:") {
                 let id = String(args[i + 1].dropFirst(9))
                 state.path.append(.ndPlaylist(NDPlaylist(id: id, name: "歌单", songCount: nil, coverId: nil)))
+            }
+            if let i = args.firstIndex(of: "-open"), i + 1 < args.count {
+                if args[i + 1] == "genres" { state.path.append(.genres) }
+                if args[i + 1] == "genre", let g = home.data.genres.first { state.path.append(.genre(g)) }
             }
             if args.contains("-selftest-playlists") { Task { @MainActor in await PlaylistSelfTest.run() } }
             if let i = args.firstIndex(of: "-open"), i + 1 < args.count, let a = home.data.banner.first {

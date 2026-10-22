@@ -175,8 +175,14 @@ actor NavidromeClient {
         }.sorted { $0.songCount > $1.songCount }
     }
 
-    func songsByGenre(_ genre: String, count: Int = 50) async throws -> [NDSong] {
-        let obj = try await rest("getSongsByGenre.view", query: ["genre": genre, "count": "\(count)"])
+    func albumsByGenre(_ genre: String, offset: Int, size: Int = 40) async throws -> [NDAlbum] {
+        let obj = try await rest("getAlbumList2.view", query: ["type": "byGenre", "genre": genre, "size": "\(size)", "offset": "\(offset)"])
+        let list = ((obj["albumList2"] as? [String: Any])?["album"]) as? [[String: Any]] ?? []
+        return list.compactMap(Self.parseAlbum)
+    }
+
+    func songsByGenre(_ genre: String, count: Int = 50, offset: Int = 0) async throws -> [NDSong] {
+        let obj = try await rest("getSongsByGenre.view", query: ["genre": genre, "count": "\(count)", "offset": "\(offset)"])
         let s = ((obj["songsByGenre"] as? [String: Any])?["song"]) as? [[String: Any]] ?? []
         return s.compactMap(Self.parseSong)
     }

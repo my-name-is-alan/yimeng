@@ -322,62 +322,52 @@ extension View { func songMenu(_ s: NDSong) -> some View { modifier(SongMenu(son
 
 // MARK: - Queue sheet
 
+/// Minimal queue: title + count, quiet play-mode + clear, a 队列/历史 text switch; swipe left to remove.
 struct QueueSheet: View {
     @ObservedObject private var player = PlayerStore.shared
-    @Environment(\.dismiss) var dismiss
-    @State private var tab = 0
+    @State private var history = false
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                Picker("", selection: $tab) { Text("正在播放").tag(0); Text("播放历史").tag(1) }
-                    .pickerStyle(.segmented).padding(.horizontal, 20).padding(.vertical, 8)
-                HStack {
-                    if tab == 0 {
-                        Button { withAnimation(.spring(response: 0.3)) { player.cyclePlayMode() } } label: {
-                            Label(player.playMode.rawValue, systemImage: modeIcon).font(.system(size: 13, weight: .medium))
-                        }
-                        Text("· \(player.upcoming.count) 首待播").font(.system(size: 12)).foregroundStyle(.secondary)
-                    } else {
-                        Text("\(player.history.count) 首").font(.system(size: 12)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(tab == 0 ? "清空队列" : "清空历史") { tab == 0 ? player.clearUpcoming() : player.clearHistory() }
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
-                        .disabled(tab == 0 ? player.upcoming.isEmpty : player.history.isEmpty)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                tab("播放列表", count: player.queue.count, on: !history) { history = false }
+                tab("历史", count: player.history.count, on: history) { history = true }
+                Spacer()
+                if !history {
+                    Button { withAnimation(.spring(response: 0.3)) { player.cyclePlayMode() } } label: {
+                        Image(systemName: modeIcon).font(.system(size: 14))
+                    }.accessibilityLabel(player.playMode.rawValue)
                 }
-                .buttonStyle(.plain).padding(.horizontal, 20).padding(.bottom, 4)
-                List {
-                    if tab == 0 {
-                        if let s = player.song { row(s, playing: true).listRowBackground(Color.clear).moveDisabled(true).deleteDisabled(true) }
-                        if player.upcoming.isEmpty {
-                            Text("队列里没有更多歌曲了").font(.system(size: 14)).foregroundStyle(.secondary).listRowBackground(Color.clear)
-                        }
-                        ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
-                            row(s, playing: false).contentShape(Rectangle())
-                                .onTapGesture { player.jump(toUpcoming: i) }
-                                .listRowBackground(Color.clear)
-                        }
-                        .onMove { player.moveUpcoming(from: $0, to: $1) }
-                        .onDelete { player.removeUpcoming(at: $0) }
-                    } else {
-                        if player.history.isEmpty {
-                            Text("还没有播放记录").font(.system(size: 14)).foregroundStyle(.secondary).listRowBackground(Color.clear)
-                        }
-                        ForEach(Array(player.history.enumerated()), id: \.offset) { i, s in
-                            row(s, playing: player.song?.id == s.id).contentShape(Rectangle())
-                                .onTapGesture { player.play(songs: Array(player.history[i...]), startAt: 0) }
-                                .listRowBackground(Color.clear)
-                        }
-                        .onDelete { player.removeHistory(at: $0) }
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.editMode, .constant(tab == 0 ? .active : .inactive))
+                Button(history ? "清空" : "清空") { history ? player.clearHistory() : player.clearUpcoming() }
+                    .font(.system(size: 13))
             }
-            .navigationTitle("播放列表")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() }.fontWeight(.semibold) } }
+            .buttonStyle(.plain).foregroundStyle(.secondary)
+            .padding(.horizontal, 22).padding(.top, 26).padding(.bottom, 10)
+            List {
+                if history {
+                    ForEach(Array(player.history.enumerated()), id: \.offset) { i, s in
+                        row(s, playing: player.song?.id == s.id)
+                            .onTapGesture { player.play(songs: Array(player.history[i...])) }
+                            .swipeActions { Button(role: .destructive) { player.removeHistory(at: [i]) } label: { Label("移除", systemImage: "trash") } }
+                    }
+                } else {
+                    if let s = player.song { row(s, playing: true) }
+                    ForEach(Array(player.upcoming.enumerated()), id: \.offset) { i, s in
+                        row(s, playing: false)
+                            .onTapGesture { player.jump(toUpcoming: i) }
+                            .swipeActions { Button(role: .destructive) { player.removeUpcoming(at: [i]) } label: { Label("移除", systemImage: "trash") } }
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+    private func tab(_ t: String, count: Int, on: Bool, _ a: @escaping () -> Void) -> some View {
+        Button(action: a) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(t).font(.system(size: on ? 18 : 15, weight: on ? .bold : .regular)).foregroundStyle(on ? Color.primary : Color.secondary)
+                Text("\(count)").font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+            }
         }
     }
     private var modeIcon: String {
@@ -392,8 +382,11 @@ struct QueueSheet: View {
                 Text(s.artist).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            if playing { Image(systemName: "waveform").font(.system(size: 13)).foregroundStyle(Theme.lime) }
+            if playing { Image(systemName: "waveform").font(.system(size: 12)).foregroundStyle(Theme.lime) }
         }
+        .contentShape(Rectangle())
+        .listRowBackground(playing ? Color.white.opacity(0.05) : Color.clear)
+        .listRowSeparator(.hidden)
     }
 }
 
