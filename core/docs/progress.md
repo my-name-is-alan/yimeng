@@ -16,7 +16,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 10 | Cover thumbnails (pure-Go, webp/jpeg) | done | 89d6cd6 |
 | 11 | Metadata provider registry + lyrics provider stub | done | `65027f1` |
 | 12 | HTTPS + trusted proxy + rate limits | done | `e5b4571` |
-| 13 | Offline download endpoint | done | (pending commit) |
+| 13 | Offline download endpoint | done | `dedfcb9` |
 | 14 | Subsonic API layer | pending | |
 | 15 | StreamSource account management API | pending | |
 | 16 | AIFF / APE / DSF / DFF | pending | |
