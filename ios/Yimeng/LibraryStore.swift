@@ -94,8 +94,13 @@ final class LibraryStore: ObservableObject {
     @Published var user = ""
     @Published var host = ""
 
+    #if DEBUG
     static let defaultHost = "https://music.mefun.org"
     static let defaultUser = "lvzy"
+    #else
+    static let defaultHost = ""
+    static let defaultUser = ""
+    #endif
 
     // Cached auth for cover / stream URLs (never logged)
     private var coverBase: URL?
@@ -104,7 +109,15 @@ final class LibraryStore: ObservableObject {
     private var coverSalt = ""
 
     /// When true, UI must show only API rows (no DreamData / Mock mix).
-    var useLiveOnly: Bool { connected || liveMode }
+    var useLiveOnly: Bool {
+        #if DEBUG
+        connected || liveMode
+        #else
+        true
+        #endif
+    }
+    /// Release gate: no source with credentials → show the connect screen instead of tabs.
+    var hasSource: Bool { connected || liveMode }
     /// True as soon as Navidrome credentials exist — avoids flashing demo content while login is in flight.
     @Published var liveMode = false
 
@@ -123,11 +136,11 @@ final class LibraryStore: ObservableObject {
             cfg.host = Self.defaultHost
         }
         if cfg.username.isEmpty { cfg.username = Self.defaultUser }
-        if let pw = Keychain.get(service: SourceKind.navidrome.keychainService, account: Self.defaultUser), !pw.isEmpty {
+        if !cfg.username.isEmpty, cfg.secret.isEmpty, let pw = Keychain.get(service: SourceKind.navidrome.keychainService, account: cfg.username), !pw.isEmpty {
             cfg.secret = pw
         }
         // Seed Keychain only if missing (env / Application Support) — never log the value
-        if cfg.secret.isEmpty, let seeded = Self.readSeedPassword() {
+        if cfg.secret.isEmpty, !Self.defaultUser.isEmpty, let seeded = Self.readSeedPassword() {
             cfg.secret = seeded
             Keychain.set(seeded, service: SourceKind.navidrome.keychainService, account: Self.defaultUser)
         }
@@ -141,6 +154,9 @@ final class LibraryStore: ObservableObject {
     }
 
     private static func readSeedPassword() -> String? {
+        #if !DEBUG
+        return nil
+        #endif
         let urls = [
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
                 .appendingPathComponent("yimeng/nd.seed"),

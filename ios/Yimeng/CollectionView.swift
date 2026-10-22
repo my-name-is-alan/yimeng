@@ -12,11 +12,11 @@ struct CollectionView: View {
     private var liveOnly: Bool { library.useLiveOnly }
 
     var body: some View {
-        if liveOnly {
-            LiveStack()
-        } else {
-            dreamBody
-        }
+        #if DEBUG
+        if liveOnly { LiveStack() } else { dreamBody }
+        #else
+        LiveStack()
+        #endif
     }
 
     private var liveBody: some View {

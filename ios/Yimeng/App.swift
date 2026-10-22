@@ -83,6 +83,7 @@ final class AppState: ObservableObject {
     init() {
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
+        #if DEBUG
         demo = arg("-demo")
         switch arg("-screen") {
         case "album": path = [.album(Mock.nightfall)]
@@ -97,6 +98,9 @@ final class AppState: ObservableObject {
         case "me": tab = .me
         default: break
         }
+        #else
+        demo = nil
+        #endif
         #if DEBUG
         if let s = arg("-seg"), let seg = LibraryView.Seg(rawValue: s) { librarySeg = seg }
         if args.contains("-clear-lib-cache") {
@@ -142,6 +146,24 @@ struct Shell: View {
     @Namespace private var ns
 
     var body: some View {
+        Group {
+            if !booted { Theme.base(scheme).ignoresSafeArea() }
+            else if !library.hasSource && !library.loading { NoSourceView() }
+            else { tabs }
+        }
+        .task {
+            await SourceStore.shared.activeSource.activate()
+            booted = true
+            async let h: Void = HomeStore.shared.refresh()
+            async let s: Void = StarStore.shared.load()
+            _ = await (h, s)
+        }
+    }
+    @State private var booted = false
+
+    @ObservedObject private var library = LibraryStore.shared
+
+    var tabs: some View {
         ZStack(alignment: .bottom) {
             Group {
                 switch state.tab {
@@ -198,15 +220,15 @@ struct Shell: View {
             #if DEBUG
             DebugSnap.schedule()
             #endif
-            Task { @MainActor in
-                await SourceStore.shared.activeSource.activate()
-                async let h: Void = HomeStore.shared.refresh()
-                async let s: Void = StarStore.shared.load()
-                _ = await (h, s)
-            }
         }
         .modifier(GlobalSheets())
+        #if DEBUG
         .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
+        #endif
+        .onChange(of: library.connected) { _, on in
+            guard on else { return }
+            Task { async let h: Void = HomeStore.shared.refresh(); async let s: Void = StarStore.shared.load(); _ = await (h, s) }
+        }
     }
 
     @ViewBuilder func routeView(_ r: Route) -> some View {
@@ -413,5 +435,33 @@ struct CentreOrb: View {
             }
             .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
         }
+    }
+}
+
+
+/// No music source configured: one designed screen with a single way forward. No demo tabs, no mini player.
+struct NoSourceView: View {
+    @Environment(\.colorScheme) var scheme
+    @State private var connecting = false
+    var body: some View {
+        ZStack {
+            BloomField(base: Color(hex: 0x120a24), blobs: [Color(hex: 0x7a1cff), Color(hex: 0xff5fa8), Color(hex: 0x33d17a), Color(hex: 0xffd36b)], opacity: 0.55).ignoresSafeArea()
+            VStack(spacing: 18) {
+                Spacer()
+                MoonwaveIcon(size: 92)
+                Text("先连接你的音乐").font(.system(size: 26, weight: .bold))
+                Text("译梦不自带曲库。连上 Navidrome 服务器，\n你的专辑、歌手和歌单就会出现在这里。")
+                    .font(.system(size: 15)).multilineTextAlignment(.center).opacity(0.7)
+                Spacer()
+                Button { connecting = true } label: { Label("连接音乐来源", systemImage: "server.rack") }
+                    .buttonStyle(PrimaryButtonStyle()).padding(.horizontal, 28)
+                Text("支持 Navidrome / Subsonic").font(.system(size: 12)).opacity(0.5).padding(.bottom, 40)
+            }
+            .foregroundStyle(.white).padding(.horizontal, 24)
+        }
+        .background(Color(white: 0.04).ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: $connecting) { SourcesView(initialConnect: .navidrome) }
+        .onChange(of: LibraryStore.shared.connected) { _, on in if on { connecting = false } }
     }
 }

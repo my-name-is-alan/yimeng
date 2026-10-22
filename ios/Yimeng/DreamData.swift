@@ -35,6 +35,7 @@ extension Color {
 
 func fmtTime(_ t: TimeInterval) -> String { let s = max(0, Int(t)); return "\(s / 60):" + String(format: "%02d", s % 60) }
 
+#if DEBUG
 enum DreamMock {
     static let lyrics: [LyricLine] = [
         .init(t: 0, text: "夜色漫过旧城的街", en: "Night spills over the old town"),
@@ -60,6 +61,17 @@ enum DreamMock {
     /// 典藏 stack
     static let collection = [zig, rose, orange, cloud, ink]
 }
+#else
+/// Release: a single neutral idle track (no titles, no lyrics) — never shown, only a non-optional default.
+enum DreamMock {
+    static let lyrics: [LyricLine] = []
+    static let idle = DreamTrack(id: "idle", title: "", artist: "", cover: "cvA", base: Color(hex: 0x1a1028),
+                                 blobs: [Color(hex: 0x7a1cff), Color(hex: 0xff5fa8), Color(hex: 0x33d17a), Color(hex: 0xffd36b)], bpm: 100, energy: 0.45, genre: "", duration: 1)
+    static let cloud = idle, zig = idle, ink = idle, rose = idle, orange = idle
+    static let all = [idle]
+    static let collection: [DreamTrack] = []
+}
+#endif
 
 /// Deterministic per-track RNG (SplitMix64).
 struct SeededRNG: RandomNumberGenerator {

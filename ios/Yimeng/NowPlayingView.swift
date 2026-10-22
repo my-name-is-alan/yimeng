@@ -130,9 +130,11 @@ struct NowPlayingView: View {
                         .frame(width: 40, height: 40).background(Circle().fill(Color.white.opacity(0.14)))
                 }
             } else {
+                #if DEBUG
                 Menu {
                     ForEach(DreamMock.all) { t in Button(t.title) { withAnimation(.ui) { state.track = t } } }
                 } label: { roundIcon("ellipsis") }
+                #endif
             }
         }
         .buttonStyle(.plain)

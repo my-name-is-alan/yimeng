@@ -18,7 +18,11 @@ struct HomeView: View {
     private var liveOnly: Bool { library.useLiveOnly }
 
     var body: some View {
+        #if DEBUG
         if liveOnly { HomeLive() } else { demoBody }
+        #else
+        HomeLive()
+        #endif
     }
 
     var demoBody: some View {

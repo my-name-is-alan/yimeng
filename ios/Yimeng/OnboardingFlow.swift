@@ -856,7 +856,9 @@ struct SourceConnectView: View {
         self.kind = kind
         self.onClose = onClose
         var c = SourceConfig(kind: kind)
+        #if DEBUG
         c.host = kind.hostPlaceholder
+        #endif
         _draft = State(initialValue: c)
     }
 
@@ -921,7 +923,7 @@ struct SourceConnectView: View {
                 .disabled(busy)
                 .padding(.horizontal, 20)
 
-                Text("凭据仅保存在本机（演示：UserDefaults）")
+                Text("密码仅保存在本机钥匙串")
                     .font(.system(size: 13)).opacity(0.55)
                     .frame(maxWidth: .infinity).padding(.top, 12).padding(.bottom, 36)
             }
@@ -930,7 +932,9 @@ struct SourceConnectView: View {
         .preferredColorScheme(.dark)
         .onAppear {
             var c = store.config(for: kind)
+            #if DEBUG
             if c.host.isEmpty { c.host = kind.hostPlaceholder }
+            #endif
             if kind == .navidrome {
                 if c.host.isEmpty || c.host.contains("home.lan") { c.host = LibraryStore.defaultHost }
                 c.host = c.host.replacingOccurrences(of: ":443", with: "")
@@ -966,9 +970,9 @@ struct SourceConnectView: View {
 
     @ViewBuilder private var formBody: some View {
         VStack(alignment: .leading, spacing: 14) {
-            field("服务器地址", text: $draft.host)
+            field("服务器地址", text: $draft.host, prompt: kind.hostPlaceholder)
             if kind.usesUserPass {
-                field("用户名", text: $draft.username)
+                field("用户名", text: $draft.username, prompt: "用户名")
             }
             HStack {
                 field(kind.usesToken && !kind.usesUserPass ? "API Key / Token" : "密码 / API Key",
@@ -992,11 +996,11 @@ struct SourceConnectView: View {
         .padding(.horizontal, 20).padding(.top, 18)
     }
 
-    private func field(_ label: String, text: Binding<String>, secure: Bool = false) -> some View {
+    private func field(_ label: String, text: Binding<String>, secure: Bool = false, prompt: String = "") -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).font(.system(size: 13)).opacity(0.6)
             Group {
-                if secure { SecureField("", text: text) } else { TextField("", text: text) }
+                if secure { SecureField("", text: text) } else { TextField("", text: text, prompt: Text(prompt).foregroundStyle(.white.opacity(0.3))) }
             }
             .font(.system(size: 16))
             .padding(.horizontal, 14).frame(height: 50)
@@ -1070,7 +1074,7 @@ struct RootGate: View {
                 )
             case .sources:
                 SourcesView(
-                    initialConnect: Self.argSource("-source"),
+                    initialConnect: Self.argSource("-source") ?? (LibraryStore.shared.hasSource ? nil : .navidrome),
                     onContinue: {
                     FirstRun.isDone = true
                     withAnimation(.easeInOut(duration: 0.4)) { phase = .main }

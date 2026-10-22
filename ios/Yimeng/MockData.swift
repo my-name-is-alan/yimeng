@@ -4,6 +4,7 @@ struct Album: Identifiable, Hashable { let id: String; let title: String; let ar
 struct Track: Identifiable, Hashable { let id = UUID(); let title: String; let duration: String }
 struct Banner: Identifiable { let id: String; let kicker: String; let title: String; let meta: String; var image: String { id } }
 
+#if DEBUG
 enum Mock {
     static let banners = [
         Banner(id: "ym_r2", kicker: "每日推荐", title: "深夜电台 · 10月21日", meta: "30 首 · 为你精选"),
@@ -33,3 +34,17 @@ enum Mock {
     static let lyrics: [(TimeInterval, String)] = [(0, "夜色把航线 写进了星图"), (4, "我在云层之上 数着孤独"), (8, "风吹过耳畔 像你在低语"), (12, "梦里的山海 也曾为我停留"),
         (16, "哪怕前路 只剩一盏灯火"), (20, "我也会循着光 一路向北"), (24, "星河滚烫 你是人间理想"), (28, "落笔成诗 难写一句再见"), (32, "夜航的星 不问归途")]
 }
+#else
+/// Release: no demo content ships. Types stay so dead demo views still compile.
+enum Mock {
+    static let banners: [Banner] = []
+    static let recent: [Album] = []
+    static let newIn: [Album] = []
+    static let nightfall = Album(id: "", title: "", artist: "", cover: "")
+    static let tracks: [Track] = []
+    static let moreTracks: [Track] = []
+    static let coldplayTop: [(String, String, String)] = []
+    static let coldplayAlbums: [Album] = []
+    static let lyrics: [(TimeInterval, String)] = []
+}
+#endif
