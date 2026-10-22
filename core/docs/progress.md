@@ -114,3 +114,7 @@ Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
 - Anonymous 网易云/QQ音乐/酷狗 metadata + lyrics sources (D39).
 - QQ playback fixed (HTML error page served as audio; alternate CDN hosts) and Chinese player errors (D40).
 - Literal "null" removed: DOM append/replaceChildren guard + `txt()`; history resolves online plays from the external cache.
+- Web: compact volume popover (click mutes, wheel adjusts; hidden on mobile); the line under the now-playing title shows the current synced lyric line (slide transition, marquee) instead of the artist.
+- Web brand: the app's 「梦境环」 icon (iOS AppIcon, commit 5f50078) for favicon, apple-touch, PWA manifest, sidebar and login.
+- Web: every native <select> is a keyboard-accessible custom listbox; checkbox, radio, number and file inputs are restyled.
+- Public lyrics API `/api/v1/lyrics/search|best` with the shared scorer (D41); the workbench shows the score with a breakdown tooltip.

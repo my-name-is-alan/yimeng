@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/rank"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -28,6 +29,9 @@ type UserEdits interface {
 	ClearUserLyrics(ctx context.Context, trackID string) error
 	SetAlbumCover(ctx context.Context, albumID string, img []byte) error
 	ClearAlbumCover(ctx context.Context, albumID string) error
+	SetArtistImage(ctx context.Context, artistID string, img []byte, source string) error
+	ClearArtistImage(ctx context.Context, artistID string) error
+	ArtistImage(ctx context.Context, artistID string) (string, error)
 }
 
 // LyricsSearcher lists provider candidates for manual binding (LRCLIB).
@@ -51,6 +55,9 @@ func (d Deps) mountWebUI(mux *http.ServeMux) {
 			}
 		}
 		ct := mime.TypeByExtension(path.Ext(p))
+		if path.Ext(p) == ".webmanifest" {
+			ct = "application/manifest+json"
+		}
 		if ct == "" {
 			ct = "application/octet-stream"
 		}
@@ -135,12 +142,13 @@ func (d Deps) searchLyrics(w http.ResponseWriter, r *http.Request) {
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	title, artist := "", ""
+	t, err := d.Library.GetTrack(r.Context(), r.PathValue("id"))
+	if err != nil && q == "" {
+		d.editErr(w, "track", err)
+		return
+	}
+	rq := rank.Query{Title: t.Title, Artist: t.ArtistName, Album: t.AlbumTitle, DurationMs: t.DurationMs, ISRC: t.ISRC}
 	if q == "" {
-		t, err := d.Library.GetTrack(r.Context(), r.PathValue("id"))
-		if err != nil {
-			d.editErr(w, "track", err)
-			return
-		}
 		title, artist = t.Title, t.ArtistName
 	}
 	if len(q) > 200 {
@@ -155,7 +163,11 @@ func (d Deps) searchLyrics(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "provider_error", "lyrics provider unavailable")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	if rq.Title == "" { // track unknown: score against the free-text query
+		rq.Title = q
+	}
+	// Same scorer as the public /api/v1/lyrics API.
+	writeJSON(w, http.StatusOK, map[string]any{"items": rank.Rank(rq, items)})
 }
 
 func (d Deps) putAlbumCover(w http.ResponseWriter, r *http.Request) {

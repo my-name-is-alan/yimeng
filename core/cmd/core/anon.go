@@ -118,7 +118,7 @@ func lyricsSearch(lrc *providers.LRCLIB, srcs map[string]*anon.Source) func(ctx 
 				out := make([]providers.Candidate, 0, len(hits))
 				for _, h := range hits {
 					out = append(out, providers.Candidate{Ref: h.Ref, Provider: h.Provider, Title: h.Title, Artist: h.Artist, Album: h.Album,
-						DurationMs: h.DurationMs, Synced: h.Synced, SyncedLyrics: h.LRC, PlainLyrics: h.Plain})
+						DurationMs: h.DurationMs, Synced: h.Synced, SyncedLyrics: h.LRC, PlainLyrics: h.Plain, Translation: h.Translation})
 				}
 				return out, err
 			})

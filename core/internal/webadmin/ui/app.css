@@ -500,3 +500,7 @@ input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer
 /* file inputs are always hidden behind buttons; guard any stray one */
 input[type=file]:not([hidden]) { font-size: 13px; }
 input[type=file]::file-selector-button { border: 0; border-radius: 999px; background: var(--fill-2); color: inherit; padding: 6px 14px; margin-right: 10px; cursor: pointer; }
+
+.score-pill { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; font-variant-numeric: tabular-nums; cursor: help; }
+.score-pill.hi { color: var(--lime); } .score-pill.mid { color: var(--warn, #f5b942); } .score-pill.lo { color: var(--fg-3); }
+.src-text { font-size: 11.5px; color: var(--fg-3); }

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -37,6 +38,7 @@ import (
 	spotifyplugin "github.com/my-name-is-alan/yimeng/core/internal/online/spotify"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback/sources"
+	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/system"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
@@ -146,17 +148,46 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: d.UserAgent})
 	})
 	// NetEase/QQ metadata remain unregistered: no safe public API (docs/decisions.md D12).
-	var enrich func()
+	// Runtime-editable settings (web console → settings table), applied live.
+	rcStore := &runtimecfg.Store{DB: database}
+	rcCur, err := rcStore.Load(ctx, runtimecfg.Settings{WatchMode: cfg.WatchMode, RescanInterval: cfg.RescanInterval.String(),
+		MusicBrainzEnabled: cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz"), MusicBrainzContact: cfg.MusicBrainz.Contact, FillPerMinute: 20})
+	if err != nil {
+		return err
+	}
 	ua := fmt.Sprintf("yimeng/%s ( %s )", version, cfg.MusicBrainz.Contact)
-	if cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz") {
-		mb, err := reg.Enable(metadata.MusicBrainz, metadata.Deps{UserAgent: ua})
+	if rcCur.MusicBrainzContact != "" {
+		ua = fmt.Sprintf("yimeng/%s ( %s )", version, rcCur.MusicBrainzContact)
+	}
+	var enrichFn atomic.Pointer[func()]
+	enrich := func() {
+		if f := enrichFn.Load(); f != nil {
+			(*f)()
+		}
+	}
+	var mbSup runtimecfg.Supervisor
+	startMB := func(s runtimecfg.Settings) {
+		if !s.MusicBrainzEnabled || s.MusicBrainzContact == "" {
+			mbSup.Restart(ctx, nil)
+			enrichFn.Store(nil)
+			return
+		}
+		mb, err := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: fmt.Sprintf("yimeng/%s ( %s )", version, s.MusicBrainzContact)})
 		if err != nil {
-			return err
+			log.Warn("MusicBrainz enrichment unavailable", "err", err)
+			return
 		}
 		en := &metadata.Enricher{DB: database, P: mb, Hub: hub, CoverDir: filepath.Join(cfg.CacheDir, "covers"), Log: log}
-		go en.Run(ctx)
-		enrich = en.Kick
+		mbSup.Restart(ctx, en.Run)
+		kick := en.Kick
+		enrichFn.Store(&kick)
+		en.Kick()
 		log.Info("MusicBrainz enrichment enabled")
+	}
+	if rcCur.MusicBrainzEnabled {
+		if _, err := reg.Enable(metadata.MusicBrainz, metadata.Deps{UserAgent: ua}); err != nil {
+			return err
+		}
 	}
 	anonSrc := anonSources(log)
 	var lyricChain providers.Chain
@@ -208,22 +239,49 @@ func run(cfg config.Config, log *slog.Logger) error {
 		}
 	}
 	var matcher metadata.MetadataProvider = matchers
+	fillMB, _ := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: ua})
+	filler := &metadata.Filler{DB: database, Hub: hub, CoverDir: filepath.Join(cfg.CacheDir, "covers"), Log: log,
+		PerMinute: func() int { return rcStore.Get().FillPerMinute },
+		Sources: func() []metadata.MetadataProvider {
+			var out []metadata.MetadataProvider
+			for _, id := range rcStore.Get().FillSources {
+				switch id {
+				case "spotify":
+					out = append(out, spotifyMeta)
+				case "musicbrainz":
+					if fillMB != nil {
+						out = append(out, fillMB)
+					}
+				default:
+					if s := anonSrc[id]; s != nil {
+						out = append(out, s)
+					}
+				}
+			}
+			return out
+		}}
+	go filler.Run(ctx)
 	var lyricsFetcher library.LyricsFetcher
 	if len(lyricChain) > 0 {
 		lyricsFetcher = lyricChain.AsFetcher()
 		log.Info("lyrics providers enabled", "n", len(lyricChain))
 	}
 	var analyzer *loudness.Analyzer
+	var restartWatch func()
 	scanner := library.NewScanner(database, library.Options{
 		OnMerged: func() {
-			if enrich != nil {
-				enrich()
-			}
+			enrich()
+			filler.Kick()
 			if analyzer != nil {
 				analyzer.Kick()
 			}
 		},
-		Roots:      cfg.LibraryRoots,
+		Roots: cfg.LibraryRoots,
+		OnRootsChanged: func() {
+			if restartWatch != nil {
+				restartWatch()
+			}
+		},
 		CoverDir:   filepath.Join(cfg.CacheDir, "covers"),
 		Logger:     log,
 		OnProgress: func(j library.Job) { hub.Publish("scan.progress", j) },
@@ -336,11 +394,29 @@ func run(cfg config.Config, log *slog.Logger) error {
 			log.Warn("mDNS", "err", err)
 		}
 	}()
-	watchDone := make(chan struct{})
-	go func() {
-		defer close(watchDone)
-		scanner.Watch(ctx, library.WatchOptions{Mode: cfg.WatchMode, Debounce: cfg.WatchDebounce, RescanInterval: cfg.RescanInterval})
-	}()
+	var watchSup runtimecfg.Supervisor
+	startWatch := func() {
+		s := rcStore.Get()
+		watchSup.Restart(ctx, func(c context.Context) {
+			scanner.Watch(c, library.WatchOptions{Mode: s.WatchMode, Debounce: cfg.WatchDebounce, RescanInterval: s.Rescan()})
+		})
+	}
+	startWatch()
+	restartWatch = startWatch
+	startMB(rcCur)
+	rcStore.OnChange(func(old, cur runtimecfg.Settings) {
+		if old.WatchMode != cur.WatchMode || old.RescanInterval != cur.RescanInterval {
+			startWatch()
+			log.Info("file watching updated", "mode", cur.WatchMode, "rescan_interval", cur.RescanInterval)
+		}
+		if old.MusicBrainzEnabled != cur.MusicBrainzEnabled || old.MusicBrainzContact != cur.MusicBrainzContact {
+			startMB(cur)
+		}
+		if strings.Join(old.FillSources, ",") != strings.Join(cur.FillSources, ",") {
+			filler.Reset(context.Background())
+		}
+		filler.Kick()
+	})
 
 	var sub *subsonic.Handler
 	if cfg.Subsonic {
@@ -361,7 +437,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Library:  &app.Library{Scanner: scanner, BG: ctx},
 			Playback: orch,
 			Hub:      hub,
-			Enrich:   enrich,
+			Enrich:   func() { enrich(); filler.Kick() },
 			Auth:     authSvc,
 			Log:      log,
 
@@ -382,6 +458,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			UserEdits:      scanner,
 			LyricsSearch:   lyricsSearch(lrclibSearch, anonSrc),
 			Matcher:        matcher,
+			ServerSettings: rcStore,
 			Logs:           logRing,
 			Runtime: map[string]any{
 				"version": version, "bind": cfg.Bind, "library_roots": cfg.LibraryRoots,
@@ -442,7 +519,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 	shCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shCtx)
-	<-watchDone
+	watchSup.Wait()
+	mbSup.Wait()
 	scanner.Wait() // background scan stops via ctx cancellation
 	return nil
 }

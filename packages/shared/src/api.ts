@@ -21,6 +21,8 @@ export interface Artist {
   mb_id?: string;
   album_count: number;
   track_count: number;
+  /** Set when an admin chose an image: GET /api/artists/{id}/image */
+  image_updated_at?: string;
 }
 
 export interface Album {
@@ -118,4 +120,111 @@ export interface StatItem {
   id: ID;
   name: string;
   count: number;
+}
+
+// ── Lyrics API for apps (GET /api/v1/lyrics/search | /best) ─────────────────
+
+export type LyricsProvider = "user" | "local" | "lrclib" | "netease" | "qq" | "kugou";
+
+export interface LyricsQuery {
+  title: string;
+  artist?: string;
+  album?: string;
+  duration_ms?: number;
+  isrc?: string;
+}
+
+/** Points per factor; max title 40, artist 30, album 5, duration 15, synced 5, translation 2, reliability 3. */
+export interface LyricsScoreBreakdown {
+  title: number;
+  artist: number;
+  album: number;
+  duration: number;
+  synced: number;
+  translation: number;
+  reliability: number;
+  /** -1 when unknown */
+  duration_delta_ms: number;
+  /** 1 = none; 0.3 when the title does not match */
+  penalty: number;
+}
+
+export interface LyricsSearchCandidate {
+  id: string;
+  provider: LyricsProvider | string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration_ms?: number;
+  synced: boolean;
+  has_translation: boolean;
+  /** 0..100 */
+  score: number;
+  score_breakdown?: LyricsScoreBreakdown;
+  preview: string[];
+}
+
+export interface LyricsSearchResult {
+  query?: LyricsQuery;
+  found: boolean;
+  /** "暂无歌词" when found=false */
+  message?: string;
+  items: LyricsSearchCandidate[];
+}
+
+export interface LyricsBestLine {
+  t_ms: number;
+  text: string;
+  trans?: string;
+}
+
+export type LyricsBest =
+  | { query?: LyricsQuery; found: false; message: string }
+  | {
+      query?: LyricsQuery;
+      found: true;
+      id: string;
+      provider: LyricsProvider | string;
+      title: string;
+      artist: string;
+      album?: string;
+      duration_ms?: number;
+      synced: boolean;
+      score: number;
+      score_breakdown?: LyricsScoreBreakdown;
+      offset_ms: number;
+      lrc: string;
+      plain: string;
+      translation: string;
+      romanization: string;
+      lines: LyricsBestLine[];
+    };
+
+// ── Admin: artist images, runtime server settings ─────────────────────────
+
+export interface ArtistImageCandidate {
+  provider: string;
+  external_id?: string;
+  name: string;
+  image_url: string;
+  followers?: number;
+  score: number;
+}
+
+export type FillSourceId = "spotify" | "netease" | "qq" | "kugou" | "musicbrainz";
+
+export interface ServerSettings {
+  watch_mode: "auto" | "fsnotify" | "poll" | "off";
+  /** Go duration, "0" = never */
+  rescan_interval: string;
+  musicbrainz_enabled: boolean;
+  musicbrainz_contact: string;
+  /** ordered; empty = background metadata fill off */
+  fill_sources: FillSourceId[];
+  fill_per_minute: number;
+}
+
+export interface ServerSettingsResponse {
+  settings: ServerSettings;
+  fill_source_ids: FillSourceId[];
 }

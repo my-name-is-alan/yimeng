@@ -96,6 +96,28 @@ type Candidate struct {
 	Synced       bool   `json:"synced"`
 	SyncedLyrics string `json:"synced_lyrics,omitempty"`
 	PlainLyrics  string `json:"plain_lyrics,omitempty"`
+	// Translation is a translated LRC (same timestamps) when the source has one.
+	Translation string `json:"translation_lyrics,omitempty"`
+	// Score (0-100) and its breakdown, set by lyrics/rank when ranked.
+	Score     int             `json:"score,omitempty"`
+	Breakdown *ScoreBreakdown `json:"score_breakdown,omitempty"`
+}
+
+// ScoreBreakdown explains a candidate's score in points; the fields sum to
+// Score before the title-mismatch penalty. Max: title 40, artist 30,
+// album 5, duration 15, synced 5, translation 2, reliability 3.
+type ScoreBreakdown struct {
+	Title       float64 `json:"title"`
+	Artist      float64 `json:"artist"`
+	Album       float64 `json:"album"`
+	Duration    float64 `json:"duration"`
+	Synced      float64 `json:"synced"`
+	Translation float64 `json:"translation"`
+	Reliability float64 `json:"reliability"`
+	// DurationDeltaMs is |query - candidate| when both are known, else -1.
+	DurationDeltaMs int64 `json:"duration_delta_ms"`
+	// Penalty multiplier applied (1 = none; <1 when the title doesn't match).
+	Penalty float64 `json:"penalty"`
 }
 
 // Search queries /api/search (free text q, or title+artist). At most 20 hits.

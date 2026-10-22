@@ -91,13 +91,17 @@ export async function lyricsPage(main, id, { cleanup }) {
       const r = await get(`/tracks/${id}/lyrics/search${qs({ q: q.value })}`);
       if (!r.items.length) return cands.replaceChildren(h("p", { class: "muted" }, "LRCLIB / 网易云 / QQ音乐 / 酷狗 都没有找到候选，换个关键词试试。"));
       const dur = t.duration_ms;
-      const scored = r.items.map((c) => ({ c, diff: c.duration_ms && dur ? Math.abs(c.duration_ms - dur) : 1e9 })).sort((a, b) => (b.c.synced - a.c.synced) || (a.diff - b.diff));
+      // Server order = shared scorer (lyrics/rank), same as the app API.
+      const scored = r.items.map((c) => ({ c, diff: c.duration_ms && dur ? Math.abs(c.duration_ms - dur) : 1e9 }));
       cands.replaceChildren(...scored.map(({ c, diff }) => {
         const b = h("button", { class: "cand", onclick: () => {
           [...cands.children].forEach((x) => x.setAttribute("aria-selected", x === b));
           ta.value = c.synced_lyrics || c.plain_lyrics || ""; source = c.provider || "lrclib"; offset = 0; syncOff(); renderPreview();
         } },
-          h("div", { class: "row" }, h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: "badge src" }, providerLabel(c.provider)),
+          h("div", { class: "row" }, h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }),
+            c.score != null ? h("span", { class: `score-pill ${c.score >= 80 ? "hi" : c.score >= 50 ? "mid" : "lo"}`, title: scoreTip(c.score_breakdown) }, `${c.score}`) : null,
+            h("span", { class: "src-text" }, providerLabel(c.provider)),
+            c.translation_lyrics ? h("span", { class: "src-text" }, "含翻译") : null,
             c.instrumental ? h("span", { class: "badge" }, "纯音乐") : h("span", { class: `badge ${c.synced ? "ok" : ""}` }, c.synced ? "逐行同步" : "纯文本")),
           h("div", { class: "muted ellipsis", style: { fontSize: "13px" } }, [c.artist, c.album, c.duration_ms ? fmtDur(c.duration_ms) : ""].filter(Boolean).join(" · "),
             diff < 1e9 ? h("span", { style: { color: diff < 2000 ? "var(--accent)" : diff < 5000 ? "var(--warn)" : "var(--danger)", marginLeft: "8px" } }, diff < 2000 ? "时长吻合" : `时长差 ${(diff / 1000).toFixed(1)}s`) : null),
@@ -124,7 +128,7 @@ export async function lyricsPage(main, id, { cleanup }) {
       h("button", { class: "btn", onclick: () => player.playList([t]) }, icon("play"), "试听"), h("a", { class: "btn", href: "#/lyrics" }, "换一首")),
     !isAdmin() ? h("div", { class: "card", style: { marginBottom: "16px" } }, "当前设备不是管理员，只能预览，无法绑定。") : "",
     h("div", { class: "two-col" },
-      h("div", { class: "card stack" }, h("h3", null, icon("search"), "在线候选 · LRCLIB"), h("div", { class: "row" }, q, h("button", { class: "btn primary", onclick: search }, "搜索")), cands),
+      h("div", { class: "card stack" }, h("h3", null, icon("search"), "在线候选 · 本地 + LRCLIB + 网易云 + QQ + 酷狗"), h("div", { class: "row" }, q, h("button", { class: "btn primary", onclick: search }, "搜索")), cands),
       h("div", { class: "card stack" }, h("h3", null, icon("edit"), "编辑 LRC"), ta,
         h("div", { class: "row wrap" }, tapBtn, h("button", { class: "btn sm", onclick: () => { tapIdx = 0; ta.value = ta.value.split("\n").map((l) => l.replace(/^(\[\d+:\d+(?:[.:]\d+)?\])+/, "")).join("\n"); renderPreview(); toast("已清除时间轴，播放后按「打点」逐行对齐"); } }, "清除时间轴"),
           h("button", { class: "btn sm", onclick: () => file.click() }, icon("upload"), "上传 .lrc"), file,
@@ -150,4 +154,9 @@ async function pickTrack(main) {
   };
   q.addEventListener("input", debounce(run, 250));
   run();
+}
+
+function scoreTip(b) {
+  if (!b) return "";
+  return `匹配分（满分100）\n标题 ${b.title}/40 · 艺人 ${b.artist}/30 · 专辑 ${b.album}/5\n时长 ${b.duration}/15${b.duration_delta_ms >= 0 ? `（差 ${(b.duration_delta_ms / 1000).toFixed(1)}s）` : ""} · 同步 ${b.synced}/5\n翻译 ${b.translation}/2 · 来源可靠度 ${b.reliability}/3${b.penalty < 1 ? "\n标题不符，已降权" : ""}`;
 }

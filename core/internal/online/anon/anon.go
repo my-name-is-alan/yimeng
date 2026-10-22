@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -220,8 +221,35 @@ func (s *Source) LookupAlbum(ctx context.Context, q metadata.AlbumQuery) ([]meta
 	return out, nil
 }
 
+// LookupArtist returns name-matching artists with their platform picture.
 func (s *Source) LookupArtist(ctx context.Context, q metadata.ArtistQuery) ([]metadata.ArtistInfo, error) {
-	return nil, metadata.ErrNotSupported
+	if strings.TrimSpace(q.Name) == "" {
+		return nil, metadata.ErrNotSupported
+	}
+	res, err := s.cat.Search(ctx, q.Name, 10)
+	if err != nil {
+		return nil, wrap(err)
+	}
+	var out []metadata.ArtistInfo
+	seen := map[string]bool{}
+	add := func(id, name, pic string) {
+		if seen[id] || Sim(q.Name, name) < 0.9 {
+			return
+		}
+		seen[id] = true
+		in := metadata.ArtistInfo{Provider: s.id, ExternalID: id, Name: name}
+		if pic != "" {
+			in.ImageURLs = []string{httpsURL(pic)}
+		}
+		out = append(out, in)
+	}
+	for _, a := range res.Artists {
+		add(a.ID, a.Name, a.PictureURL)
+	}
+	if len(out) == 0 {
+		return nil, metadata.ErrNotFound
+	}
+	return out, nil
 }
 
 // CoverArt returns the best-matching album's cover (query by title/artist).
@@ -245,8 +273,8 @@ func (s *Source) CoverArt(ctx context.Context, q metadata.AlbumQuery) ([]metadat
 const maxImage = 10 << 20
 
 func (s *Source) FetchCover(ctx context.Context, c metadata.CoverCandidate) (io.ReadCloser, error) {
-	if !strings.HasPrefix(c.URL, "https://") && !strings.HasPrefix(c.URL, "http://") {
-		return nil, metadata.ErrNotFound
+	if !allowedImageHost(c.URL) {
+		return nil, fmt.Errorf("%w: image host not allowed", metadata.ErrNotFound)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
 	if err != nil {
@@ -323,16 +351,17 @@ func nativeID(id string) string {
 
 // LyricsCandidate is one lyrics search hit (for the lyrics workbench).
 type LyricsCandidate struct {
-	Ref        string
-	Provider   string
-	Title      string
-	Artist     string
-	Album      string
-	DurationMs int64
-	Synced     bool
-	LRC        string
-	Plain      string
-	Score      float64
+	Ref         string
+	Provider    string
+	Title       string
+	Artist      string
+	Album       string
+	DurationMs  int64
+	Synced      bool
+	LRC         string
+	Plain       string
+	Translation string
+	Score       float64
 }
 
 // SearchLyrics returns up to n lyrics candidates for a free-text query (or
@@ -359,7 +388,7 @@ func (s *Source) SearchLyrics(ctx context.Context, q, title, artist string, n in
 			if err != nil || strings.TrimSpace(l.LRC) == "" {
 				return
 			}
-			c := &LyricsCandidate{Ref: t.ID, Provider: string(s.id), Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs}
+			c := &LyricsCandidate{Ref: t.ID, Provider: string(s.id), Title: t.Title, Artist: t.ArtistName, DurationMs: t.DurationMs, Translation: strings.TrimSpace(l.Translation)}
 			if t.Album != nil {
 				c.Album = t.Album.Name
 			}
@@ -390,4 +419,22 @@ func httpsURL(u string) string {
 		return "https://" + u[len("http://"):]
 	}
 	return u
+}
+
+// imageHosts are the platforms' image CDNs; covers/pictures are fetched only
+// from these (the URL may come from an admin request).
+var imageHosts = []string{"music.126.net", "gtimg.cn", "qpic.cn", "qlogo.cn", "kugou.com", "kgimg.com"}
+
+func allowedImageHost(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	for _, d := range imageHosts {
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
 }

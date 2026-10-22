@@ -867,6 +867,121 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /api/lyrics/search:
+    get:
+      tags: [lyrics]
+      summary: Lyrics candidates for ANY song (paired apps)
+      description: |
+        Also served as `/api/v1/lyrics/search`. Any paired device or signed-in user (not admin-only). The song does not have to be in the library.
+        Local/user-bound lyrics (library tracks matching the title or ISRC) and every remote lyrics source (LRCLIB, NetEase, QQ, Kugou) are queried
+        in parallel with per-source timeouts (whole lookup ≤ 15 s; partial results are returned). Candidates are scored 0–100 by the shared
+        scorer (also used by the web lyrics workbench) and sorted best first. Results are cached (6 h; empty results 30 min; header `X-Yimeng-Cache: hit|miss`).
+        Cache misses are rate-limited per client (30/min, burst 10) → 429 with Retry-After. No lyrics → 200 `{found:false, message:"暂无歌词"}`.
+      parameters:
+        - { name: title, in: query, required: true, schema: { type: string } }
+        - { name: artist, in: query, schema: { type: string } }
+        - { name: album, in: query, schema: { type: string } }
+        - { name: duration, in: query, description: seconds (may be fractional), schema: { type: number } }
+        - { name: duration_ms, in: query, description: alternative to duration, schema: { type: integer } }
+        - { name: isrc, in: query, description: used to match library tracks, schema: { type: string } }
+      responses:
+        "200": { description: Ranked candidates (lyric text omitted; preview = first lines), content: { application/json: { schema: { $ref: "#/components/schemas/LyricsSearchResult" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: rate_limited, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/lyrics/best:
+    get:
+      tags: [lyrics]
+      summary: The single best lyrics for ANY song, with text, offset and translation
+      description: Same lookup, cache and limits as /api/lyrics/search (shares its cache). Returns `found:false` + `message` when nothing scores ≥ min_score (default 50).
+      parameters:
+        - { name: title, in: query, required: true, schema: { type: string } }
+        - { name: artist, in: query, schema: { type: string } }
+        - { name: album, in: query, schema: { type: string } }
+        - { name: duration, in: query, schema: { type: number } }
+        - { name: duration_ms, in: query, schema: { type: integer } }
+        - { name: isrc, in: query, schema: { type: string } }
+        - { name: min_score, in: query, schema: { type: integer, minimum: 0, maximum: 100, default: 50 } }
+      responses:
+        "200": { description: Best lyrics or found=false, content: { application/json: { schema: { $ref: "#/components/schemas/LyricsBest" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: rate_limited, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/artists/{id}/image:
+    get:
+      tags: [catalog]
+      summary: Artist image chosen by an admin (JPEG/PNG/WebP)
+      description: "`?token=` is accepted (for <img>). 404 when none is set."
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Image bytes, content: { image/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog]
+      summary: Upload an artist image (admin, local artists only; survives rescans)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { required: true, content: { image/jpeg: { schema: { type: string, format: binary } }, image/png: { schema: { type: string, format: binary } }, image/webp: { schema: { type: string, format: binary } } } }
+      responses:
+        "200": { description: Updated artist, content: { application/json: { schema: { $ref: "#/components/schemas/Artist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: not_local_source (online artists are read-only), content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    delete:
+      tags: [catalog]
+      summary: Remove the artist image (admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Removed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: not_local_source, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/artists/{id}/image/candidates:
+    get:
+      tags: [catalog]
+      summary: Artist image candidates from metadata sources (admin)
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: name, in: query, description: override the search name, schema: { type: string, maxLength: 200 } }
+      responses:
+        "200": { description: Candidates, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/ArtistImageCandidate" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { description: provider_error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+  /api/artists/{id}/image/from-match:
+    post:
+      tags: [catalog]
+      summary: Set the artist image from a candidate (admin; Core downloads it from an allow-listed host)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [provider, url], properties: { provider: { type: string }, url: { type: string } } } } } }
+      responses:
+        "200": { description: Updated artist, content: { application/json: { schema: { $ref: "#/components/schemas/Artist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { description: provider_error, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/settings/server:
+    get:
+      tags: [settings]
+      summary: Runtime-editable server settings (admin)
+      responses:
+        "200": { description: Current settings, content: { application/json: { schema: { $ref: "#/components/schemas/ServerSettingsResponse" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [settings]
+      summary: Patch server settings (admin; applied live, no restart)
+      description: Partial JSON; omitted fields keep their value. Watcher, rescan timer, MusicBrainz enrichment and the background metadata filler restart with the new values. Emits `settings.updated`.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ServerSettings" } } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/ServerSettingsResponse" } } } }
+        "400": { description: invalid_settings, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/scrobble:
     post:
       tags: [history]
@@ -1724,6 +1839,88 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    LyricsScoreBreakdown:
+      type: object
+      description: Points per factor (max title 40, artist 30, album 5, duration 15, synced 5, translation 2, reliability 3). score = round(sum × penalty).
+      properties:
+        title: { type: number }
+        artist: { type: number }
+        album: { type: number }
+        duration: { type: number }
+        synced: { type: number }
+        translation: { type: number }
+        reliability: { type: number }
+        duration_delta_ms: { type: integer, description: "-1 when unknown" }
+        penalty: { type: number, description: "1 = none; 0.3 when the title does not match at all" }
+    LyricsQuery:
+      type: object
+      properties: { title: { type: string }, artist: { type: string }, album: { type: string }, duration_ms: { type: integer }, isrc: { type: string } }
+    LyricsSearchCandidate:
+      type: object
+      required: [id, provider, title, artist, synced, has_translation, score, preview]
+      properties:
+        id: { type: string, description: "provider-scoped ref, e.g. netease:123, lrclib:45, track:tr_… (local)" }
+        provider: { type: string, enum: [user, local, lrclib, netease, qq, kugou] }
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        duration_ms: { type: integer }
+        synced: { type: boolean }
+        has_translation: { type: boolean }
+        score: { type: integer, minimum: 0, maximum: 100 }
+        score_breakdown: { $ref: "#/components/schemas/LyricsScoreBreakdown" }
+        preview: { type: array, items: { type: string } }
+    LyricsSearchResult:
+      type: object
+      required: [found, items]
+      properties:
+        query: { $ref: "#/components/schemas/LyricsQuery" }
+        found: { type: boolean }
+        message: { type: string, description: "present when found=false: 暂无歌词" }
+        items: { type: array, items: { $ref: "#/components/schemas/LyricsSearchCandidate" } }
+    LyricsBestLine:
+      type: object
+      required: [t_ms, text]
+      properties: { t_ms: { type: integer }, text: { type: string }, trans: { type: string } }
+    LyricsBest:
+      type: object
+      required: [found]
+      properties:
+        query: { $ref: "#/components/schemas/LyricsQuery" }
+        found: { type: boolean }
+        message: { type: string }
+        id: { type: string }
+        provider: { type: string }
+        title: { type: string }
+        artist: { type: string }
+        album: { type: string }
+        duration_ms: { type: integer }
+        synced: { type: boolean }
+        score: { type: integer }
+        score_breakdown: { $ref: "#/components/schemas/LyricsScoreBreakdown" }
+        offset_ms: { type: integer }
+        lrc: { type: string, description: synced LRC ("" when plain) }
+        plain: { type: string }
+        translation: { type: string, description: translated LRC with the same timestamps ("" if none) }
+        romanization: { type: string, description: reserved; "" (no source provides it yet) }
+        lines: { type: array, items: { $ref: "#/components/schemas/LyricsBestLine" } }
+    ArtistImageCandidate:
+      type: object
+      properties: { provider: { type: string }, external_id: { type: string }, name: { type: string }, image_url: { type: string }, followers: { type: integer }, score: { type: number } }
+    ServerSettings:
+      type: object
+      properties:
+        watch_mode: { type: string, enum: [auto, fsnotify, poll, off] }
+        rescan_interval: { type: string, description: 'Go duration, "0" = never' }
+        musicbrainz_enabled: { type: boolean }
+        musicbrainz_contact: { type: string }
+        fill_sources: { type: array, items: { type: string, enum: [spotify, netease, qq, kugou, musicbrainz] }, description: "ordered; empty = background fill off (default)" }
+        fill_per_minute: { type: integer, minimum: 1, maximum: 120 }
+    ServerSettingsResponse:
+      type: object
+      properties:
+        settings: { $ref: "#/components/schemas/ServerSettings" }
+        fill_source_ids: { type: array, items: { type: string } }
     Credentials:
       type: object
       required: [username, password]
@@ -1875,6 +2072,7 @@ components:
       type: object
       properties:
         id: { type: string, example: ar_1a2b3c }
+        image_updated_at: { type: string, format: date-time, description: "set when an admin chose an artist image (GET /api/artists/{id}/image)" }
         name: { type: string }
         sort_name: { type: string }
         mb_id: { type: string }

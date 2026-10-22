@@ -61,6 +61,9 @@ func (s *Scanner) SetLibraryRoots(ctx context.Context, roots []string) error {
 		return err
 	}
 	s.opts.Roots = clean
+	if s.opts.OnRootsChanged != nil {
+		go s.opts.OnRootsChanged()
+	}
 	return nil
 }
 

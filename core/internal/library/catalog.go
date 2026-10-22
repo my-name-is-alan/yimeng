@@ -28,6 +28,8 @@ type Artist struct {
 	AlbumCount int    `json:"album_count"`
 	TrackCount int    `json:"track_count"`
 	Origin     string `json:"origin"`
+	// ImageUpdatedAt is set when a user artist image exists (GET /api/artists/{id}/image?v=…).
+	ImageUpdatedAt int64 `json:"image_updated_at,omitempty"`
 }
 
 type Album struct {
@@ -208,7 +210,8 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 	if out.Total, err = count(ctx, s.db, `SELECT count(*) FROM artists a`+w.sql(), w.args); err != nil {
 		return out, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.name, COALESCE(a.sort_name,''), COALESCE(a.mb_id,''), a.album_count, a.track_count, a.origin
+	rows, err := s.db.QueryContext(ctx, `SELECT a.id, a.name, COALESCE(a.sort_name,''), COALESCE(a.mb_id,''), a.album_count, a.track_count, a.origin,
+		COALESCE((SELECT updated_at FROM artist_images i WHERE i.artist_id=a.id),0)
 		FROM artists a`+w.sql()+ob+` LIMIT ? OFFSET ?`, append(w.args, p.Limit, p.Offset)...)
 	if err != nil {
 		return out, err
@@ -216,7 +219,7 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 	defer rows.Close()
 	for rows.Next() {
 		var a Artist
-		if err := rows.Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin, &a.ImageUpdatedAt); err != nil {
 			return out, err
 		}
 		out.Items = append(out.Items, a)
@@ -226,8 +229,9 @@ func (s *Scanner) ListArtists(ctx context.Context, p ListParams) (Page[Artist], 
 
 func (s *Scanner) GetArtist(ctx context.Context, id string) (Artist, error) {
 	var a Artist
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, COALESCE(sort_name,''), COALESCE(mb_id,''), album_count, track_count, origin
-		FROM artists WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin)
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, COALESCE(sort_name,''), COALESCE(mb_id,''), album_count, track_count, origin,
+		COALESCE((SELECT updated_at FROM artist_images i WHERE i.artist_id=artists.id),0)
+		FROM artists WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.SortName, &a.MBID, &a.AlbumCount, &a.TrackCount, &a.Origin, &a.ImageUpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, ErrNotFound
 	}

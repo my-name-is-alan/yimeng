@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/my-name-is-alan/yimeng/core/internal/runtimecfg"
 	"io"
 	"log/slog"
 	"net"
@@ -90,8 +91,10 @@ type Deps struct {
 	UserEdits    UserEdits
 	LyricsSearch LyricsSearcher
 	Matcher      metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
-	Logs         *logging.Ring
-	Runtime      map[string]any // non-secret effective config snapshot
+	// ServerSettings are runtime-editable server settings (watcher, rescan, MusicBrainz, background fill).
+	ServerSettings *runtimecfg.Store
+	Logs           *logging.Ring
+	Runtime        map[string]any // non-secret effective config snapshot
 
 	// Online source plugins (optional).
 	Online    *online.Service
@@ -144,6 +147,13 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/artists", d.listArtists)
 	mux.HandleFunc("GET /api/artists/{id}", d.getArtist)
+	if d.UserEdits != nil {
+		mux.HandleFunc("GET /api/artists/{id}/image", d.artistImage)
+		mux.HandleFunc("PUT /api/artists/{id}/image", d.adminOnly(d.putArtistImage))
+		mux.HandleFunc("DELETE /api/artists/{id}/image", d.adminOnly(d.deleteArtistImage))
+		mux.HandleFunc("GET /api/artists/{id}/image/candidates", d.adminOnly(d.artistImageCandidates))
+		mux.HandleFunc("POST /api/artists/{id}/image/from-match", d.adminOnly(d.artistImageFromMatch))
+	}
 	mux.HandleFunc("GET /api/albums", d.listAlbums)
 	mux.HandleFunc("GET /api/albums/{id}", d.getAlbum)
 	mux.HandleFunc("GET /api/albums/{id}/cover", d.albumCover)
@@ -168,6 +178,8 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/tracks/{id}/credits", d.trackCredits)
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics", d.trackLyrics)
+	mux.HandleFunc("GET /api/lyrics/search", d.lyricsSearchAPI)
+	mux.HandleFunc("GET /api/lyrics/best", d.lyricsBestAPI)
 	mux.HandleFunc("POST /api/metadata/enrich", d.enrich)
 	mux.HandleFunc("GET /api/metadata/providers", d.listProviders)
 
@@ -180,6 +192,8 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/devices/{id}", d.adminOnly(d.patchDevice))
 	if d.Admin != nil {
 		mux.HandleFunc("GET /api/settings/library-roots", d.adminOnly(d.getRoots))
+		mux.HandleFunc("GET /api/settings/server", d.adminOnly(d.getServerSettings))
+		mux.HandleFunc("PUT /api/settings/server", d.adminOnly(d.putServerSettings))
 		mux.HandleFunc("PUT /api/settings/library-roots", d.adminOnly(d.putRoots))
 		mux.HandleFunc("GET /api/overrides/{type}/{id}", d.getOverride)
 		mux.HandleFunc("PUT /api/overrides/{type}/{id}", d.adminOnly(d.localOnly("", d.putOverride)))
@@ -269,7 +283,8 @@ func allowsQueryToken(r *http.Request) bool {
 	}
 	p := r.URL.Path
 	return p == "/ws" || strings.HasPrefix(p, "/api/stream/") || strings.HasSuffix(p, "/download") ||
-		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/")))
+		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/"))) ||
+		(strings.HasSuffix(p, "/image") && strings.HasPrefix(p, "/api/artists/"))
 }
 
 func (d Deps) requireAuth(next http.Handler) http.Handler {

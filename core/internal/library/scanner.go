@@ -51,9 +51,11 @@ type Job struct {
 }
 
 type Options struct {
-	Roots    []string // configured library roots (absolute)
-	CoverDir string   // where embedded cover art is extracted
-	Logger   *slog.Logger
+	Roots []string // configured library roots (absolute)
+	// OnRootsChanged is called after SetLibraryRoots (e.g. to restart the watcher).
+	OnRootsChanged func()
+	CoverDir       string // where embedded cover art is extracted
+	Logger         *slog.Logger
 	// OnProgress, if set, receives the job after every progress flush and at
 	// completion (feeds WS scan.progress).
 	OnProgress func(Job)

@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"path/filepath"
 	"strings"
 	"time"
@@ -308,6 +309,10 @@ func (s *Scanner) Merge(ctx context.Context) error {
 		return err
 	}
 	if err := applyUserCovers(ctx, tx); err != nil {
+		return err
+	}
+	// background fill-only metadata goes into still-empty fields only
+	if err := metadata.ApplyFills(ctx, tx, "", ""); err != nil {
 		return err
 	}
 	return tx.Commit()

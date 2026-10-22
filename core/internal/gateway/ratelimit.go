@@ -91,16 +91,7 @@ func rateLimit(rl *RateLimits, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		key := clientIP(r)
-		if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
-			tok := strings.TrimSpace(h[7:])
-			if len(tok) > 16 {
-				key = tok[:16]
-			} else if tok != "" {
-				key = tok
-			}
-		}
-		ok, wait := rl.allow(key)
+		ok, wait := rl.allow(rateKey(r))
 		if !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds()+0.999)))
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
@@ -108,4 +99,19 @@ func rateLimit(rl *RateLimits, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// rateKey is the bucket key: the bearer token prefix when present (so a NAT
+// does not share one bucket across devices), else the peer IP.
+func rateKey(r *http.Request) string {
+	key := clientIP(r)
+	if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
+		tok := strings.TrimSpace(h[7:])
+		if len(tok) > 16 {
+			key = tok[:16]
+		} else if tok != "" {
+			key = tok
+		}
+	}
+	return key
 }
