@@ -333,3 +333,39 @@ func TestCacheTTL(t *testing.T) {
 		t.Fatalf("prune %d", n)
 	}
 }
+
+func TestDeviceIdentityPersistence(t *testing.T) {
+	reg, _, _, _, _, v := setup(t)
+	ctx := context.Background()
+	in, _ := reg.get("fa")
+	// anonymous: only device.* keys reach the Vault, and they don't count as login
+	in.client.SetCookie(DevicePrefix+"mid", "123")
+	in.client.SetCookie("tracking", "x")
+	reg.Persist(ctx, "fa")
+	c, err := v.Get(ctx, "plugin.fa")
+	if err != nil || c.Fields[DevicePrefix+"mid"] != "123" || c.Fields["tracking"] != "" {
+		t.Fatalf("anonymous persist %+v %v", c, err)
+	}
+	reg2 := NewRegistry(reg.db, v, nil, http.DefaultClient)
+	reg2.Register(factory(&fakePlugin{id: "fa"}))
+	reg2.Load(ctx)
+	if reg2.LoggedIn("fa") {
+		t.Fatal("device ids must not count as a session")
+	}
+	if in2, _ := reg2.get("fa"); in2.client.Cookie(DevicePrefix+"mid") != "123" {
+		t.Fatal("device id not restored")
+	}
+	// login then logout keeps the device identity
+	if _, err := reg.LoginCookie(ctx, "fa", "SESSION=abc"); err != nil {
+		t.Fatal(err)
+	}
+	in.client.SetCookie(DevicePrefix+"mid", "123")
+	reg.Persist(ctx, "fa")
+	if err := reg.Logout(ctx, "fa"); err != nil {
+		t.Fatal(err)
+	}
+	c, err = v.Get(ctx, "plugin.fa")
+	if err != nil || c.Fields["SESSION"] != "" || c.Fields[DevicePrefix+"mid"] != "123" {
+		t.Fatalf("after logout %+v %v", c, err)
+	}
+}

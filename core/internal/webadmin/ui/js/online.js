@@ -43,7 +43,7 @@ export function modeWizard(onDone) {
 }
 
 // ── plugin settings ──
-const LOGIN = { qr: "扫码登录", cookie: "Cookie", password: "账号密码" };
+const LOGIN = { qr: "扫码登录", sms: "短信验证码", cookie: "Cookie", password: "账号密码" };
 export function pluginsSection(sec, reload) {
   const box = h("div", { class: "stack" }, h("div", { class: "skel", style: { height: "64px" } }));
   const s = sec("音源插件", "每个在线平台都是一个插件：启用、登录、设置音质与请求频率。账号凭据只保存在 Core 的加密 Vault 中，从不下发到网页或客户端。非会员账号仅能播放平台提供的试听片段。", box);
@@ -133,9 +133,23 @@ export function pluginLogin(p, done) {
         poll = setTimeout(tick, 2000);
       }).catch((e) => body.replaceChildren(h("p", { class: "muted" }, e.message)));
     } else if (meth === "cookie") {
-      const ta = h("textarea", { class: "input mono", rows: 4, placeholder: m.id === "netease" ? "MUSIC_U=…; __csrf=…" : "name=value; …", autocomplete: "off", spellcheck: false });
+      const ta = h("textarea", { class: "input mono", rows: 4, placeholder: { netease: "MUSIC_U=…; __csrf=…", kugou: "token=…; userid=…（或 KuGoo=KugooID=…&t=…）", qq: "uin=…; qm_keyst=…" }[m.id] || "name=value; …", autocomplete: "off", spellcheck: false });
       body.replaceChildren(h("p", { class: "muted", style: { margin: 0 } }, "从已登录的网页版复制 Cookie。提交后直接加密保存在 Core，网页不保留。"), ta,
         h("button", { class: "btn primary", onclick: async () => { try { await post(`/plugins/${m.id}/login`, { method: "cookie", cookie: ta.value.trim() }); ta.value = ""; ok(); } catch (e) { errToast(e); } } }, "提交"));
+    } else if (meth === "sms") {
+      const ph = h("input", { class: "input", inputmode: "tel", placeholder: "手机号", autocomplete: "off" });
+      const code = h("input", { class: "input", inputmode: "numeric", placeholder: "验证码", autocomplete: "one-time-code" });
+      let wait = 0;
+      const send = h("button", { class: "btn", onclick: async () => {
+        if (wait > 0 || !ph.value.trim()) return;
+        try {
+          await post(`/plugins/${m.id}/login/sms`, { phone: ph.value.trim() }); toast("验证码已发送", "ok");
+          wait = 60; const t = setInterval(() => { wait--; send.textContent = wait > 0 ? `${wait}s` : "重新发送"; if (wait <= 0) clearInterval(t); }, 1000);
+        } catch (e) { errToast(e); }
+      } }, "发送验证码");
+      body.replaceChildren(h("p", { class: "muted", style: { margin: 0 } }, "平台会向该手机号发送短信验证码。若平台要求图形/滑块验证，请改用扫码登录。手机号与验证码不在 Core 保存。"),
+        h("div", { class: "row", style: { gap: "8px" } }, ph, send), code,
+        h("button", { class: "btn primary", onclick: async () => { try { await post(`/plugins/${m.id}/login`, { method: "sms", phone: ph.value.trim(), code: code.value.trim() }); code.value = ""; ok(); } catch (e) { errToast(e); } } }, "登录"));
     } else if (meth === "password") {
       const u = h("input", { class: "input", placeholder: "手机号或邮箱", autocomplete: "off" });
       const pw = h("input", { class: "input", type: "password", placeholder: "密码", autocomplete: "new-password" });
