@@ -60,3 +60,40 @@ New endpoints (admin-only):
 Migration `0013_user_edits` adds `user_lyrics` and `user_covers`. Both survive rescans.
 
 Covers: WebP thumbnails require cgo. `CGO_ENABLED=0` builds now fall back to JPEG.
+
+## Online source plugins (`feat/online-sources`)
+
+Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
+
+- Framework (`internal/online`):
+  - plugin interfaces
+  - registry with schema-validated config and Vault sessions
+  - per-account client (cookie jar, rate limiter, risk-control backoff)
+  - TTL cache
+  - federated search, discovery and user-library facade
+  - just-in-time resolve with the entitlement policy and local/other-account fallback
+- Migration `0015_online`: `plugin_settings`, `external_cache`, `track_equivalents`, and origin indexes.
+- Gateway:
+  - `/api/plugins…`
+  - `/api/home`
+  - `/api/charts`
+  - `/api/playlists?scope=`
+  - `/api/online/{origin}/{kind}/{id}`
+  - clone
+  - cloud favorites
+  - resolve
+  - `/api/stream/{id}` proxy for online ids
+  - online lyrics
+  - `search?online=1`
+  - `/api/settings/mode`
+- NetEase plugin:
+  - weapi and eapi crypto
+  - QR, cookie, phone and email login
+  - search and detail; album, artist, playlist and lyrics
+  - toplist, recommend, personalized and top playlists
+  - user playlists and liked songs
+  - `song_url_v1` with entitlement
+  - Offline tests. Live smoke: `cmd/netease-smoke` (anonymous search, charts and lyrics verified live; VIP songs resolve as 30 s preview).
+- Web UI: 音源插件 settings, online home, platform-grouped search, charts, playlist scopes, online album/artist/playlist pages with clone, 试听 badge in the player, first-run mode wizard.
+- Not verified with a real logged-in account: all login flows, daily recommend, user playlists, VIP full URLs.
+- Not done: QQ and Kugou plugins, multi-account support, cloud write-back.

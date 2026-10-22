@@ -1,0 +1,35 @@
+译梦 (yimeng) Core
+Copyright the yimeng authors.
+
+The online source plugins in internal/online/ are original Go
+implementations. Protocol knowledge (endpoint paths, request parameters,
+encryption schemes and response shapes) was learned from the following MIT
+licensed projects. No source code was copied.
+
+- api-enhanced (NeteaseCloudMusicApi Enhanced)
+  https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced
+  Copyright (c) 2013-2022 Binaryify. MIT License.
+
+- qq-music-api
+  https://github.com/Rain120/qq-music-api
+  Copyright (c) 2019 Rain120. MIT License.
+
+- KuGouMusicApi
+  https://github.com/MakcRe/KuGouMusicApi
+  Copyright (c) 2023 MakcRe. MIT License.
+
+The MIT License text applies to the portions of knowledge derived from the
+projects above:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to
+  deal in the Software without restriction, including without limitation the
+  rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+  sell copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions: The above
+  copyright notice and this permission notice shall be included in all copies
+  or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+  WITHOUT WARRANTY OF ANY KIND.
+
+AGPL-3.0 projects (go-music-api, music-lib) were consulted for protocol
+behaviour only; no code from them is included.

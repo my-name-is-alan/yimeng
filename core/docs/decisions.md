@@ -228,3 +228,44 @@ alternative considered. Newest items at the bottom.
   enforcing only in the UI.
 - The web UI hides edit, match, cover and lyrics actions for non-local items.
   It shows a source badge, and batch selection excludes them.
+
+## D30 Online platforms are Core plugins
+- Every online platform is a Go plugin in `internal/online/<id>` behind the
+  `online.Plugin` interface, with optional capability interfaces. It is
+  registered in `cmd/core`, and users enable, configure and log in to it from
+  Settings → 音源插件. See `docs/online-sources.md`.
+- Settings are in `plugin_settings` (non-secret). Sessions are in the Vault as
+  `plugin.<id>` and are never returned by any endpoint. Mutations are admin-only.
+- Everything is rewritten natively in Go. MIT sources are credited in `NOTICE`.
+  AGPL projects were read for protocol behaviour only.
+- The legacy `playback.StreamSource` stubs for NetEase and QQ are removed. Apple remains a stub.
+
+## D31 Entitlement policy: play only what the account may play
+- Each online stream is classified `full`, `preview` (the platform's own trial
+  segment, with its window) or `unavailable`. A non-VIP account gets the
+  official preview and the UI marks it 试听; never the full track.
+- Forbidden: unblock, 解灰, song_url_match, ncmget, cross-platform grabbing, decrypting
+  ncm/qmc/kgm, and any DRM bypass.
+- Fallback goes only to (1) local files or (2) other platforms where the user
+  is logged in and fully entitled, matched by ISRC or title + artist + duration
+  (≥ 0.75), and recorded in `track_equivalents`.
+- Upstream URLs and cookies stay in Core. `/api/stream/{id}` proxies, and
+  `/api/online/resolve/{id}` reports the decision.
+
+## D32 Materialize external items into the canonical tables
+- When an online track is favorited, rated, added to a playlist or cloned, it
+  is written to `tracks/albums/artists` with `origin=<plugin>` and id
+  `<plugin>:<native>`. Favorites, ratings, history, playlists and the D29 edit
+  guard therefore need no parallel store. Merge and rescan touch only `origin='local'`.
+- Album covers of online items are CDN URLs, served by a 302 redirect.
+
+## D33 Library lists default to local; federated search is opt-in
+- `/api/artists|albums|tracks` default to `origin=local` unless `origin`,
+  `favorite`, `album_id` or `artist_id` is given. Materialized online items
+  therefore never pollute the local library.
+- `/api/search` queries plugins only with `online=1`, so existing clients keep
+  fast local search. Results are grouped per platform, and errors are per group.
+
+## D34 Online-only mode
+- `settings['app.mode']` ∈ `local | online | both` is set by the first-run wizard.
+  The web UI hides local-only sections in online mode or when the library is empty.
