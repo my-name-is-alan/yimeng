@@ -415,3 +415,16 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - For `end_of_track`, the natural end advances the queue and leaves the player paused at the next track (resume continues from there).
 - **Isolation:** only same-account sessions (or admin) can arm or see a timer (D49). The SSE `/events` stream now also filters player events by account; before this, only the WebSocket filtered them.
 - **Web player:** a sleep button in the now-playing bar offers 15/30/45/60/90 min or end of track. The fade is applied as a separate gain factor, so the user's volume is untouched.
+
+## D53 — ReplayGain normalization + gapless
+- **Gain data:** library tracks expose `audio.replaygain` `{track_gain, track_peak, album_gain, album_peak, source: tag|analyzed}`. Gains are in dB relative to −18 LUFS; peaks are linear.
+  - The scanner reads REPLAYGAIN_* / R128_* tags.
+  - When tags are missing, the optional background analyzer (ffmpeg `ebur128`) fills them in. It is on by default when ffmpeg is present; `YIMENG_LOUDNESS_ANALYSIS=false` turns it off.
+  - Player state `track.replaygain` carries the same values.
+- **Per-account prefs** (`GET/PUT /me/playback`): `replaygain` off/track/album (default track), `preamp_db` (−15 to 15), `prevent_clipping` (default true), `gapless` (default true).
+  - Gain formula: gain = 10^((gain_dB + preamp)/20), capped at 1/peak when `prevent_clipping` is set.
+  - Apps apply the gain themselves.
+- **Web player:**
+  - Two audio elements. When ≤20 s of the current track remain, the next track preloads into the spare element; on `ended` the spare is swapped in and plays immediately. If the next track isn't ready yet, it falls back to a normal load.
+  - Gain is applied through element volume. That can only attenuate, so positive gains are capped at unity.
+  - Volume = user volume × ReplayGain × sleep fade.

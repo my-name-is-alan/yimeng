@@ -1918,6 +1918,20 @@ paths:
       summary: Cover placeholder data
       responses:
         "200": { description: "{blurhash, colors:[3 x #rrggbb]}" }
+  /api/v1/me/playback:
+    get:
+      tags: [playback]
+      summary: The caller's playback preferences (ReplayGain, gapless) — D53, applied client-side
+      responses:
+        "200": { description: Prefs, content: { application/json: { schema: { $ref: "#/components/schemas/PlaybackPrefs" } } } }
+    put:
+      tags: [playback]
+      summary: Update playback preferences (partial)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlaybackPrefs" } } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/PlaybackPrefs" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/v1/me/source-switch:
     get:
       tags: [online]
@@ -2538,6 +2552,13 @@ components:
         lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
         text: { type: string }
         meta: { type: object, additionalProperties: { type: string } }
+    PlaybackPrefs:
+      type: object
+      properties:
+        replaygain: { type: string, enum: [off, track, album], description: "default track" }
+        preamp_db: { type: number, minimum: -15, maximum: 15 }
+        prevent_clipping: { type: boolean, description: "cap gain at 1/peak (default true)" }
+        gapless: { type: boolean, description: "preload the next track (default true)" }
     SourceSwitch:
       type: object
       properties:

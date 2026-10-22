@@ -4,8 +4,24 @@ import { get, post, streamURL, coverURL } from "./api.js";
 import { h, icon, cover, fmtDur, setRangeFill, $, toast, isLocal, NOT_LOCAL_MSG } from "./ui.js";
 
 const SKEY = "yimeng.player";
-const audio = new Audio();
-audio.preload = "auto";
+// Two elements for gapless playback (D53): `audio` is the active one, `spare`
+// preloads the next track and is swapped in when the current one ends.
+const mkAudio = () => { const a = new Audio(); a.preload = "auto"; return a; };
+let audio = mkAudio(), spare = mkAudio(), preloaded = null; // preloaded: { pos, id }
+// Per-account playback prefs (GET /me/playback), loaded at sign-in.
+export const prefs = { replaygain: "track", preamp_db: 0, prevent_clipping: true, gapless: true };
+export async function loadPlaybackPrefs() { try { Object.assign(prefs, await get("/me/playback")); player.rg = gainFor(player.track); player.applyVol(); } catch {} }
+// ReplayGain factor for a queue item. The element volume can only
+// attenuate, so positive gains are capped at unity.
+export function gainFor(t) {
+  const g = t?.rg; if (!g || prefs.replaygain === "off") return 1;
+  const album = prefs.replaygain === "album" && g.album_gain != null;
+  const db = album ? g.album_gain : g.track_gain; if (db == null) return 1;
+  let f = Math.pow(10, (db + (prefs.preamp_db || 0)) / 20);
+  const peak = album ? g.album_peak ?? g.track_peak : g.track_peak;
+  if (prefs.prevent_clipping && peak > 0) f = Math.min(f, 1 / peak);
+  return Math.min(1, f);
+}
 
 export const player = {
   queue: [], order: [], pos: -1, shuffle: false, repeat: "off", volume: 1, muted: false,
@@ -73,6 +89,7 @@ export const player = {
   load(autoplay, at = 0) {
     const t = this.track; if (!t) return;
     this.listened = 0; this.lastTick = 0; this.scrobbled = false; this.ent = null;
+    dropPreload(); this.rg = gainFor(t); this.applyVol();
     const seq = ++this.loadSeq;
     const start = () => {
       audio.src = streamURL(t.id);
@@ -113,6 +130,7 @@ export const player = {
   seek(ms) { if (this.track) { audio.currentTime = Math.max(0, Math.min(ms, this.duration) / 1000); this.emit("time"); } },
   setVolume(v) { this.volume = v; this.applyVol(); if (v > 0) { this.muted = false; audio.muted = false; } this.emit("volume"); },
   toggleMute() { this.muted = !this.muted; audio.muted = this.muted; this.emit("volume"); },
+  get gainDb() { return this.rg < 1 ? Math.round(20 * Math.log10(this.rg) * 10) / 10 : 0; },
   scrobble(completed = false) {
     const t = this.track; if (!t || this.scrobbled) return;
     const played = this.listened;
@@ -160,21 +178,55 @@ export function entBadge(ent) {
   // No source badge on now-playing surfaces (designer spec).
   return null;
 }
+function onAudio(type, fn) { for (const a of [audio, spare]) a.addEventListener(type, (e) => { if (e.target === audio) fn(e); }); }
 export const slim = (t) => ({ id: t.id, title: t.title, artist_name: t.artist_name, album_id: t.album_id, album_title: t.album_title, duration_ms: t.duration_ms, format: t.format,
   origin: t.origin, cover_url: t.cover_url, playable: t.playable, entitlement: t.entitlement, preview: t.preview, local_id: t.local_id,
+  rg: t.rg || t.audio?.replaygain || t.stream?.replaygain || undefined,
   stream: t.stream ? { lossless: t.stream.lossless, sample_rate: t.stream.sample_rate, bit_depth: t.stream.bit_depth, bitrate_kbps: t.stream.bitrate_kbps } : undefined });
 
-audio.addEventListener("timeupdate", () => {
+onAudio("timeupdate", () => {
+  maybePreload();
   const now = audio.currentTime * 1000;
   if (player.lastTick && now > player.lastTick && now - player.lastTick < 2000) player.listened += now - player.lastTick;
   player.lastTick = now;
   player.emit("time");
 });
-audio.addEventListener("seeking", () => { player.lastTick = 0; });
-audio.addEventListener("play", () => player.emit("state"));
-audio.addEventListener("pause", () => { player.emit("state"); });
-audio.addEventListener("ended", () => { if (player.sleepHook?.()) { player.emit("state"); return; } player.next(true); });
-audio.addEventListener("loadedmetadata", () => player.emit("time"));
+onAudio("seeking", () => { player.lastTick = 0; });
+onAudio("play", () => player.emit("state"));
+onAudio("pause", () => { player.emit("state"); });
+onAudio("ended", () => { if (player.sleepHook?.()) { dropPreload(); player.emit("state"); return; } if (!gaplessAdvance()) player.next(true); });
+onAudio("loadedmetadata", () => player.emit("time"));
+// Next queue position after the current one ends naturally (-1 = stop).
+function nextPos() {
+  if (player.repeat === "one") return -1;
+  if (player.pos + 1 < player.order.length) return player.pos + 1;
+  return player.repeat === "all" && player.order.length ? 0 : -1;
+}
+function maybePreload() {
+  if (!prefs.gapless || preloaded || !player.track || player.duration - player.time > 20000) return;
+  const p = nextPos(); if (p < 0) return;
+  const t = player.queue[player.order[p]]; if (!t || t.playable === false || t.entitlement === "unavailable") return;
+  preloaded = { pos: p, id: t.id };
+  spare.src = streamURL(t.id); spare.load();
+}
+function dropPreload() { preloaded = null; spare.pause(); spare.removeAttribute("src"); }
+// Swap in the preloaded element; false = fall back to a normal load.
+function gaplessAdvance() {
+  const p = nextPos();
+  if (!preloaded || p < 0 || preloaded.pos !== p || player.queue[player.order[p]]?.id !== preloaded.id || spare.error || spare.readyState < 2) return false;
+  player.scrobble(true);
+  const old = audio; audio = spare; spare = old;
+  player.pos = p; preloaded = null;
+  player.listened = 0; player.lastTick = 0; player.scrobbled = false; player.ent = null;
+  player.rg = gainFor(player.track); player.applyVol(); audio.muted = player.muted;
+  audio.play().catch(() => {});
+  old.pause(); old.removeAttribute("src");
+  const t = player.track, seq = ++player.loadSeq;
+  if (isOnline(t.id)) get(`/online/resolve/${t.id}`).then((r) => { if (seq === player.loadSeq) { player.ent = r; player.emit("track"); } }).catch(() => {});
+  player.loadLyrics(); player.media(); player.emit("track");
+  return true;
+}
+
 // Explain playback failures in Chinese: ask Core why (JSON error), else map
 // the browser MediaError code.
 const STREAM_ERR = {
@@ -205,7 +257,7 @@ async function explainError() {
   } catch { /* keep the media error message */ }
   toast(msg, "err");
 }
-audio.addEventListener("error", explainError);
+onAudio("error", explainError);
 if ("mediaSession" in navigator) {
   const ms = navigator.mediaSession;
   ms.setActionHandler("play", () => audio.play());

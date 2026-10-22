@@ -145,6 +145,8 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/covers/{id}/meta", d.coverMeta)
 	if d.UserData != nil {
 		mux.HandleFunc("GET /api/me/source-switch", d.getSourceSwitch)
+		mux.HandleFunc("GET /api/me/playback", d.getPlaybackPrefs)
+		mux.HandleFunc("PUT /api/me/playback", d.putPlaybackPrefs)
 		mux.HandleFunc("PUT /api/me/source-switch", d.putSourceSwitch)
 		mux.HandleFunc("GET /api/progress", d.getProgress)
 		mux.HandleFunc("PUT /api/progress/{id}", d.putProgress)
