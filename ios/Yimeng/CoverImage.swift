@@ -147,7 +147,9 @@ final class CoverCache: @unchecked Sendable {
     /// Any in-memory size of the same cover (largest first) — a no-flicker stand-in while the right size loads.
     func memoryAnySize(_ url: URL) -> PlatformImage? {
         guard let p = Self.parts(url) else { return nil }
-        for s in Self.buckets.reversed() where s != p.size {
+        // Include Core buckets (120/300/600/1200) — `buckets` alone misses 1200.
+        let sizes = Array(Set(Self.buckets + [120, 300, 600, 1200])).sorted(by: >)
+        for s in sizes where s != p.size {
             if let m = mem.object(forKey: "\(p.id)_\(s)" as NSString) { return m }
         }
         return nil

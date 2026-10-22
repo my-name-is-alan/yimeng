@@ -453,10 +453,10 @@ struct MacNowPlaying: View {
 
             Group {
                 if let u = state.remoteCoverURL ?? player.coverURL {
-                    let sized = CoverCache.sized(u, points: side)
-                    if let img = CoverCache.shared.memory(sized)
-                        ?? CoverCache.shared.cached(sized)
-                        ?? CoverCache.shared.memoryAnySize(sized) {
+                    let candidates = [side, CGFloat(320), CGFloat(600), CGFloat(44)].map { CoverCache.sized(u, points: $0) }
+                    let img = candidates.lazy.compactMap { CoverCache.shared.memory($0) ?? CoverCache.shared.cached($0) }.first
+                        ?? CoverCache.shared.memoryAnySize(candidates[0])
+                    if let img {
                         Image(platformImage: img).resizable().scaledToFill()
                     } else {
                         CoverImage(url: u, points: side)
