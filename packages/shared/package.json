@@ -1,0 +1,9 @@
+{
+  "name": "@yimeng/shared",
+  "version": "0.16.0",
+  "private": true,
+  "types": "src/api.ts",
+  "exports": {
+    ".": "./src/api.ts"
+  }
+}

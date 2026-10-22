@@ -23,6 +23,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
+	"github.com/my-name-is-alan/yimeng/core/internal/webadmin"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -45,6 +46,9 @@ type LibraryUseCases interface {
 	TrackCredits(ctx context.Context, trackID string) ([]library.Credit, error)
 	Lyrics(ctx context.Context, trackID string, fetch library.LyricsFetcher) (library.TrackLyrics, error)
 	RadioSeeds(ctx context.Context, seedTrackID string, limit int, exclude []string) ([]string, error)
+	Health(ctx context.Context) (library.HealthReport, error)
+	Stats(ctx context.Context) (library.Stats, error)
+	OnThisDay(ctx context.Context, month, day int) (library.OnThisDay, error)
 
 	SplitConfig() library.SplitConfig
 	SetSplitConfig(ctx context.Context, c library.SplitConfig) (library.SplitConfig, error)
@@ -92,6 +96,16 @@ func NewRouter(d Deps) http.Handler {
 		d.Presence = NewPresence(d.Hub)
 	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /admin/", func(w http.ResponseWriter, r *http.Request) {
+		b, err := webadmin.FS.ReadFile("index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(b)
+	})
+	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin/", http.StatusFound) })
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "yimeng-core"})
 	})
@@ -120,6 +134,9 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}", d.getTrack)
 	mux.HandleFunc("GET /api/tracks/{id}/cover", d.trackCover)
 	mux.HandleFunc("GET /api/search", d.search)
+	mux.HandleFunc("GET /api/library/health", d.libraryHealth)
+	mux.HandleFunc("GET /api/stats", d.libraryStats)
+	mux.HandleFunc("GET /api/stats/on-this-day", d.onThisDay)
 	mux.HandleFunc("GET /api/stream/{id}", d.stream)
 	mux.HandleFunc("GET /api/tracks/{id}/download", d.download)
 
@@ -211,6 +228,9 @@ func DeviceFrom(ctx context.Context) (auth.Device, bool) {
 func isPublic(r *http.Request) bool {
 	if strings.HasPrefix(r.URL.Path, "/rest/") {
 		return true // Subsonic handler does its own auth
+	}
+	if strings.HasPrefix(r.URL.Path, "/admin") {
+		return true
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws" {
 		return true // /healthz and 404s

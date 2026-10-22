@@ -181,3 +181,25 @@ alternative considered. Newest items at the bottom.
 ## D23 Genre normalization
 - `normGenre` lowercases and maps common aliases at Merge time. Sort names
   already use `normKey` on artists.
+
+## D24 Classical / multi-disc
+- `albums.disc_count` maintained on Merge (MAX disc_no). Tracks keep disc_no/
+  track_no; list sort `track` is disc then track. Composer column reserved
+  (filled when scanner persists composer — tags already read by local adapter).
+
+## D25 Library health + stats
+- `GET /api/library/health` and `GET /api/stats` (+ on-this-day) are read-only
+  aggregates over local tables. No separate analytics DB.
+
+## D26 Embedded web admin
+- `/admin/` serves a single HTML page for pairing + system/health/stats. Not a
+  full SPA; credentials stay in localStorage device token. Setup wizard = pair
+  flow on first visit.
+
+## D27 100k-track perf
+- Migration 0012 adds indexes on search_text, disc order, genre, composer.
+  Query limits remain capped (list max 500).
+
+## D28 Shared TS types
+- `packages/shared` holds hand-maintained TypeScript interfaces mirroring Core
+  DTOs for web/clients. Not codegen yet.

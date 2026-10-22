@@ -289,7 +289,8 @@ func (s *Scanner) Merge(ctx context.Context) error {
 		`DELETE FROM albums WHERE id NOT IN (SELECT album_id FROM tracks WHERE album_id IS NOT NULL)`,
 		`DELETE FROM artists WHERE id NOT IN (SELECT artist_id FROM track_artists UNION SELECT artist_id FROM album_artists)`,
 		`UPDATE albums SET track_count=(SELECT count(*) FROM tracks WHERE album_id=albums.id),
-			duration_ms=(SELECT COALESCE(sum(duration_ms),0) FROM tracks WHERE album_id=albums.id)`,
+			duration_ms=(SELECT COALESCE(sum(duration_ms),0) FROM tracks WHERE album_id=albums.id),
+			disc_count=(SELECT COALESCE(MAX(disc_no),1) FROM tracks WHERE album_id=albums.id)`,
 		`UPDATE artists SET track_count=(SELECT count(DISTINCT track_id) FROM track_artists WHERE artist_id=artists.id),
 			album_count=(SELECT count(DISTINCT album_id) FROM (
 				SELECT album_id FROM album_artists WHERE artist_id=artists.id

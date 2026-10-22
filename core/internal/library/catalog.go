@@ -37,6 +37,7 @@ type Album struct {
 	Year        int         `json:"year,omitempty"`
 	Genre       string      `json:"genre,omitempty"`
 	TrackCount  int         `json:"track_count"`
+	DiscCount   int         `json:"disc_count,omitempty"`
 	DurationMs  int64       `json:"duration_ms"`
 	MBReleaseID string      `json:"mb_release_id,omitempty"`
 	HasCover    bool        `json:"has_cover"`
@@ -234,14 +235,14 @@ var albumSorts = map[string]string{
 }
 
 const albumCols = `al.id, al.title, COALESCE(al.artist_name,''), COALESCE(al.year,0), COALESCE(al.genre,''),
-	al.track_count, al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at,
+	al.track_count, COALESCE(al.disc_count,1), al.duration_ms, COALESCE(al.mb_release_id,''), al.cover_path IS NOT NULL, al.created_at,
 	EXISTS(SELECT 1 FROM favorites f WHERE f.entity_type='album' AND f.entity_id=al.id),
 	COALESCE((SELECT rating FROM ratings r WHERE r.entity_type='album' AND r.entity_id=al.id),0)`
 
 func scanAlbum(r interface{ Scan(...any) error }) (Album, error) {
 	var a Album
 	var created int64
-	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created, &a.Favorite, &a.Rating)
+	err := r.Scan(&a.ID, &a.Title, &a.ArtistName, &a.Year, &a.Genre, &a.TrackCount, &a.DiscCount, &a.DurationMs, &a.MBReleaseID, &a.HasCover, &created, &a.Favorite, &a.Rating)
 	a.CreatedAt = time.UnixMilli(created).UTC()
 	return a, err
 }

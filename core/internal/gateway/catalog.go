@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
@@ -284,4 +285,39 @@ func (d Deps) listProviders(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (d Deps) libraryHealth(w http.ResponseWriter, r *http.Request) {
+	h, err := d.Library.Health(r.Context())
+	if err != nil {
+		d.internal(w, "health", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, h)
+}
+
+func (d Deps) libraryStats(w http.ResponseWriter, r *http.Request) {
+	st, err := d.Library.Stats(r.Context())
+	if err != nil {
+		d.internal(w, "stats", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (d Deps) onThisDay(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	month, day := intQ(r, "month"), intQ(r, "day")
+	if month == 0 {
+		month = int(now.Month())
+	}
+	if day == 0 {
+		day = now.Day()
+	}
+	out, err := d.Library.OnThisDay(r.Context(), month, day)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_query", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.16.0
+  version: 0.17.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -19,6 +19,8 @@ servers:
 security:
   - bearer: []
 tags:
+  - name: admin-ui
+    description: Embedded browser admin
   - name: sources
     description: StreamSource account management (credentials never leave the vault)
   - name: subsonic
@@ -1367,6 +1369,45 @@ paths:
       responses:
         "200": { description: Player state }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin:
+    get:
+      tags: [admin-ui]
+      summary: Redirect to embedded web admin
+      security: []
+      responses:
+        "302": { description: Redirect to /admin/ }
+  /admin/:
+    get:
+      tags: [admin-ui]
+      summary: Embedded web admin + setup wizard (pair, system, health, stats)
+      security: []
+      responses:
+        "200": { description: HTML }
+  /api/library/health:
+    get:
+      tags: [library]
+      summary: Library health report (missing covers, genre gaps, format counts)
+      responses:
+        "200": { description: HealthReport }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/stats:
+    get:
+      tags: [library]
+      summary: Library listening stats (top tracks/artists)
+      responses:
+        "200": { description: Stats }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/stats/on-this-day:
+    get:
+      tags: [library]
+      summary: Tracks played on this calendar day in past years
+      parameters:
+        - { name: month, in: query, schema: { type: integer, minimum: 1, maximum: 12 } }
+        - { name: day, in: query, schema: { type: integer, minimum: 1, maximum: 31 } }
+      responses:
+        "200": { description: OnThisDay }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
 components:
   securitySchemes:

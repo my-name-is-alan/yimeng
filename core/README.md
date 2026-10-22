@@ -44,6 +44,10 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 睡眠定时：`POST /api/players/{id}/sleep` `{"minutes":30}`（0 取消）；到期自动 pause。
 - Radio：`POST /api/players/{id}/radio` `{"seed_track_id"}` 按同艺人/类型填充队列。
 - 流派归一：入库时折叠常见别名（hip hop→hip-hop、搖滾→rock 等）。
+- 多碟：专辑 `disc_count`；曲目按 `disc_no`/`track_no` 排序（古典/多碟）。
+- 健康：`GET /api/library/health`；统计 `GET /api/stats`、`GET /api/stats/on-this-day`。
+- Web 管理：`/admin/` 内嵌配对/系统/健康页（setup wizard）。
+- 共享类型：`packages/shared` TypeScript API types。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。

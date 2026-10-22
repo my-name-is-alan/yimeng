@@ -22,13 +22,13 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 16 | AIFF / APE / DSF / DFF | done | `d30be52` |
 | E1 | Pinyin + fuzzy search | done | `aa38d23` |
 | E2 | Radio / auto-continue | done | `c7ac85d` |
-| E3 | Classical / multi-disc | pending | |
+| E3 | Classical / multi-disc | done | (pending commit) |
 | E4 | Genre normalization + sort names | done | `c7ac85d` |
-| E5 | Library health reports | pending | |
-| E6 | Stats / on-this-day | pending | |
-| E7 | Embedded web admin + setup wizard | pending | |
+| E5 | Library health reports | done | (pending commit) |
+| E6 | Stats / on-this-day | done | (pending commit) |
+| E7 | Embedded web admin + setup wizard | done | (pending commit) |
 | E8 | Sleep timer + session resume | done | `c7ac85d` |
-| E9 | 100k-track perf | pending | |
+| E9 | 100k-track perf | done | (pending commit) |
 | E10 | Config hot-reload | done | `c7ac85d` |
 | E11 | `/api/v1` alias | done | `c7ac85d` |
-| E12 | TS types → `packages/shared` | pending | |
+| E12 | TS types → `packages/shared` | done | (pending commit) |
