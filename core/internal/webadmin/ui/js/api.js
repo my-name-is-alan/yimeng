@@ -23,7 +23,7 @@ export async function api(path, { method = "GET", body, raw, headers = {}, signa
     h["Content-Type"] = "application/json"; b = JSON.stringify(body);
   }
   const res = await fetch(`/api/v1${path}`, { method, headers: h, body: b, signal });
-  if (res.status === 401 && !path.startsWith("/pair")) unauth.forEach((f) => f());
+  if (res.status === 401 && !path.startsWith("/pair") && !path.startsWith("/auth/")) unauth.forEach((f) => f());
   if (raw) { if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null)); return res; }
   if (res.status === 204) return null;
   const ct = res.headers.get("content-type") || "";

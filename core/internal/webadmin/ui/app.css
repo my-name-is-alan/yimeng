@@ -419,3 +419,9 @@ dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: blur(6px); }
   .app:not([data-state=login]) .main { padding-bottom: calc(var(--bar) + 120px + env(safe-area-inset-bottom)); }
   .main .tracks:last-child, .main .list:last-child { margin-bottom: 0; }
 }
+.pw-meter { height: 4px; border-radius: 2px; background: var(--line, #333); overflow: hidden; margin-top: 6px; }
+.pw-meter i { display: block; height: 100%; width: 0; transition: width .2s, background .2s; }
+.pw-meter[data-score="1"] i { width: 25%; background: var(--danger); }
+.pw-meter[data-score="2"] i { width: 50%; background: #e0a030; }
+.pw-meter[data-score="3"] i { width: 75%; background: var(--accent); }
+.pw-meter[data-score="4"] i { width: 100%; background: var(--accent); }

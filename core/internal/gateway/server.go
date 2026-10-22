@@ -120,8 +120,18 @@ func NewRouter(d Deps) http.Handler {
 	// pairing (public, rate-limited)
 	mux.HandleFunc("POST /api/pair/request", d.pairRequest)
 	mux.HandleFunc("POST /api/pair", d.pair)
+	// web accounts (setup/login public + rate-limited/lockout; rest authenticated)
+	mux.HandleFunc("GET /api/auth/setup", d.authStatus)
+	mux.HandleFunc("POST /api/auth/setup", d.authSetup)
+	mux.HandleFunc("POST /api/auth/login", d.authLogin)
+	mux.HandleFunc("POST /api/auth/logout", d.authLogout)
+	mux.HandleFunc("POST /api/auth/password", d.authPassword)
+	mux.HandleFunc("GET /api/users", d.adminOnly(d.listUsers))
+	mux.HandleFunc("POST /api/users", d.adminOnly(d.createUser))
+	mux.HandleFunc("PATCH /api/users/{id}", d.adminOnly(d.patchUser))
+	mux.HandleFunc("DELETE /api/users/{id}", d.adminOnly(d.deleteUser))
 	// device management (auth)
-	mux.HandleFunc("POST /api/pair/codes", d.newPairCode)
+	mux.HandleFunc("POST /api/pair/codes", d.adminOnly(d.newPairCode))
 	mux.HandleFunc("GET /api/devices", d.listDevices)
 	mux.HandleFunc("GET /api/devices/me", d.me)
 	mux.HandleFunc("GET /api/devices/me/stream-quality", d.getStreamQuality)
@@ -241,6 +251,12 @@ func isPublic(r *http.Request) bool {
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/ws" {
 		return true // /healthz and 404s
+	}
+	switch r.URL.Path {
+	case "/api/auth/setup":
+		return r.Method == http.MethodGet || r.Method == http.MethodPost
+	case "/api/auth/login":
+		return r.Method == http.MethodPost
 	}
 	return r.Method == http.MethodPost && (r.URL.Path == "/api/pair" || r.URL.Path == "/api/pair/request")
 }

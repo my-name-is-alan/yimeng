@@ -1,6 +1,6 @@
 // Admin pages: dashboard, devices, settings (roots, providers, transcoding, backups, sources), logs.
 import { get, post, put, patch, del, qs, api, onEvent, wsState, store } from "./api.js";
-import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog } from "./ui.js";
+import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog, strengthMeter, pwIssues } from "./ui.js";
 import { state, isAdmin } from "./state.js";
 import { pluginsSection, localHidden } from "./online.js";
 
@@ -135,17 +135,18 @@ export async function devices(main) {
       const c = await post("/pair/codes");
       const left = h("span"); const exp = new Date(c.expires_at);
       const tick = setInterval(() => { const s = Math.max(0, Math.round((exp - Date.now()) / 1000)); left.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; if (!s) clearInterval(tick); }, 500);
-      dialog({ title: "配对新设备", body: [h("p", { class: "muted", style: { margin: 0 } }, "在新设备（iOS / Android / 桌面 / 另一个浏览器）的配对界面输入下面的配对码："), h("div", { class: "pill-code" }, c.code), h("p", { class: "muted", style: { margin: 0, textAlign: "center" } }, "剩余有效时间 ", left)], onClose: () => { clearInterval(tick); reload(); } });
+      dialog({ title: "添加设备 · 配对码", body: [h("p", { class: "muted", style: { margin: 0 } }, "在 App（iOS / Android / 桌面）的「连接 Core」界面输入下面的配对码。配对码一次有效；网页请直接用账号密码登录。"), h("div", { class: "pill-code" }, c.code), h("p", { class: "muted", style: { margin: 0, textAlign: "center" } }, "剩余有效时间 ", left)], onClose: () => { clearInterval(tick); reload(); } });
     } catch (e) { errToast(e); }
   };
   const TYPE = { web: "网页", ios: "iOS", android: "Android", desktop: "桌面", mac: "Mac", windows: "Windows", subsonic: "Subsonic" };
-  main.replaceChildren(head("设备", `${r.items.length} 台已配对设备 · 配对令牌只保存在各设备本地`, h("button", { class: "btn primary", onclick: newCode }, icon("plus"), "配对新设备")), adminGate() || "",
+  main.replaceChildren(head("设备", `${r.items.length} 台设备 / 会话 · 令牌只保存在各设备本地`, isAdmin() ? h("button", { class: "btn primary", onclick: newCode }, icon("plus"), "添加设备 / 生成配对码") : null), adminGate() || "",
     h("div", { class: "table-wrap card", style: { padding: "6px 10px" } }, h("table", { class: "table" },
-      h("thead", null, h("tr", null, ["设备", "类型", "角色", "最近活跃", "配对时间", ""].map((x) => h("th", null, x)))),
+      h("thead", null, h("tr", null, ["设备", "类型", "账号", "角色", "最近活跃", "创建时间", ""].map((x) => h("th", null, x)))),
       h("tbody", null, r.items.map((d) => h("tr", null,
         h("td", null, h("div", { class: "row" }, icon("device"), h("b", null, d.name), d.id === me.id ? h("span", { class: "badge ok" }, "本机") : null)),
         h("td", null, TYPE[d.device_type] || d.device_type || "—"),
-        h("td", null, h("label", { class: "row", title: "管理员可修改设置与元数据" }, h("input", { type: "checkbox", class: "switch", checked: d.admin, disabled: !isAdmin(), "aria-label": "管理员", onchange: async (e) => {
+        h("td", null, d.username ? h("span", { class: "row", style: { gap: "6px" } }, icon("artist"), d.username) : h("span", { class: "muted" }, "配对码")),
+        h("td", null, h("label", { class: "row", title: "管理员可修改设置与元数据" }, h("input", { type: "checkbox", class: "switch", checked: d.admin, disabled: !isAdmin() || !!d.user_id, title: d.user_id ? "由账号角色决定（在「用户」页修改）" : "", "aria-label": "管理员", onchange: async (e) => {
           try { await patch(`/devices/${d.id}`, { admin: e.target.checked }); toast(e.target.checked ? `${d.name} 已设为管理员` : `${d.name} 已取消管理员`); } catch (err) { e.target.checked = !e.target.checked; err.code === "last_admin" ? toast("至少需要保留一台管理员设备", "err") : errToast(err); }
         } }), h("span", { class: "muted" }, d.admin ? "管理员" : "成员"))),
         h("td", { class: "muted" }, fmtAgo(d.last_seen_at)),
@@ -153,9 +154,68 @@ export async function devices(main) {
         h("td", null, h("div", { class: "row", style: { justifyContent: "flex-end" } },
           h("button", { class: "btn sm", onclick: async () => { const n = await promptDlg("重命名设备", "设备名称", d.name); if (n) { try { await patch(`/devices/${d.id}`, { name: n }); reload(); } catch (e) { errToast(e); } } } }, "重命名"),
           h("button", { class: "btn sm danger", onclick: async () => {
-            if (!(await confirmDlg("撤销设备", d.id === me.id ? "这是当前浏览器。撤销后需要重新配对。" : `撤销「${d.name}」？该设备的令牌将立即失效。`, "撤销", true))) return;
+            if (!(await confirmDlg("撤销设备", d.id === me.id ? "这是当前浏览器。撤销后需要重新登录。" : `撤销「${d.name}」？该设备的令牌将立即失效。`, "撤销", true))) return;
             try { await del(`/devices/${d.id}`); toast("已撤销"); if (d.id === me.id) { store.token = ""; location.reload(); } else reload(); } catch (e) { e.code === "last_admin" ? toast("不能撤销最后一台管理员设备", "err") : errToast(e); }
           } }, "撤销")))))))));
+}
+
+// ── users ──
+export async function users(main) {
+  const [r, me] = await Promise.all([get("/users").catch((e) => { if (e.status === 403) return null; throw e; }), get("/devices/me")]);
+  const reload = () => users(main);
+  if (!r) return main.replaceChildren(head("用户"), adminGate() || "", empty("只有管理员可以管理用户", "artist"));
+  const userForm = (title, u) => {
+    const name = h("input", { class: "input", value: u?.username || "", disabled: !!u, autocomplete: "off" });
+    const pw = h("input", { class: "input", type: "password", autocomplete: "new-password" });
+    const role = h("select", { class: "input" }, h("option", { value: "user", selected: u?.role !== "admin" }, "成员（只能播放、收藏、管理自己的设备）"), h("option", { value: "admin", selected: u?.role === "admin" }, "管理员（可修改设置与元数据）"));
+    const d = dialog({ title, body: [h("label", { class: "field" }, h("span", null, "用户名"), name),
+      h("label", { class: "field" }, h("span", null, u ? "新密码（留空不修改）" : "密码"), pw, ...strengthMeter(name, pw)),
+      h("label", { class: "field" }, h("span", null, "角色"), role)],
+      foot: [h("button", { class: "btn", onclick: () => d.close() }, "取消"), h("button", { class: "btn primary", onclick: async () => {
+        if ((!u || pw.value) && pwIssues(name.value, pw.value).length) return toast("密码强度不足：" + pwIssues(name.value, pw.value).join("；"), "err");
+        try {
+          if (u) await patch(`/users/${u.id}`, { role: role.value, ...(pw.value ? { password: pw.value } : {}) });
+          else await post("/users", { username: name.value.trim(), password: pw.value, role: role.value });
+          toast("已保存"); d.close(); reload();
+        } catch (e) { e.code === "last_admin" ? toast("至少需要保留一个管理员账号", "err") : e.code === "username_taken" ? toast("用户名已存在", "err") : errToast(e); }
+      } }, "保存")] });
+  };
+  main.replaceChildren(head("用户", `${r.items.length} 个账号 · 密码以 argon2id 哈希保存`, h("button", { class: "btn primary", onclick: () => userForm("添加用户") }, icon("plus"), "添加用户")),
+    h("div", { class: "table-wrap card", style: { padding: "6px 10px" } }, h("table", { class: "table" },
+      h("thead", null, h("tr", null, ["用户名", "角色", "创建时间", ""].map((x) => h("th", null, x)))),
+      h("tbody", null, r.items.map((u) => h("tr", null,
+        h("td", null, h("div", { class: "row" }, icon("artist"), h("b", null, u.username), u.id === me.user_id ? h("span", { class: "badge ok" }, "当前") : null)),
+        h("td", null, h("span", { class: `badge ${u.role === "admin" ? "ok" : ""}` }, u.role === "admin" ? "管理员" : "成员")),
+        h("td", { class: "muted" }, fmtTime(u.created_at)),
+        h("td", null, h("div", { class: "row", style: { justifyContent: "flex-end" } },
+          h("button", { class: "btn sm", onclick: () => userForm(`编辑 · ${u.username}`, u) }, "编辑"),
+          h("button", { class: "btn sm danger", disabled: u.id === me.user_id, onclick: async () => {
+            if (!(await confirmDlg("删除用户", `删除「${u.username}」？其所有登录会话会立即失效。`, "删除", true))) return;
+            try { await del(`/users/${u.id}`); toast("已删除"); reload(); } catch (e) { e.code === "last_admin" ? toast("不能删除最后一个管理员", "err") : errToast(e); }
+          } }, "删除")))))))),
+    h("p", { class: "muted", style: { fontSize: "13px" } }, "忘记密码：在 Core 主机执行 ", h("code", null, "yimeng-core reset-password <用户名>"), "，或设置 ", h("code", null, "YIMENG_ADMIN_RESET=1"), " 重启一次以重新创建管理员。"));
+}
+
+// ── account (change own password) ──
+function accountSection(sec) {
+  const me = state.me || {};
+  if (!me.user_id) return sec("账号", "当前浏览器是通过配对码连接的设备，没有关联账号。退出后可用用户名和密码登录。");
+  const old = h("input", { class: "input", type: "password", autocomplete: "current-password" });
+  const nw = h("input", { class: "input", type: "password", autocomplete: "new-password" });
+  const nw2 = h("input", { class: "input", type: "password", autocomplete: "new-password" });
+  const uname = { value: me.username || "" };
+  return sec("账号", `已登录为 ${me.username}${me.admin ? "（管理员）" : ""}。修改密码后，该账号在其他设备上的登录会失效。`,
+    h("div", { class: "grid-3", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "12px" } },
+      h("label", { class: "field" }, h("span", null, "当前密码"), old),
+      h("label", { class: "field" }, h("span", null, "新密码"), nw, ...strengthMeter({ value: uname.value, addEventListener() {} }, nw)),
+      h("label", { class: "field" }, h("span", null, "确认新密码"), nw2)),
+    h("div", { class: "row", style: { marginTop: "10px" } }, h("span", { class: "spacer" }), h("button", { class: "btn primary", onclick: async () => {
+      const iss = pwIssues(uname.value, nw.value);
+      if (iss.length) return toast("密码强度不足：" + iss.join("；"), "err");
+      if (nw.value !== nw2.value) return toast("两次输入的新密码不一致", "err");
+      try { await post("/auth/password", { old_password: old.value, new_password: nw.value }); toast("密码已修改"); old.value = nw.value = nw2.value = ""; }
+      catch (e) { e.status === 403 ? toast("当前密码错误", "err") : errToast(e); }
+    } }, icon("key"), "修改密码")));
 }
 
 // ── settings ──
@@ -270,7 +330,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", modeSec, plugSec, ...(local ? [rootsSec, scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), modeSec, plugSec, ...(local ? [rootsSec, scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";

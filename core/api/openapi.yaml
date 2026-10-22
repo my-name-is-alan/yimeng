@@ -71,6 +71,97 @@ paths:
                   message: { type: string }
         "429": { $ref: "#/components/responses/RateLimited" }
 
+  /api/auth/setup:
+    get:
+      tags: [auth]
+      summary: Whether first-run setup is needed (no web accounts exist yet). Public
+      security: []
+      responses:
+        "200": { description: Setup state, content: { application/json: { schema: { type: object, properties: { needs_setup: { type: boolean } } } } } }
+    post:
+      tags: [auth]
+      summary: Create the first admin account and sign in. Public, only while no account exists (409 setup_done afterwards)
+      description: "Body {username, password, device_name?, device_type?}. Password policy: at least 10 characters, 3 of 4 character classes (or 16+ characters), not common, must not contain the username (400 weak_password). Passwords are stored as argon2id hashes."
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/Credentials" } } }
+      responses:
+        "201": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "400": { description: weak_password / invalid_username }
+        "409": { description: setup_done }
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Sign in with username and password; returns a device token (same bearer model as pairing). Public
+      description: Failed attempts are limited per IP (8/min) and per username (5/min); exceeding either locks that key out for 15 minutes (429 with Retry-After).
+      security: []
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/Credentials" } } }
+      responses:
+        "200": { description: Session, content: { application/json: { schema: { $ref: "#/components/schemas/Session" } } } }
+        "401": { description: invalid_credentials }
+        "429": { description: rate_limited }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the calling session's token
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/auth/password:
+    post:
+      tags: [auth]
+      summary: Change the signed-in user's password ({old_password, new_password}); the user's other sessions are revoked
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { old_password: { type: string }, new_password: { type: string } } } } }
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: wrong current password }
+        "409": { description: not_a_user_session (device paired with a code) }
+
+  /api/users:
+    get:
+      tags: [auth]
+      summary: List web accounts (admin)
+      responses:
+        "200": { description: Users, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/User" } } } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [auth]
+      summary: Create an account ({username, password, role admin|user}) (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "201": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "409": { description: username_taken }
+
+  /api/users/{id}:
+    patch:
+      tags: [auth]
+      summary: Change role and/or set a new password (admin). Demoting the last admin fails (409 last_admin); a new password revokes that user's sessions
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { role: { type: string, enum: [admin, user] }, password: { type: string } } } } }
+      responses:
+        "200": { description: User, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "409": { description: last_admin }
+    delete:
+      tags: [auth]
+      summary: Delete an account and its sessions (admin; not the last admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Done }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/pair:
     post:
       tags: [pairing]
@@ -1602,6 +1693,27 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        device_name: { type: string }
+        device_type: { type: string, default: web }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        role: { type: string, enum: [admin, user] }
+        created_at: { type: string, format: date-time }
+    Session:
+      type: object
+      properties:
+        token: { type: string, description: "Bearer device token (shown once)" }
+        device: { type: object }
+        user: { $ref: "#/components/schemas/User" }
     Credit:
       type: object
       properties:

@@ -67,6 +67,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck(cfg.Bind))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		os.Exit(resetPassword(cfg, os.Args[2:]))
+	}
 	if err := run(cfg, log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
@@ -292,6 +295,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	authSvc := auth.New(database, cfg.PairCodeTTL, log)
+	if v := strings.TrimSpace(os.Getenv("YIMENG_ADMIN_RESET")); v == "1" || strings.EqualFold(v, "true") {
+		// Escape hatch: remove every web account (and its sessions) so the
+		// first-run setup page appears again. Unset the variable afterwards.
+		if n, err := authSvc.RemoveAllUsers(ctx); err != nil {
+			return err
+		} else {
+			log.Warn("YIMENG_ADMIN_RESET: web accounts removed; open the web console to create a new admin, then unset the variable", "removed", n)
+		}
+	}
 	if n, err := authSvc.DeviceCount(ctx); err == nil && n == 0 {
 		// First run: print a pairing code so the owner can pair the first client.
 		if code, exp, err := authSvc.NewCode(); err == nil {

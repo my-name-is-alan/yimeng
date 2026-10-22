@@ -1,6 +1,6 @@
-// 译梦 web console: shell, pairing/login, hash router.
+// 译梦 web console: shell, username/password sign-in, hash router.
 import { get, post, store, connectWS, closeWS, onUnauthorized, onEvent, wsState } from "./api.js";
-import { h, icon, $, toast, errToast, empty } from "./ui.js";
+import { h, icon, $, toast, errToast, empty, strengthMeter, pwIssues } from "./ui.js";
 import { state, isAdmin } from "./state.js";
 import { player, mountNowBar, closeNP } from "./player.js";
 import * as lib from "./library.js";
@@ -16,7 +16,7 @@ const navigate = (hash) => { location.hash = hash; };
 
 const NAV = [
   ["曲库", [["#/", "首页", "home"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/tracks", "歌曲", "track", "local"], ["#/playlists", "歌单", "list"], ["#/charts", "排行榜", "pulse"], ["#/favorites", "收藏", "heart"], ["#/history", "播放历史", "history"]]],
-  ["管理", [["#/dashboard", "仪表盘", "dash"], ["#/metadata", "元数据", "edit"], ["#/lyrics", "歌词匹配", "lyrics"], ["#/devices", "设备", "device"], ["#/settings", "设置", "settings"], ["#/logs", "日志", "logs"]]],
+  ["管理", [["#/dashboard", "仪表盘", "dash"], ["#/metadata", "元数据", "edit"], ["#/lyrics", "歌词匹配", "lyrics"], ["#/devices", "设备", "device"], ["#/users", "用户", "artist"], ["#/settings", "设置", "settings"], ["#/logs", "日志", "logs"]]],
 ];
 const TABS = [["#/", "首页", "home"], ["#/albums", "曲库", "album"], ["#/search", "搜索", "search", true], ["#/playlists", "歌单", "list"], ["#/dashboard", "管理", "dash"]];
 
@@ -33,46 +33,57 @@ function shell() {
     h("div", { class: "row" },
       h("button", { class: "btn sm ghost", title: "切换主题", onclick: () => { const cur = document.documentElement.dataset.theme; localStorage.setItem("yimeng.theme", cur === "dark" ? "light" : "dark"); adm.applyTheme(); } }, icon("moon"), "主题"),
       h("span", { class: "spacer" }),
-      h("button", { class: "btn sm ghost", title: "退出（仅清除本浏览器令牌）", onclick: logout }, icon("logout"), "退出")));
+      h("button", { class: "btn sm ghost", title: "退出登录", onclick: logout }, icon("logout"), "退出")));
   $("#searchForm").onsubmit = (e) => { e.preventDefault(); navigate(`#/search?q=${encodeURIComponent($("#searchInput").value)}`); };
   addEventListener("keydown", (e) => {
     if ((e.key === "/" || (e.key === "k" && (e.metaKey || e.ctrlKey))) && !e.target.closest("input,textarea")) { e.preventDefault(); const i = $("#searchInput"); if (i.offsetParent) i.focus(); else navigate("#/search"); }
   });
 }
 
-function logout() {
-  if (!confirm("退出后需要重新输入配对码。设备在 Core 中仍保持配对，可在「设备」页撤销。确定退出？")) return;
+async function logout() {
+  if (!confirm("确定退出登录？")) return;
+  try { await post("/auth/logout"); } catch {}
   store.token = ""; closeWS(); player.clear(); location.hash = "#/"; location.reload();
 }
 
-// ── pairing / login ──
-function loginView(msg) {
+// ── sign-in / first-run setup ──
+async function loginView(msg) {
   app.dataset.state = "login"; closeNP();
-  const code = h("input", { class: "input code-input", placeholder: "XXXX-XXXX", autocomplete: "one-time-code", maxlength: 12, "aria-label": "配对码", spellcheck: false, autofocus: true });
-  const name = h("input", { class: "input", value: localStorage.getItem("yimeng.devname") || `网页 · ${browserName()}`, "aria-label": "设备名称" });
+  let setup = false;
+  try { setup = (await get("/auth/setup")).needs_setup; } catch {}
+  const user = h("input", { class: "input", autocomplete: "username", "aria-label": "用户名", spellcheck: false, autocapitalize: "off", placeholder: setup ? "例如 admin" : "" });
+  const pw = h("input", { class: "input", type: "password", autocomplete: setup ? "new-password" : "current-password", "aria-label": "密码" });
+  const pw2 = h("input", { class: "input", type: "password", autocomplete: "new-password", "aria-label": "确认密码" });
   const err = h("div", { role: "alert", style: { color: "var(--danger)", minHeight: "1.2em", textAlign: "center", fontSize: "14px" } }, msg || "");
-  const btn = h("button", { class: "btn primary lg", type: "submit" }, "配对并进入");
-  code.addEventListener("input", () => { let v = code.value.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (v.length > 4) v = v.slice(0, 4) + "-" + v.slice(4, 8); code.value = v; });
+  const btn = h("button", { class: "btn primary lg", type: "submit" }, setup ? "创建管理员并进入" : "登录");
   const form = h("form", { class: "login-card", onsubmit: async (e) => {
-    e.preventDefault(); err.textContent = ""; btn.disabled = true;
+    e.preventDefault(); err.textContent = "";
+    if (setup) {
+      const iss = pwIssues(user.value, pw.value);
+      if (iss.length) { err.textContent = "密码强度不足：" + iss.join("；"); return; }
+      if (pw.value !== pw2.value) { err.textContent = "两次输入的密码不一致"; return; }
+    }
+    btn.disabled = true;
     try {
-      const r = await post("/pair", { code: code.value.trim(), name: name.value.trim() || "网页", device_type: "web" });
-      store.token = r.token; localStorage.setItem("yimeng.devname", name.value.trim());
-      toast(`配对成功${r.device.admin ? " · 管理员" : ""}`); boot();
-    } catch (ex) { err.textContent = ex.status === 401 ? "配对码无效或已过期" : ex.status === 429 ? "尝试过于频繁，请稍后再试" : ex.message; btn.disabled = false; }
+      const r = await post(setup ? "/auth/setup" : "/auth/login", { username: user.value.trim(), password: pw.value, device_name: `网页 · ${browserName()}`, device_type: "web" });
+      store.token = r.token; toast(setup ? "管理员账号已创建" : `欢迎回来，${r.user.username}`); boot();
+    } catch (ex) {
+      err.textContent = ex.status === 401 ? "用户名或密码错误" : ex.status === 429 ? "失败次数过多，已临时锁定 15 分钟" : ex.status === 409 && setup ? "管理员已存在，请刷新后登录" : ex.message;
+      btn.disabled = false; pw.select();
+    }
   } },
-    h("span", { class: "brand-orb", "aria-hidden": "true" }), h("h1", null, "连接到译梦 Core"), h("p", { class: "lead" }, "输入配对码，把这个浏览器配对为一台设备"),
-    h("label", { class: "field" }, h("span", null, "配对码"), code), h("label", { class: "field" }, h("span", null, "设备名称"), name), err, btn,
-    h("details", null, h("summary", { class: "muted", style: { cursor: "pointer", fontSize: "13px" } }, "如何获取配对码？"),
-      h("ol", { class: "steps", style: { marginTop: "10px" } },
-        h("li", null, "首次启动时，Core 会在日志中打印配对码（", h("code", null, "docker logs yimeng"), "）。第一台配对的设备自动成为管理员。"),
-        h("li", null, "已配对的管理员可在「设备 → 配对新设备」生成配对码。"),
-        h("li", null, "或点击下方按钮，让 Core 在日志里打印一个新配对码：")),
-      h("button", { class: "btn sm", type: "button", style: { marginTop: "8px" }, onclick: async () => {
-        try { await post("/pair/request"); toast("新的配对码已打印在 Core 日志中", "ok", 5000); } catch (ex) { errToast(ex); }
-      } }, "在 Core 日志中打印配对码")));
+    h("span", { class: "brand-orb", "aria-hidden": "true" }),
+    h("h1", null, setup ? "欢迎使用译梦" : "登录译梦 Core"),
+    h("p", { class: "lead" }, setup ? "首次启动：创建管理员账号。密码只以 argon2id 哈希保存在 Core 中。" : "使用用户名和密码登录网页控制台"),
+    h("label", { class: "field" }, h("span", null, "用户名"), user),
+    h("label", { class: "field" }, h("span", null, "密码"), pw, ...(setup ? strengthMeter(user, pw) : [])),
+    setup ? h("label", { class: "field" }, h("span", null, "确认密码"), pw2) : null,
+    err, btn,
+    setup ? null : h("details", null, h("summary", { class: "muted", style: { cursor: "pointer", fontSize: "13px" } }, "忘记密码？"),
+      h("p", { class: "muted", style: { fontSize: "13px" } }, "在运行 Core 的机器上执行 ", h("code", null, "yimeng-core reset-password <用户名>"),
+        "（Docker：", h("code", null, "docker exec -it yimeng yimeng-core reset-password admin"), "）。也可以设置环境变量 ", h("code", null, "YIMENG_ADMIN_RESET=1"), " 重启一次以重新进入首次设置。")));
   main.replaceChildren(h("div", { class: "login" }, form));
-  code.focus();
+  user.focus();
 }
 const browserName = () => { const u = navigator.userAgent; return /Edg\//.test(u) ? "Edge" : /Chrome\//.test(u) ? "Chrome" : /Safari\//.test(u) ? "Safari" : /Firefox\//.test(u) ? "Firefox" : "浏览器"; };
 
@@ -98,6 +109,7 @@ const ROUTES = [
   [/^\/metadata$/, (m, p) => metadataPage(main, p)],
   [/^\/lyrics(?:\/([\w-]+))?$/, (m, p, c) => lyricsPage(main, m[1], c)],
   [/^\/devices$/, () => adm.devices(main)],
+  [/^\/users$/, () => adm.users(main)],
   [/^\/settings$/, () => adm.settings(main)],
   [/^\/logs$/, (m, p, c) => adm.logs(main, c)],
 ];
@@ -138,7 +150,7 @@ let booted = false;
 async function boot() {
   if (!store.token) return loginView();
   try { state.me = await get("/devices/me"); }
-  catch (e) { if (e.status === 401) { store.token = ""; return loginView("令牌已失效，请重新配对"); } main.replaceChildren(empty(`无法连接 Core：${e.message}`, "cloud", h("button", { class: "btn", onclick: boot }, "重试"))); return; }
+  catch (e) { if (e.status === 401) { store.token = ""; return loginView("登录已失效，请重新登录"); } main.replaceChildren(empty(`无法连接 Core：${e.message}`, "cloud", h("button", { class: "btn", onclick: boot }, "重试"))); return; }
   app.dataset.state = "ready";
   await onl.loadMode();
   shell();
@@ -148,5 +160,5 @@ async function boot() {
   onEvent("library.cover", () => {}); // reserved for future live refresh
   route();
 }
-onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("令牌已失效或设备已被撤销，请重新配对"); } });
+onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
 boot();

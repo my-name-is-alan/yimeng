@@ -204,3 +204,25 @@ export const NOT_LOCAL_MSG = "在线来源的内容不可编辑或匹配，仅�
 export function sourceBadge(x) {
   return isLocal(x) ? null : h("span", { class: "badge src", title: `来源：${originName(x.origin)}（元数据只读）` }, originName(x.origin));
 }
+
+// Client-side mirror of the Core password policy (Core re-checks).
+export function pwIssues(user, pw) {
+  const out = [];
+  if ([...pw].length < 10) out.push("至少 10 个字符");
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((re) => re.test(pw)).length;
+  if (classes < 3 && [...pw].length < 16) out.push("包含小写、大写、数字、符号中的 3 类（或 16 位以上）");
+  if (new Set(pw).size < 5) out.push("不要过于重复");
+  if (user.trim().length >= 3 && pw.toLowerCase().includes(user.trim().toLowerCase())) out.push("不能包含用户名");
+  return out;
+}
+export function strengthMeter(userEl, pwEl) {
+  const bar = h("div", { class: "pw-meter" }, h("i")), hint = h("small", { class: "muted" });
+  const upd = () => {
+    const pw = pwEl.value, iss = pwIssues(userEl ? userEl.value : "", pw);
+    const score = !pw ? 0 : iss.length ? Math.max(1, 3 - iss.length) : [...pw].length >= 14 ? 4 : 3;
+    bar.dataset.score = score; hint.textContent = !pw ? "" : iss.length ? "还需要：" + iss.join("；") : score === 4 ? "强" : "良好";
+  };
+  pwEl.addEventListener("input", upd); userEl?.addEventListener("input", upd);
+  return [bar, hint];
+}
+

@@ -278,3 +278,10 @@ alternative considered. Newest items at the bottom.
 
 ## D37 Previews show only 试听
 - The UI labels preview tracks with the 试听 badge only; the preview window (start/end) stays in the API for lyrics offsets and seeking, but is not displayed.
+
+## D38 Web console uses username + password; pairing codes are for apps
+- First run shows a setup page that creates the first admin (atomic: only while `users` is empty). Passwords: argon2id (m=19 MiB, t=2, p=1), policy ≥10 chars and 3 of 4 classes (or ≥16), not common, not containing the username; checked in Core and mirrored in the UI. No default password exists.
+- A login issues the same `ymd_` bearer device token as pairing (`players.user_id` links it), so authorization is unchanged; the account role sets `is_admin` on all its sessions. Logout revokes the token; a password change revokes the account's other sessions. The token is kept in the browser's localStorage as before (no cookie, so no CSRF surface); it is never put in URLs except the existing media `access_token` exceptions.
+- Failed logins: 8/min per IP and 5/min per username, then a 15-minute lockout (same limiter as pairing). Unknown usernames take the same time as wrong passwords.
+- Escape hatches: `yimeng-core reset-password [user]` and `YIMENG_ADMIN_RESET=1` (removes all web accounts; paired apps stay).
+- Pairing codes are generated only by admins in the web UI (设备 → 添加设备 / 生成配对码) or printed to the log via `/api/pair/request`.

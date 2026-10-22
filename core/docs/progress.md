@@ -101,3 +101,8 @@ Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
 - Spotify: metadata provider only (client credentials, Vault-stored secret settings, feeds 在线匹配 in the editor with ISRC/cover/genre/release/popularity; cover apply endpoint). Live read-only smoke passed.
 - Web: SMS login form, per-platform cookie hints, 试听 badge without time window, 校对歌词 button follows track changes in the fullscreen player, mobile last row clear of the now-playing bar, secret settings fields, 在线匹配 with provider badges and covers.
 - Not done: logged-in flows against real accounts (all platforms), multi-account support, cloud write-back.
+
+## Web accounts (username + password)
+- Migration 0016 `users` + `players.user_id`; `internal/auth/users.go` (argon2id, strength policy, setup/login with lockout, roles, change/reset password, remove-all); `/api/auth/{setup,login,logout,password}`, `/api/users` CRUD (admin); `/api/pair/codes` is admin-only.
+- Web: first-run setup page with strength meter, username/password login, 账号 section in 设置 (change password), 用户 page (add/edit role/reset password/delete), 设备 page shows the account per session and 添加设备 / 生成配对码.
+- CLI `yimeng-core reset-password`, env `YIMENG_ADMIN_RESET=1`. Tests: `auth/users_test.go`, `gateway/users_test.go`.

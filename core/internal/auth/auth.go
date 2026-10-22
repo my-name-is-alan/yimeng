@@ -48,6 +48,8 @@ type Device struct {
 	CreatedAt  time.Time `json:"created_at"`
 	LastSeenAt time.Time `json:"last_seen_at,omitzero"`
 	Admin      bool      `json:"admin"`
+	UserID     string    `json:"user_id,omitempty"` // set for username/password sessions
+	Username   string    `json:"username,omitempty"`
 }
 
 type codeEntry struct {
@@ -276,8 +278,11 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Device, error
 	var dt sql.NullString
 	var created int64
 	var seen sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, device_type, token_hash, created_at, last_seen_at, is_admin FROM players WHERE token_hash=?`, h).
-		Scan(&d.ID, &d.Name, &dt, &stored, &created, &seen, &d.Admin)
+	var uid, uname sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT p.id, p.name, p.device_type, p.token_hash, p.created_at, p.last_seen_at, p.is_admin, p.user_id, u.username
+		FROM players p LEFT JOIN users u ON u.id=p.user_id WHERE p.token_hash=?`, h).
+		Scan(&d.ID, &d.Name, &dt, &stored, &created, &seen, &d.Admin, &uid, &uname)
+	d.UserID, d.Username = uid.String, uname.String
 	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(h)) != 1 {
 		return Device{}, ErrUnauthorized
 	}
@@ -293,8 +298,9 @@ func (s *Service) Authenticate(ctx context.Context, token string) (Device, error
 }
 
 func (s *Service) ListDevices(ctx context.Context) ([]Device, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, COALESCE(device_type,''), created_at, COALESCE(last_seen_at,0), is_admin
-		FROM players WHERE token_hash IS NOT NULL ORDER BY created_at`)
+	rows, err := s.db.QueryContext(ctx, `SELECT p.id, p.name, COALESCE(p.device_type,''), p.created_at, COALESCE(p.last_seen_at,0), p.is_admin,
+		COALESCE(p.user_id,''), COALESCE(u.username,'')
+		FROM players p LEFT JOIN users u ON u.id=p.user_id WHERE p.token_hash IS NOT NULL ORDER BY p.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +309,7 @@ func (s *Service) ListDevices(ctx context.Context) ([]Device, error) {
 	for rows.Next() {
 		var d Device
 		var c, l int64
-		if err := rows.Scan(&d.ID, &d.Name, &d.DeviceType, &c, &l, &d.Admin); err != nil {
+		if err := rows.Scan(&d.ID, &d.Name, &d.DeviceType, &c, &l, &d.Admin, &d.UserID, &d.Username); err != nil {
 			return nil, err
 		}
 		d.CreatedAt = time.UnixMilli(c).UTC()

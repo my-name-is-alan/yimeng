@@ -6,7 +6,7 @@ Go 版 Core（纯 Go，CGO-free，SQLite 用 modernc.org/sqlite）。
 YIMENG_LIBRARY_ROOTS=$HOME/Music YIMENG_DB_PATH=./data/library.db YIMENG_CACHE_DIR=./data/cache \
   go run ./cmd/core
 curl localhost:8741/healthz
-# first run prints a pairing code in the log (or: curl -XPOST localhost:8741/api/pair/request)
+# first run: open http://localhost:8741/admin/ and create the admin account (username + password)
 curl -XPOST localhost:8741/api/pair -d '{"code":"ABCD-EF23","name":"laptop"}'   # -> {"token":"ymd_..."}
 T=ymd_...   # keep it secret
 curl -H "Authorization: Bearer $T" -XPOST localhost:8741/api/library/scan
@@ -19,7 +19,8 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 播放：`/api/players/{id}/play|pause|seek|next|prev|stop|repeat|queue`，WebSocket `/ws`（player.state / queue.updated / scan.progress / metadata.patched）。
 - 元数据：MusicBrainz 默认关闭；`YIMENG_MB_ENABLED=true YIMENG_MB_CONTACT=you@example.com` 开启（≤1 req/s，Credits + Cover Art Archive 封面）。
 - 艺人拆分：`GET/PUT /api/settings/artist-split`（例外名单、可选 & / , 、自定义分隔符）。
-- 鉴权：配对码（单次、5 分钟）→ 设备 Token（库中仅存 SHA-256）；`/api/devices` 可吊销。
+- 鉴权：网页控制台用 **用户名 + 密码** 登录（首次启动在 `/admin/` 创建管理员；argon2id 哈希；按 IP 8 次/分、按用户名 5 次/分失败后锁定 15 分钟），登录签发与配对相同的设备 Token（库中仅存 SHA-256）。`/api/users` 管理多用户（admin / user 角色）。App 仍用配对码（单次、5 分钟），由管理员在网页「设备 → 添加设备 / 生成配对码」生成；`/api/devices` 可吊销。
+- 忘记密码：`yimeng-core reset-password [用户名]`（交互输入，或 `YIMENG_ADMIN_PASSWORD=… yimeng-core reset-password admin`；Docker：`docker exec -it yimeng yimeng-core reset-password admin`），会注销该账号所有会话；不存在则创建为管理员。或设置 `YIMENG_ADMIN_RESET=1` 启动一次：删除全部网页账号（保留已配对 App），重新进入首次设置，之后移除该变量。
 
 - 串流：`/api/stream/{id}?format=original|aac|mp3|opus|flac&bitrate=` 可选 ffmpeg 转码（`YIMENG_FFMPEG`，`off` 关闭；PATH 中无 ffmpeg 时仅原始文件）；转码缓存 `YIMENG_CACHE_DIR/transcode`，LRU 上限 `YIMENG_CACHE_MAX_BYTES`，并发 `YIMENG_TRANSCODE_CONCURRENCY`；每设备默认音质 `PUT /api/devices/me/stream-quality`。官方镜像（distroless static）不含 ffmpeg，需要转码请挂载静态 ffmpeg 并设 `YIMENG_FFMPEG`。
 - 随机播放：`POST /api/players/{id}/shuffle`（持久化的播放顺序视图，不改动队列）；`player.state` 带 `next`/`next_lease` 供无缝预取。
@@ -46,7 +47,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 流派归一：入库时折叠常见别名（hip hop→hip-hop、搖滾→rock 等）。
 - 多碟：专辑 `disc_count`；曲目按 `disc_no`/`track_no` 排序（古典/多碟）。
 - 健康：`GET /api/library/health`；统计 `GET /api/stats`、`GET /api/stats/on-this-day`。
-- Web 管理：`/admin/` 内嵌配对/系统/健康页（setup wizard）。
+- Web 管理：`/admin/` 内嵌首次设置 / 登录 / 用户 / 设备 / 系统页。
 - 共享类型：`packages/shared` TypeScript API types。
 - 配置：`configs/default.toml` + `YIMENG_CONFIG`；环境变量覆盖（见 `internal/infra/config`）。
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
