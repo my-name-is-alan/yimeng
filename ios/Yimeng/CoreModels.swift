@@ -180,18 +180,20 @@ struct CoreTokens: Codable, Sendable {
     /// Owning account (D49): device.user_id / user.id, and the account name.
     var userId: String?
     var username: String?
-    enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token, device, user }
+    // Both spellings: plain decoders see access_token, snake-case-converting ones see accessToken.
+    enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token, device, user,
+                                     accessTokenC = "accessToken", refreshTokenC = "refreshToken", expiresInC = "expiresIn" }
     private struct Who: Codable { var id: String?; var userId: String?; var username: String? }
     init(accessToken: String, refreshToken: String?, expiresIn: Int?) { self.accessToken = accessToken; self.refreshToken = refreshToken; self.expiresIn = expiresIn }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
         let tok = try c.decodeIfPresent(String.self, forKey: .token)
-        guard let a = try c.decodeIfPresent(String.self, forKey: .accessToken) ?? tok else {
+        guard let a = try c.decodeIfPresent(String.self, forKey: .accessToken) ?? c.decodeIfPresent(String.self, forKey: .accessTokenC) ?? tok else {
             throw DecodingError.keyNotFound(K.accessToken, .init(codingPath: [], debugDescription: "no access_token/token"))
         }
         accessToken = a
-        refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken) ?? tok
-        expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn)
+        refreshToken = try c.decodeIfPresent(String.self, forKey: .refreshToken) ?? c.decodeIfPresent(String.self, forKey: .refreshTokenC) ?? tok
+        expiresIn = try c.decodeIfPresent(Int.self, forKey: .expiresIn) ?? c.decodeIfPresent(Int.self, forKey: .expiresInC)
         let dev = (try? c.decodeIfPresent(Who.self, forKey: .device)) ?? nil
         let usr = (try? c.decodeIfPresent(Who.self, forKey: .user)) ?? nil
         userId = dev?.userId ?? usr?.id
