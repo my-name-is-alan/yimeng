@@ -87,11 +87,14 @@ final class CoverCache: @unchecked Sendable {
         let c = NSCache<NSString, UIImage>(); c.totalCostLimit = 96 * 1024 * 1024; return c
     }()
     private let limiter = AsyncLimiter(6)
-    private let dir: URL = {
+    /// Per-source namespace (ids are only unique within one server).
+    private var dir: URL {
         let d = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("covers", isDirectory: true)
+            .appendingPathComponent(MusicSources.activeId, isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
-    }()
+    }
+    func resetMemory() { mem.removeAllObjects() }
     private let session: URLSession = {
         let c = URLSessionConfiguration.default
         c.httpAdditionalHeaders = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "image/*"]
@@ -192,8 +195,7 @@ final class CoverCache: @unchecked Sendable {
 
     func clear() {
         mem.removeAllObjects()
-        try? FileManager.default.removeItem(at: dir)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: dir.deletingLastPathComponent())
     }
 }
 
@@ -208,6 +210,7 @@ final class RemoteDiffusion: ObservableObject {
     private var store: [String: Entry] = [:]
     @Published private(set) var rev = 0
     private var inflight: Set<String> = []
+    func reset() { store = [:]; rev += 1 }
     private static let ctx = CIContext()
 
     /// Sync: memory → disk-cached cover (diffused once, then memoised).

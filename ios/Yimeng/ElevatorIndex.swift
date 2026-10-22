@@ -28,7 +28,9 @@ enum Initials {
     /// Server-order bucket for Navidrome alphabeticalByName (raw unicode order, no transliteration):
     /// 0 = digits/symbols (sort first), 1…26 = a–z, 27 = everything else (CJK etc, sorts after z).
     static func serverBucket(_ name: String) -> Int {
-        guard let c = stripArticle(name).unicodeScalars.first else { return 0 }
+        // Navidrome ignores leading quotes/brackets when sorting ("\"A\"" sits under A); keeps other symbols first.
+        let t = stripArticle(name).drop { "\"'“”‘’「」『』([{《【 ".contains($0) }
+        guard let c = t.unicodeScalars.first else { return 0 }
         if c.value >= 97 && c.value <= 122 { return Int(c.value) - 96 }
         return c.value < 97 ? 0 : 27
     }

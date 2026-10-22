@@ -763,7 +763,7 @@ struct SourcesView: View {
                 .padding(.horizontal, 20).padding(.top, 8)
 
                 Text("选择音乐来源").font(.system(size: 28, weight: .bold)).padding(.horizontal, 20).padding(.top, 10)
-                Text("可以同时连接多个，译梦会合并成一个曲库。")
+                Text("一次使用一个来源，译梦只显示它的曲库。")
                     .font(.system(size: 16)).opacity(0.7)
                     .padding(.horizontal, 20).padding(.top, 4)
 
@@ -785,7 +785,7 @@ struct SourcesView: View {
 
                 if let onContinue {
                     Button { onContinue() } label: {
-                        Text("继续 · 已选 \(store.connectedCount) 个来源")
+                        Text("继续 · \(store.active.title)")
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .padding(.horizontal, 20).padding(.bottom, 44)
@@ -815,14 +815,20 @@ struct SourcesView: View {
                 Text(c.kind.subtitle).font(.system(size: 13)).opacity(0.6)
             }
             Spacer()
-            if c.connected {
+            if !c.kind.isImplemented {
+                Text("即将推出").font(.system(size: 12)).opacity(0.45)
+            } else if store.active == c.kind && c.connected {
                 HStack(spacing: 6) {
                     Circle().fill(Theme.lime).frame(width: 7, height: 7)
-                    Text(c.kind.isLocal ? "已开启" : "已连接").font(.system(size: 13)).foregroundStyle(Theme.lime)
+                    Text("使用中").font(.system(size: 13)).foregroundStyle(Theme.lime)
                 }
-                .onTapGesture {
-                    if !c.kind.isLocal { editing = c.kind }
-                }
+                .onTapGesture { if !c.kind.isLocal { editing = c.kind } }
+            } else if c.connected {
+                Button(store.switching ? "切换中…" : "切换") { Task { await store.activate(c.kind) } }
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 16).frame(height: 34)
+                    .background(Capsule().fill(Color.white.opacity(0.14)))
+                    .disabled(store.switching)
             } else {
                 Button("连接") { editing = c.kind }
                     .font(.system(size: 13, weight: .semibold))
@@ -833,6 +839,7 @@ struct SourcesView: View {
         }
         .padding(.horizontal, 20)
         .frame(height: 72)
+        .opacity(c.kind.isImplemented ? 1 : 0.6)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1) }
     }
 }
@@ -892,7 +899,7 @@ struct SourceConnectView: View {
                             h = h.replacingOccurrences(of: ":443", with: "")
                             let u = draft.username.isEmpty ? LibraryStore.defaultUser : draft.username
                             let pw = draft.secret.isEmpty
-                                ? (Keychain.get(service: "yimeng.navidrome", account: u) ?? "")
+                                ? (Keychain.get(service: SourceKind.navidrome.keychainService, account: u) ?? "")
                                 : draft.secret
                             await LibraryStore.shared.connect(host: h, username: u, password: pw)
                             draft.host = h
@@ -928,7 +935,7 @@ struct SourceConnectView: View {
                 if c.host.isEmpty || c.host.contains("home.lan") { c.host = LibraryStore.defaultHost }
                 c.host = c.host.replacingOccurrences(of: ":443", with: "")
                 if c.username.isEmpty { c.username = LibraryStore.defaultUser }
-                if c.secret.isEmpty, let pw = Keychain.get(service: "yimeng.navidrome", account: c.username) {
+                if c.secret.isEmpty, let pw = Keychain.get(service: SourceKind.navidrome.keychainService, account: c.username) {
                     c.secret = pw
                 }
             }

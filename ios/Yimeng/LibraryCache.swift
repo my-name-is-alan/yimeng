@@ -30,6 +30,7 @@ final class LibraryCache: ObservableObject {
 
     private static func file(_ key: String) -> URL {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("library", isDirectory: true)
+            .appendingPathComponent(MusicSources.activeId, isDirectory: true)
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d.appendingPathComponent(key.replacingOccurrences(of: ":", with: "_") + ".v1.json")
     }
@@ -239,6 +240,12 @@ final class LibraryCache: ObservableObject {
             for k in others { g.addTask { await self.ensure(k) } }
         }
         persist("playlists")
+    }
+
+    /// Source switch: forget in-memory lists (disk stays, namespaced per source).
+    func resetMemory() {
+        songs = []; albums = [:]; artists = []; stamps = [:]; done = []; failed = []; diskLoaded = []
+        prefetched = false; albumBase = [:]; letterOffset = [:]; scrollAnchor = [:]
     }
 
     func clear() {

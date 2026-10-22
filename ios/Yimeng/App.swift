@@ -195,9 +195,11 @@ struct Shell: View {
                 }
             }
             if state.demo != nil { state.syncSystem() }
+            #if DEBUG
+            DebugSnap.schedule()
+            #endif
             Task { @MainActor in
-                await LibraryStore.shared.bootstrap()
-                await PlayerStore.shared.restore()
+                await SourceStore.shared.activeSource.activate()
                 async let h: Void = HomeStore.shared.refresh()
                 async let s: Void = StarStore.shared.load()
                 _ = await (h, s)

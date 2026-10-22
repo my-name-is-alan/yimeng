@@ -29,6 +29,7 @@
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
+		B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9712EB28EE125918AEB1DEF /* DebugSnap.swift */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
@@ -111,6 +112,7 @@
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
 		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
 		E96BD4E0C93F027C9E0B46E7 /* Stores.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stores.swift; sourceTree = "<group>"; };
+		E9712EB28EE125918AEB1DEF /* DebugSnap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugSnap.swift; sourceTree = "<group>"; };
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
 		F1B679B920A57BE24DC98F91 /* Yimeng.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yimeng.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengActivityAttributes.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */,
 				3DCA6146350902AD251CEEB2 /* Common.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
+				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
 				673E45F12B4A88C9F60BEDEF /* DreamData.swift */,
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
@@ -299,6 +302,7 @@
 				B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */,
 				5F7DC5897731B0F4227472A9 /* Common.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
+				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
 				FD6FCBD54D57219F06DE8229 /* DreamData.swift in Sources */,
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,

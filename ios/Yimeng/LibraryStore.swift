@@ -108,19 +108,28 @@ final class LibraryStore: ObservableObject {
     /// True as soon as Navidrome credentials exist — avoids flashing demo content while login is in flight.
     @Published var liveMode = false
 
+    /// Source switched away: drop session + in-memory library.
+    func reset() {
+        connected = false; liveMode = false; loading = false
+        albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
+        status = ""; user = ""; host = ""
+        coverBase = nil; coverToken = ""; coverSalt = ""; coverUser = ""
+        artistIndex = nil; artistIndexSig = nil
+    }
+
     func bootstrap() async {
         var cfg = SourceStore.shared.config(for: .navidrome)
         if cfg.host.isEmpty || cfg.host.contains(":4533") || cfg.host.contains(":443") {
             cfg.host = Self.defaultHost
         }
         if cfg.username.isEmpty { cfg.username = Self.defaultUser }
-        if let pw = Keychain.get(service: "yimeng.navidrome", account: Self.defaultUser), !pw.isEmpty {
+        if let pw = Keychain.get(service: SourceKind.navidrome.keychainService, account: Self.defaultUser), !pw.isEmpty {
             cfg.secret = pw
         }
         // Seed Keychain only if missing (env / Application Support) — never log the value
         if cfg.secret.isEmpty, let seeded = Self.readSeedPassword() {
             cfg.secret = seeded
-            Keychain.set(seeded, service: "yimeng.navidrome", account: Self.defaultUser)
+            Keychain.set(seeded, service: SourceKind.navidrome.keychainService, account: Self.defaultUser)
         }
         SourceStore.shared.upsert(cfg)
         liveMode = !cfg.secret.isEmpty

@@ -18,7 +18,16 @@ struct PlaybackSnapshot: Codable {
 @MainActor
 final class PlayerStore: ObservableObject {
     static let shared = PlayerStore()
-    private static let saveKey = "ym.playback.v1"
+    /// Resume point is per source.
+    private static var saveKey: String { "ym.playback.v1." + MusicSources.activeId }
+
+    /// Source switch: stop audio, clear now-playing UI, but keep the old source's saved resume point.
+    func stopForSourceSwitch() {
+        tearDownPlayer()
+        song = nil; queue = []; index = 0
+        isPlaying = false; elapsed = 0; duration = 0; coverURL = nil; coverId = nil
+        syncApp()
+    }
 
     @Published private(set) var song: NDSong?
     @Published private(set) var queue: [NDSong] = []

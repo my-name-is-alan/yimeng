@@ -44,6 +44,51 @@ enum SourceKind: String, CaseIterable, Identifiable, Codable {
     var usesUserPass: Bool { self == .navidrome || self == .fnos || self == .core }
     var usesToken: Bool { self == .emby || self == .core }
     var isLocal: Bool { self == .local }
+    /// Keychain service for this source's secret (one item per source + account).
+    var keychainService: String { "yimeng.\(rawValue)" }
+    @MainActor var isImplemented: Bool { MusicSources.make(self).isImplemented }
+}
+
+// MARK: - Single active source
+
+/// One backend. The app shows and plays exactly one of these at a time (no merging / dedup across sources).
+@MainActor
+protocol MusicSource {
+    var kind: SourceKind { get }
+    /// False → listed as 即将推出 and cannot be activated.
+    var isImplemented: Bool { get }
+    /// Bring up the library for this source (login with Keychain credentials, first fetches).
+    func activate() async
+    /// Drop live sessions / in-memory state. Disk caches stay (they are namespaced by source id).
+    func deactivate()
+}
+
+enum MusicSources {
+    @MainActor static func make(_ k: SourceKind) -> MusicSource {
+        switch k {
+        case .navidrome: NavidromeSource()
+        default: ComingSoonSource(kind: k)
+        }
+    }
+    /// Namespace for per-source disk caches & persisted playback. Read from any thread.
+    nonisolated(unsafe) static var activeId: String = UserDefaults.standard.string(forKey: SourceStore.activeKey) ?? SourceKind.navidrome.rawValue
+}
+
+@MainActor struct NavidromeSource: MusicSource {
+    let kind = SourceKind.navidrome
+    let isImplemented = true
+    func activate() async {
+        await LibraryStore.shared.bootstrap()
+        await PlayerStore.shared.restore()
+    }
+    func deactivate() { LibraryStore.shared.reset() }
+}
+
+@MainActor struct ComingSoonSource: MusicSource {
+    let kind: SourceKind
+    let isImplemented = false
+    func activate() async {}
+    func deactivate() {}
 }
 
 struct SourceConfig: Identifiable, Codable, Equatable {
@@ -64,9 +109,31 @@ struct SourceConfig: Identifiable, Codable, Equatable {
 final class SourceStore: ObservableObject {
     static let shared = SourceStore()
     private let key = "ym.sources.v1"
+    nonisolated static let activeKey = "ym.activeSource"
     @Published var configs: [SourceConfig]
+    /// The one source the app is showing. Persisted.
+    @Published private(set) var active: SourceKind = SourceKind(rawValue: MusicSources.activeId) ?? .navidrome
+    @Published private(set) var switching = false
+    var activeSource: MusicSource { MusicSources.make(active) }
+
+    /// Switch source: save + stop playback cleanly, drop in-memory library state, swap cache namespace, activate.
+    func activate(_ kind: SourceKind) async {
+        guard kind != active, MusicSources.make(kind).isImplemented, !switching else { return }
+        switching = true; defer { switching = false }
+        PlayerStore.shared.save()                 // resume point stays with the old source
+        PlayerStore.shared.stopForSourceSwitch()
+        activeSource.deactivate()
+        LibraryCache.shared.resetMemory()
+        RemoteDiffusion.shared.reset()
+        CoverCache.shared.resetMemory()
+        active = kind
+        MusicSources.activeId = kind.rawValue
+        UserDefaults.standard.set(kind.rawValue, forKey: Self.activeKey)
+        await activeSource.activate()
+    }
 
     init() {
+        Self.migrateLegacy()
         if let data = UserDefaults.standard.data(forKey: key),
            let decoded = try? JSONDecoder().decode([SourceConfig].self, from: data) {
             configs = decoded
@@ -79,6 +146,24 @@ final class SourceStore: ObservableObject {
                     c.username = "lvzy"
                 }
                 return c
+            }
+        }
+    }
+
+    /// Pre-single-source builds stored caches/resume un-namespaced: move them under navidrome once.
+    private static func migrateLegacy() {
+        let d = UserDefaults.standard, fm = FileManager.default
+        guard !d.bool(forKey: "ym.migrated.sourceNS") else { return }
+        d.set(true, forKey: "ym.migrated.sourceNS")
+        if let old = d.data(forKey: "ym.playback.v1") { d.set(old, forKey: "ym.playback.v1.navidrome"); d.removeObject(forKey: "ym.playback.v1") }
+        let ns = SourceKind.navidrome.rawValue
+        for (root, name) in [(FileManager.SearchPathDirectory.applicationSupportDirectory, "library"), (.cachesDirectory, "covers")] {
+            let base = fm.urls(for: root, in: .userDomainMask)[0].appendingPathComponent(name, isDirectory: true)
+            let dest = base.appendingPathComponent(ns, isDirectory: true)
+            guard let items = try? fm.contentsOfDirectory(atPath: base.path) else { continue }
+            try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
+            for i in items where !SourceKind.allCases.map(\.rawValue).contains(i) {
+                try? fm.moveItem(at: base.appendingPathComponent(i), to: dest.appendingPathComponent(i))
             }
         }
     }

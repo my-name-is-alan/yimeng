@@ -27,7 +27,7 @@ struct SettingsView: View {
                 group("音源设置", i: 1) {
                     Button { showSources = true } label: {
                         row("antenna.radiowaves.left.and.right", "音乐来源",
-                            sources.configs.filter(\.connected).map(\.kind.title).joined(separator: " · "), chevron: true)
+                            sources.active.title, chevron: true)
                     }.buttonStyle(.plain)
                     divider
                     row("server.rack", "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : "未连接")

@@ -65,7 +65,7 @@ actor NavidromeClient {
         user = username
         salt = s
         token = t
-        Keychain.set(password, service: "yimeng.navidrome", account: username)
+        Keychain.set(password, service: SourceKind.navidrome.keychainService, account: username)
     }
 
     func newestAlbums(size: Int = 24) async throws -> [NDAlbum] {
