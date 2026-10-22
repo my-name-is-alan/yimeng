@@ -12,7 +12,7 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | 6 | Structured logging + `/api/system` | done | a483986 |
 | 7 | mDNS `_yimeng._tcp` | done | 1112484 |
 | 8 | Multi-player transfer + online/offline WS | done | 474c46e |
-| 9 | Admin APIs (devices, roots, overrides, album merge/split) | done | (pending) |
+| 9 | Admin APIs (devices, roots, overrides, album merge/split) | done | 0c8f936 |
 | 10 | Cover thumbnails (pure-Go, webp/jpeg) | pending | |
 | 11 | Metadata provider registry + lyrics provider stub | pending | |
 | 12 | HTTPS + trusted proxy + rate limits | pending | |
