@@ -20,7 +20,7 @@ actor NavidromeClient {
             "User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)",
             "Accept": "application/json",
         ]
-        c.timeoutIntervalForRequest = 20
+        c.timeoutIntervalForRequest = 45
         return URLSession(configuration: c)
     }()
 
@@ -112,7 +112,7 @@ actor NavidromeClient {
         for bucket in index {
             for a in (bucket["artist"] as? [[String: Any]] ?? []) {
                 guard let id = a["id"] as? String, let name = a["name"] as? String else { continue }
-                out.append(NDArtist(id: id, name: name, albumCount: a["albumCount"] as? Int))
+                out.append(NDArtist(id: id, name: name, albumCount: a["albumCount"] as? Int, coverId: a["coverArt"] as? String))
             }
         }
         return out
@@ -144,6 +144,44 @@ actor NavidromeClient {
         let a = (obj["artist"] as? [String: Any])?["album"]
         let arr = (a as? [[String: Any]]) ?? ((a as? [String: Any]).map { [$0] } ?? [])
         return arr.compactMap(Self.parseAlbum)
+    }
+
+    func starredAlbums() async throws -> [NDAlbum] {
+        let obj = try await rest("getStarred2.view", query: [:])
+        let r = obj["starred2"] as? [String: Any] ?? [:]
+        return ((r["album"] as? [[String: Any]]) ?? []).compactMap(Self.parseAlbum)
+    }
+
+    func genres() async throws -> [NDGenre] {
+        let obj = try await rest("getGenres.view", query: [:])
+        let g = ((obj["genres"] as? [String: Any])?["genre"]) as? [[String: Any]] ?? []
+        return g.compactMap { x in
+            guard let n = x["value"] as? String, !n.isEmpty else { return nil }
+            return NDGenre(name: n, songCount: x["songCount"] as? Int ?? 0, albumCount: x["albumCount"] as? Int ?? 0)
+        }.sorted { $0.songCount > $1.songCount }
+    }
+
+    func songsByGenre(_ genre: String, count: Int = 50) async throws -> [NDSong] {
+        let obj = try await rest("getSongsByGenre.view", query: ["genre": genre, "count": "\(count)"])
+        let s = ((obj["songsByGenre"] as? [String: Any])?["song"]) as? [[String: Any]] ?? []
+        return s.compactMap(Self.parseSong)
+    }
+
+    /// Total songs indexed (getScanStatus.count), if the server reports it.
+    func scanCount() async throws -> Int? {
+        let obj = try await rest("getScanStatus.view", query: [:])
+        return (obj["scanStatus"] as? [String: Any])?["count"] as? Int
+    }
+
+    /// First `pages` × 200 albums (A–Z) — the library is far too large to load whole.
+    func albumPages(_ pages: Int, type: String = "alphabeticalByName") async throws -> [NDAlbum] {
+        var out: [NDAlbum] = []
+        for _ in 0..<pages {
+            let page = try await albumList(type: type, offset: out.count, size: 200)
+            out += page
+            if page.count < 200 { break }
+        }
+        return out
     }
 
     func playlists() async throws -> [NDPlaylist] {
@@ -209,6 +247,9 @@ actor NavidromeClient {
     }
 
     private func rest(_ method: String, query: [String: String]) async throws -> [String: Any] {
+        // Views may ask before bootstrap login finishes — wait briefly instead of failing to an empty list.
+        var waited = 0
+        while token.isEmpty && waited < 60 { try? await Task.sleep(for: .milliseconds(250)); waited += 1 }
         guard let base = baseURL, !user.isEmpty, !token.isEmpty else { throw NavidromeError.api("未登录") }
         guard let url = Self.authedURL(base: base, method: method, user: user, token: token, salt: salt,
                                        query: query.merging(["f": "json"]) { _, n in n }) else {

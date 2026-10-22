@@ -23,9 +23,11 @@
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
+		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
+		C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EAA934AB97BEE0902D11F2 /* MeView.swift */; };
 		D5339D65B2F278E0D24B78FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
 		D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A06AAC57F015AE8C264DD /* LibraryStore.swift */; };
 		D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E250285D45C295C91932A00 /* HomeView.swift */; };
@@ -70,6 +72,7 @@
 		0962E95E6B55BCB808D64B49 /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
 		0E250285D45C295C91932A00 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10344A37F4E7381B0AA3FBD7 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
+		16EAA934AB97BEE0902D11F2 /* MeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeView.swift; sourceTree = "<group>"; };
 		184013605DC0F6EEC27F5170 /* YimengWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YimengWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		197A06AAC57F015AE8C264DD /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
 		1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStore.swift; sourceTree = "<group>"; };
@@ -91,6 +94,7 @@
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
+		CB02095FC07F92D72E49BD6D /* HomeLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLive.swift; sourceTree = "<group>"; };
 		EB4BFC00539C1ECCBF947294 /* Glass.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Glass.metal; sourceTree = "<group>"; };
 		F1B679B920A57BE24DC98F91 /* Yimeng.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Yimeng.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengActivityAttributes.swift; sourceTree = "<group>"; };
@@ -138,10 +142,12 @@
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
+				CB02095FC07F92D72E49BD6D /* HomeLive.swift */,
 				0E250285D45C295C91932A00 /* HomeView.swift */,
 				71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */,
 				197A06AAC57F015AE8C264DD /* LibraryStore.swift */,
 				624D971C2C9BF41CC02A1560 /* LibraryView.swift */,
+				16EAA934AB97BEE0902D11F2 /* MeView.swift */,
 				03744E138A2E6A2C16E3F4C2 /* MockData.swift */,
 				A5B459A03FE9FB71837E459E /* Motion.swift */,
 				221E80FC912CC7CB64F2505A /* MusicSources.swift */,
@@ -271,10 +277,12 @@
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
+				8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */,
 				D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */,
 				DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */,
 				D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */,
 				58A3E767A7FF95AA37665412 /* LibraryView.swift in Sources */,
+				C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */,
 				5D4319F763707E67840F42FE /* MockData.swift in Sources */,
 				E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */,
 				5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */,

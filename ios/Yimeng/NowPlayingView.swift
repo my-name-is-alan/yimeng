@@ -254,7 +254,9 @@ struct LyricsView: View {
                     }.buttonStyle(.plain)
                 }
             }
-            Text(l.en).font(.system(size: 13)).opacity(0.6)
+            if UserDefaults.standard.object(forKey: "ym.lyricTrans") as? Bool ?? true {
+                Text(l.en).font(.system(size: 13)).opacity(0.6)
+            }
         }
         .opacity(active ? 1 : (d == 1 ? 0.55 : 0.4))
         .blur(radius: d >= 3 ? 2.5 : (d == 2 ? 1 : 0))

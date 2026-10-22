@@ -6,7 +6,6 @@ struct LibraryView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
-    @State private var seg: Seg = .songs
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -21,8 +20,9 @@ struct LibraryView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(Seg.allCases, id: \.self) { s in
-                            Button { withAnimation(.snappy) { seg = s } } label: {
-                                Text(s.rawValue).font(.system(size: 14, weight: .semibold))
+                            let seg = state.librarySeg
+                            Button { withAnimation(.snappy) { state.librarySeg = s } } label: {
+                                Text(label(s)).font(.system(size: 14, weight: .semibold))
                                     .padding(.horizontal, 16).frame(height: 34)
                                     .foregroundStyle(seg == s ? Theme.base(scheme) : Theme.fg(scheme))
                                     .background(Capsule().fill(seg == s ? Theme.fg(scheme) : Theme.fill(scheme)))
@@ -32,7 +32,7 @@ struct LibraryView: View {
                 }.padding(.top, 16)
 
                 Group {
-                    switch seg {
+                    switch state.librarySeg {
                     case .songs: SongsList()
                     case .albums: AlbumsGrid()
                     case .artists: ArtistsList()
@@ -44,6 +44,16 @@ struct LibraryView: View {
             }
         }
         .background(Theme.base(scheme))
+    }
+}
+
+extension LibraryView {
+    func label(_ s: Seg) -> String {
+        switch s {
+        case .songs: return library.songTotal.map { "歌曲 \($0)" } ?? s.rawValue
+        case .albums: return library.albumTotal.map { "专辑 \($0)" } ?? s.rawValue
+        default: return s.rawValue
+        }
     }
 }
 
@@ -89,7 +99,7 @@ private struct AlbumsGrid: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @ObservedObject private var library = LibraryStore.shared
-    @State private var type = "alphabeticalByName"
+    private var type: String { state.albumSort }
     @State private var albums: [NDAlbum] = []
     @State private var done = false
     @State private var loading = false
@@ -98,7 +108,7 @@ private struct AlbumsGrid: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
                     ForEach(Self.types, id: \.0) { t in
-                        Button { type = t.0 } label: {
+                        Button { state.albumSort = t.0 } label: {
                             Text(t.1).font(.system(size: 13, weight: type == t.0 ? .bold : .regular))
                                 .foregroundStyle(type == t.0 ? Theme.fg(scheme) : Theme.secondary(scheme))
                         }.buttonStyle(.plain)
@@ -120,16 +130,21 @@ private struct AlbumsGrid: View {
                 }
             }.padding(.horizontal, Theme.margin)
             if loading { ProgressView().frame(maxWidth: .infinity) }
+            Text("已加载 \(albums.count) 张专辑").font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
+                .padding(.horizontal, Theme.margin)
         }
-        .task(id: type) { albums = []; done = false; await more() }
+        .task(id: type) {
+            done = false
+            albums = []; await more()
+        }
     }
     private func more() async {
         guard !loading, !done else { return }
         loading = true; defer { loading = false }
         let t = type
-        let page = (try? await NavidromeClient.shared.albumList(type: t, offset: t == "random" ? 0 : albums.count)) ?? []
+        let page = (try? await NavidromeClient.shared.albumList(type: t, offset: t == "random" ? 0 : albums.count, size: t == "random" ? 60 : 200)) ?? []
         guard t == type else { return }
-        if page.isEmpty || t == "random" && !albums.isEmpty { done = true }
+        if page.count < 200 || t == "random" { done = true }
         albums += page.filter { p in !albums.contains(where: { $0.id == p.id }) }
     }
 }

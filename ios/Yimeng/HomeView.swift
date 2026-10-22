@@ -18,6 +18,10 @@ struct HomeView: View {
     private var liveOnly: Bool { library.useLiveOnly }
 
     var body: some View {
+        if liveOnly { HomeLive() } else { demoBody }
+    }
+
+    var demoBody: some View {
         GeometryReader { geo in
             let w = geo.size.width - Theme.margin * 2
             let p = page - Double(drag / w)

@@ -14,6 +14,14 @@ struct NDArtist: Identifiable, Hashable {
     let id: String
     let name: String
     let albumCount: Int?
+    var coverId: String? = nil
+}
+
+struct NDGenre: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let songCount: Int
+    let albumCount: Int
 }
 
 struct NDPlaylist: Identifiable, Hashable {
@@ -48,6 +56,12 @@ final class LibraryStore: ObservableObject {
     @Published var status: String = ""
     @Published var connected = false
     @Published var loading = false
+    /// Every album on the server (paged 500 at a time), loaded after connect.
+    @Published var allAlbums: [NDAlbum] = []
+    @Published var albumTotal: Int?
+    @Published var songTotal: Int?
+    @Published var user = ""
+    @Published var host = ""
 
     static let defaultHost = "https://music.mefun.org"
     static let defaultUser = "lvzy"
@@ -59,7 +73,9 @@ final class LibraryStore: ObservableObject {
     private var coverSalt = ""
 
     /// When true, UI must show only API rows (no DreamData / Mock mix).
-    var useLiveOnly: Bool { connected }
+    var useLiveOnly: Bool { connected || liveMode }
+    /// True as soon as Navidrome credentials exist — avoids flashing demo content while login is in flight.
+    @Published var liveMode = false
 
     func bootstrap() async {
         var cfg = SourceStore.shared.config(for: .navidrome)
@@ -76,6 +92,7 @@ final class LibraryStore: ObservableObject {
             Keychain.set(seeded, service: "yimeng.navidrome", account: Self.defaultUser)
         }
         SourceStore.shared.upsert(cfg)
+        liveMode = !cfg.secret.isEmpty
         guard !cfg.secret.isEmpty else {
             status = "待连接 Navidrome"
             return
@@ -117,9 +134,12 @@ final class LibraryStore: ObservableObject {
             let al = try await client.newestAlbums(size: 30)
             let ar = try await client.artists()
             albums = al
-            artists = Array(ar.prefix(40))
+            artists = Array(ar.sorted { ($0.albumCount ?? 0) > ($1.albumCount ?? 0) }.prefix(40))
             connected = true
-            status = "Navidrome · \(al.count) 张专辑"
+            self.user = username
+            self.host = h
+            status = "Navidrome · \(username)"
+            Task { await loadTotals() }
             var cfg = SourceStore.shared.config(for: .navidrome)
             cfg.host = h
             cfg.username = username
@@ -131,6 +151,24 @@ final class LibraryStore: ObservableObject {
             connected = false
             status = error.localizedDescription
         }
+    }
+
+    /// maxBitRate from 偏好设置 (0 = original, no transcoding).
+    static func streamQuery(_ id: String) -> [String: String] {
+        let br = UserDefaults.standard.integer(forKey: "ym.maxBitRate")
+        return br > 0 ? ["id": id, "maxBitRate": "\(br)"] : ["id": id]
+    }
+
+    func loadTotals() async {
+        // Album total = Σ albumCount over the artist index (one request), not a paged crawl.
+        if let ar = try? await NavidromeClient.shared.artists(), !ar.isEmpty {
+            albumTotal = ar.reduce(0) { $0 + ($1.albumCount ?? 0) }
+        }
+        if let first = try? await NavidromeClient.shared.albumPages(2) { allAlbums = first }
+        songTotal = (try? await NavidromeClient.shared.scanCount()) ?? nil
+        let a = albumTotal.map { "\($0) 张专辑" } ?? ""
+        let s = songTotal.map { "\($0) 首歌曲" } ?? ""
+        status = (["Navidrome · \(user)", a, s].filter { !$0.isEmpty }).joined(separator: " · ")
     }
 
     func fetchAlbum(id: String) async throws -> (NDAlbum, [NDSong]) {
@@ -157,6 +195,6 @@ final class LibraryStore: ObservableObject {
         guard let base = coverBase, !coverToken.isEmpty else { return nil }
         return NavidromeClient.authedURL(base: base, method: "stream.view",
                                          user: coverUser, token: coverToken, salt: coverSalt,
-                                         query: ["id": songId])
+                                         query: Self.streamQuery(songId))
     }
 }

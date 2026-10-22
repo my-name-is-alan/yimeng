@@ -148,13 +148,6 @@ struct NDAlbumView: View {
             songs = s
             revealed = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { revealed = true }
-            let playND = ProcessInfo.processInfo.arguments.contains("-playFirstND")
-                || UserDefaults.standard.bool(forKey: "ym.debugPlayFirstND")
-            if playND, !s.isEmpty {
-                PlayerStore.shared.playAlbum(a, songs: s, startAt: 0)
-                state.nowPlaying = true
-                UserDefaults.standard.removeObject(forKey: "ym.debugPlayFirstND")
-            }
         } catch {
             self.error = error.localizedDescription
         }

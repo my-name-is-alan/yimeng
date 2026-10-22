@@ -1,7 +1,7 @@
 import SwiftUI
 
-enum Tab: String, CaseIterable { case home = "首页", collection = "典藏", search = "搜索", me = "我的"
-    var icon: String { switch self { case .home: "house.fill"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
+enum Tab: String, CaseIterable { case home = "首页", library = "曲库", collection = "典藏", search = "搜索", me = "我的"
+    var icon: String { switch self { case .home: "house.fill"; case .library: "music.note.list"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
 enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), artist }
 
@@ -18,8 +18,12 @@ final class AppState: ObservableObject {
             if !PlayerStore.shared.hasRealPlayback { syncSystem() }
         }
     }
+    @Published var librarySeg: LibraryView.Seg = .songs
+    @Published var albumSort = "alphabeticalByName"
     @Published var ambience: Ambience = .doodle
-    @Published var intensity: Double = 0.7
+    @Published var intensity: Double = UserDefaults.standard.object(forKey: "ym.intensity") as? Double ?? 0.7 {
+        didSet { UserDefaults.standard.set(intensity, forKey: "ym.intensity") }
+    }
     @Published var beatSync = true
     @Published var remoteCoverURL: URL?
     private var trackStart = Date()
@@ -87,7 +91,8 @@ final class AppState: ObservableObject {
         case "np-zig": nowPlaying = true; track = DreamMock.zig; isPlaying = true
         case "np-ink": nowPlaying = true; track = DreamMock.ink; isPlaying = true
         case "lyrics": nowPlaying = true; lyricsMode = true; track = DreamMock.orange; isPlaying = true
-        case "library", "search": tab = .search
+        case "library": tab = .library
+        case "search": tab = .search
         case "collection": tab = .collection
         case "me": tab = .me
         default: break
@@ -116,7 +121,13 @@ extension View {
 @main
 struct YimengApp: App {
     @StateObject var state = AppState()
-    var body: some Scene { WindowGroup { RootGate(state: state) } }
+    @AppStorage("ym.appearance") private var appearance = 0   // 0 system · 1 light · 2 dark
+    var body: some Scene {
+        WindowGroup {
+            RootGate(state: state)
+                .preferredColorScheme(appearance == 1 ? .light : appearance == 2 ? .dark : nil)
+        }
+    }
 }
 
 struct Shell: View {
@@ -131,6 +142,12 @@ struct Shell: View {
                 case .home:
                     NavigationStack(path: $state.path) {
                         HomeView()
+                            .toolbar(.hidden, for: .navigationBar)
+                            .navigationDestination(for: Route.self) { r in routeView(r) }
+                    }
+                case .library:
+                    NavigationStack(path: $state.path) {
+                        LibraryView()
                             .toolbar(.hidden, for: .navigationBar)
                             .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
@@ -175,25 +192,6 @@ struct Shell: View {
             Task { @MainActor in
                 await LibraryStore.shared.bootstrap()
                 await PlayerStore.shared.restore()
-                // Test hook (one-shot): open 曲库 and play the 4th song of the all-songs list.
-                let flag = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/ym-debug-play-library")
-                if FileManager.default.fileExists(atPath: flag.path) {
-                    try? FileManager.default.removeItem(at: flag)
-                    state.tab = .collection
-                    if let s = try? await NavidromeClient.shared.songs(offset: 0, count: 60), s.count > 3 {
-                        PlayerStore.shared.play(songs: s, startAt: 3)
-                    }
-                }
-                let args = ProcessInfo.processInfo.arguments
-                let openND = args.contains("-openFirstND") || UserDefaults.standard.bool(forKey: "ym.debugOpenFirstND")
-                let playND = args.contains("-playFirstND") || UserDefaults.standard.bool(forKey: "ym.debugPlayFirstND")
-                if openND, let a = LibraryStore.shared.albums.first {
-                    state.path.append(.ndAlbum(a))
-                    if playND {
-                        // NDAlbumView will auto-play when ym.debugPlayFirstND / -playFirstND set
-                    }
-                }
-                UserDefaults.standard.removeObject(forKey: "ym.debugOpenFirstND")
             }
         }
         .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
@@ -246,17 +244,47 @@ struct Shell: View {
                 MiniPlayer().onTapGesture { withAnimation(.ui) { state.nowPlaying = true } }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            HStack(spacing: 0) { ForEach(Tab.allCases, id: \.self) { t in tabItem(t) } }
+            ZStack(alignment: .bottom) {
+                HStack(spacing: 0) {
+                    ForEach(Tab.allCases, id: \.self) { t in
+                        if t == .collection { Color.clear.frame(width: 76) } else { tabItem(t) }
+                    }
+                }
                 .padding(.horizontal, 4).frame(height: 62).background(GlassCapsule())
+                centreButton.offset(y: -18)
+            }
         }
         .padding(.horizontal, Theme.margin).padding(.bottom, 2)
+    }
+
+    /// 典藏: raised centre button above the glass capsule, doodle accent ring.
+    var centreButton: some View {
+        let active = state.tab == .collection
+        return Button { withAnimation(.snappy) { if active { state.path = [] }; state.tab = .collection } } label: {
+            ZStack {
+                Circle().fill(active ? Theme.lime : Color(white: 0.1))
+                    .overlay(Circle().strokeBorder(Theme.lime.opacity(active ? 0 : 0.9), style: StrokeStyle(lineWidth: 2, dash: [5, 3])))
+                    .shadow(color: Theme.lime.opacity(active ? 0.55 : 0.25), radius: active ? 16 : 8, y: 4)
+                VStack(spacing: 1) {
+                    Image(systemName: Tab.collection.icon).font(.system(size: 22, weight: .semibold))
+                    Text(Tab.collection.rawValue).font(.system(size: 10, weight: .bold))
+                }
+                .foregroundStyle(active ? Color(white: 0.07) : Theme.lime)
+            }
+            .frame(width: 66, height: 66)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "sparkle").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.lime)
+                    .rotationEffect(.degrees(active ? 20 : 0)).offset(x: 4, y: -2)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     func tabItem(_ t: Tab) -> some View {
         let active = state.tab == t
         return Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
             VStack(spacing: 2) {
-                Image(systemName: t.icon).font(.system(size: 20))
+                Image(systemName: t.icon).font(.system(size: 19))
                 Text(t.rawValue).font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(active ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.75))
@@ -326,76 +354,3 @@ extension Color {
     }
 }
 
-struct SettingsView: View {
-    @Environment(\.colorScheme) var scheme
-    @ObservedObject private var sources = SourceStore.shared
-    @State private var showSources = false
-    @State private var showReplay = false
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("我的").font(.system(size: 28, weight: .bold)).padding(.top, 16)
-                    Text(LibraryStore.shared.connected
-                         ? LibraryStore.shared.status
-                         : (sources.connectedCount > 0
-                            ? "已连接 \(sources.connectedCount) 个来源"
-                            : "尚未连接音乐来源"))
-                        .foregroundStyle(Theme.secondary(scheme)).padding(.top, 8)
-
-                    Button { showSources = true } label: {
-                        settingsRow(icon: "antenna.radiowaves.left.and.right", title: "音乐来源",
-                                    detail: sources.configs.filter(\.connected).map(\.kind.title).joined(separator: " · "))
-                    }.buttonStyle(.plain)
-
-                    Button {
-                        PlaybackSystem.shared.forceLiveActivity()
-                    } label: {
-                        settingsRow(icon: "dot.radiowaves.left.and.right", title: "启动灵动岛",
-                                    detail: "演示 Live Activity")
-                    }.buttonStyle(.plain)
-
-                    Button {
-                        FirstRun.reset()
-                        showReplay = true
-                    } label: {
-                        settingsRow(icon: "arrow.counterclockwise", title: "重看启动引导",
-                                    detail: "下次冷启动走完整流程")
-                    }.buttonStyle(.plain)
-
-                    Spacer(minLength: 120)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Theme.margin)
-            }
-            .background(Theme.base(scheme))
-            .sheet(isPresented: $showSources) {
-                SourcesView(embedded: true)
-            }
-            .alert("已重置", isPresented: $showReplay) {
-                Button("好", role: .cancel) {}
-            } message: {
-                Text("下次用 -fresh 或杀掉 App 再开，会从启动动画开始。")
-            }
-        }
-    }
-
-    private func settingsRow(icon: String, title: String, detail: String) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon).font(.system(size: 18)).frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 16, weight: .semibold))
-                if !detail.isEmpty {
-                    Text(detail).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
-                }
-            }
-            Spacer()
-            Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.secondary(scheme))
-        }
-        .foregroundStyle(Theme.fg(scheme))
-        .padding(.vertical, 16)
-        .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
-        .padding(.top, 8)
-    }
-}

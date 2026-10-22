@@ -60,6 +60,7 @@ final class PlaybackSystem {
 
     private func updateActivity(_ t: DreamTrack, elapsed: TimeInterval, playing: Bool) {
         #if canImport(ActivityKit)
+        if UserDefaults.standard.object(forKey: "ym.liveActivity") as? Bool == false { endLiveActivity(); return }
         let auth = ActivityAuthorizationInfo()
         guard auth.areActivitiesEnabled else {
             liveActivityNote = "disabled (Settings / entitlement)"
