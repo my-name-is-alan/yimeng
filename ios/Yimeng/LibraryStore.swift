@@ -522,6 +522,12 @@ final class LibraryStore: ObservableObject {
                                          query: ["id": id, "size": "\(size)"])
     }
 
+    /// Subsonic getAvatar (Navidrome: Gravatar redirect or a placeholder).
+    func navidromeAvatarURL() -> URL? {
+        guard let base = coverBase, !coverToken.isEmpty, !coverUser.isEmpty else { return nil }
+        return NavidromeClient.authedURL(base: base, method: "getAvatar.view", user: coverUser, token: coverToken, salt: coverSalt, query: ["username": coverUser])
+    }
+
     /// Subsonic stream.view — AVPlayer uses this URL (u+t+s auth).
     func streamURL(for songId: String) -> URL? {
         if NavidromeClient.emby {

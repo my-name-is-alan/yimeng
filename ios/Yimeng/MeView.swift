@@ -1,5 +1,4 @@
 import SwiftUI
-import PhotosUI
 
 /// 我的: profile, 音源设置, 偏好设置, 系统设置 — grouped doodle cards.
 struct SettingsView: View {
@@ -13,10 +12,11 @@ struct SettingsView: View {
     @AppStorage("ym.lyricTrans") private var lyricTrans = true
     @AppStorage("ym.liveActivity") private var liveActivity = true
     @State private var showSwitch = false
+    @State private var showReport = false
+    @State private var showLastfm = false
     @State private var showAlerts = false
     @ObservedObject private var acct = CoreAccountStore.shared
     @State private var confirmLogout = false
-    @State private var pick: PhotosPickerItem?
     @State private var showSources = false
     @State private var editingName = false
     @State private var cacheBytes: Int64 = 0
@@ -39,6 +39,10 @@ struct SettingsView: View {
                     row("server.rack", NavidromeClient.emby ? library.embyProduct : NavidromeClient.core ? (library.coreServerName.isEmpty ? "译梦服务端" : library.coreServerName) : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : (library.status.isEmpty || library.status == "待连接译梦服务端" ? "未连接" : library.status))
                     if NavidromeClient.core && library.connected {
                         row("person.badge.key", "账号", library.user.isEmpty ? "设备配对" : library.user)
+                        divider
+                        Button { showReport = true } label: { row("chart.bar.xaxis", "听歌报告", "本月 · 今年", chevron: true) }.buttonStyle(.plain)
+                        divider
+                        Button { showLastfm = true } label: { row("dot.radiowaves.left.and.right", "Last.fm", "", chevron: true) }.buttonStyle(.plain)
                         divider
                         Button { showSwitch = true } label: { row("arrow.triangle.swap", "跨平台换源", acct.sourceSwitch.map { $0.enabled ? "已开启" : "关闭" } ?? "", chevron: true) }.buttonStyle(.plain)
                         divider
@@ -110,9 +114,11 @@ struct SettingsView: View {
         #if DEBUG
         .task {
             let a = ProcessInfo.processInfo.arguments
-            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "alerts" { showAlerts = true } }
+            if let i = a.firstIndex(of: "-me"), i + 1 < a.count { try? await Task.sleep(for: .seconds(4)); if a[i + 1] == "switch" { showSwitch = true } else if a[i + 1] == "report" { showReport = true } else if a[i + 1] == "lastfm" { showLastfm = true } else if a[i + 1] == "alerts" { showAlerts = true } }
         }
         #endif
+        .fullScreenCover(isPresented: $showReport) { ListeningReportView() }
+        .sheet(isPresented: $showLastfm) { NavigationStack { LastfmView() } }
         .sheet(isPresented: $showSwitch) { NavigationStack { SourceSwitchView() } }
         .sheet(isPresented: $showAlerts) { NavigationStack { SecurityAlertsView() } }
         .alert("已重置", isPresented: $showReplay) { Button("好", role: .cancel) {} } message: { Text("下次冷启动会从启动动画开始。") }
@@ -120,21 +126,12 @@ struct SettingsView: View {
             TextField("昵称", text: $nickname)
             Button("好", role: .cancel) {}
         }
-        .onChange(of: pick) { _, item in
-            Task { if let d = try? await item?.loadTransferable(type: Data.self) { AvatarStore.save(d) } }
-        }
         .task { cacheBytes = Cache.size() }
     }
 
     var profile: some View {
         HStack(spacing: 16) {
-            PhotosPicker(selection: $pick, matching: .images) {
-                AvatarView(size: 72)
-                    .overlay(alignment: .bottomTrailing) {
-                        Image(systemName: "camera.fill").font(.system(size: 11)).foregroundStyle(Color(white: 0.07))
-                            .frame(width: 24, height: 24).background(Circle().fill(Theme.lime))
-                    }
-            }
+            AvatarView(size: 72)
             VStack(alignment: .leading, spacing: 4) {
                 Button { editingName = true } label: {
                     HStack(spacing: 6) {

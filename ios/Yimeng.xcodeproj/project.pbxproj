@@ -53,6 +53,7 @@
 		AEC9E4D81F3A2346A3D5FDE0 /* jellyfin-lyrics.json in Resources */ = {isa = PBXBuildFile; fileRef = 91C56FCD1FD6B1FAF53C610E /* jellyfin-lyrics.json */; };
 		AF55DCEB6EFC3DF6C895856C /* emby-albums.json in Resources */ = {isa = PBXBuildFile; fileRef = FDB91791440EEB3F6CDCA091 /* emby-albums.json */; };
 		B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9712EB28EE125918AEB1DEF /* DebugSnap.swift */; };
+		B50FB6E420D000449557C2DF /* CoreV30.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EA012D947A622EE3B2895EF /* CoreV30.swift */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
@@ -124,6 +125,7 @@
 		08E1C7C7E078182DCBB5B668 /* YimengWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YimengWidgets.swift; sourceTree = "<group>"; };
 		0962E95E6B55BCB808D64B49 /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
 		0E250285D45C295C91932A00 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		0EA012D947A622EE3B2895EF /* CoreV30.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreV30.swift; sourceTree = "<group>"; };
 		0ED964AE3DE286A79F131CBA /* EmbyClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbyClient.swift; sourceTree = "<group>"; };
 		10344A37F4E7381B0AA3FBD7 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		15CCAE90D8D13766AB51E2CE /* emby-sysinfo.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "emby-sysinfo.json"; sourceTree = "<group>"; };
@@ -281,6 +283,7 @@
 				544698022D347A02756EACDB /* CoreV25.swift */,
 				72941A55FA85EAEF903A950A /* CoreV28.swift */,
 				1E0DA447B96C02C374E060E1 /* CoreV29.swift */,
+				0EA012D947A622EE3B2895EF /* CoreV30.swift */,
 				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				E9712EB28EE125918AEB1DEF /* DebugSnap.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
@@ -511,6 +514,7 @@
 				DC1B124F0048EB2638F0DC50 /* CoreV25.swift in Sources */,
 				C06E8392D9C9CFB545CB1F23 /* CoreV28.swift in Sources */,
 				79630576C4C7CFAB9263DCD1 /* CoreV29.swift in Sources */,
+				B50FB6E420D000449557C2DF /* CoreV30.swift in Sources */,
 				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,

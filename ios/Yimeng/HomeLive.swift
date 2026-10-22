@@ -219,32 +219,6 @@ struct HomeLive: View {
 }
 
 /// Locally stored avatar (picked in 我的), falling back to the bundled one.
-struct AvatarView: View {
-    var size: CGFloat = 36
-    @AppStorage("ym.avatarRev") private var rev = 0
-    @ObservedObject private var library = LibraryStore.shared
-    var body: some View {
-        Group {
-            if NavidromeClient.emby, let u = library.embyAvatar { CoverImage(url: u, points: size) }   // Emby account avatar wins while Emby is active
-            else if let img = AvatarStore.load() { Image(uiImage: img).resizable().scaledToFill() }
-            else { Image("ym_avatar").resizable().scaledToFill() }
-        }
-        .id(rev)
-        .frame(width: size, height: size).clipShape(Circle())
-    }
-}
-
-enum AvatarStore {
-    static var url: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("avatar.jpg") }
-    static func load() -> UIImage? { UIImage(contentsOfFile: url.path) }
-    static func save(_ data: Data) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let img = UIImage(data: data), let jpg = img.jpegData(compressionQuality: 0.85) { try? jpg.write(to: url) }
-        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: "ym.avatarRev") + 1, forKey: "ym.avatarRev")
-    }
-}
-
-
 /// First-launch placeholder: moon + stars drifting in, no skeletons.
 struct FirstRunDoodle: View {
     @State private var on = false

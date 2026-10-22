@@ -156,6 +156,7 @@ struct CorePlatform: Codable, Hashable, Sendable {
     var loggedIn: Bool?
     var vip: Bool?
     var nickname: String?
+    var avatarUrl: String?
     var capabilities: [String]?
     var active: Bool { (enabled ?? true) && (loggedIn ?? false) }
     func can(_ c: String) -> Bool { active && (capabilities ?? []).contains(c) }

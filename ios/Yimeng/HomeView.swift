@@ -35,7 +35,7 @@ struct HomeView: View {
                     HStack {
                         Text("首页").font(.system(size: 28, weight: .bold)).foregroundStyle(header)
                         Spacer()
-                        Image("ym_avatar").resizable().scaledToFill().frame(width: 36, height: 36).clipShape(Circle())
+                        AvatarView(size: 36)
                     }
                     .padding(.horizontal, Theme.margin).padding(.top, 16)
                     .motionIn(0)
