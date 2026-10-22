@@ -103,7 +103,11 @@ var qualityLevel = map[online.Quality]string{
 //	st < 0                       → removed / region-blocked: unavailable
 //	pl > 0                       → playable at some bitrate: full
 //	pl == 0 with trial privilege → VIP/paid song, preview segment only
-//	pl == 0 otherwise            → unavailable
+//	pl == 0, fee 1 (VIP song)    → preview (NetEase serves a trial clip)
+//	pl == 0 otherwise            → unavailable; this includes fee 4 (paid
+//	                               album) without a trial privilege, for
+//	                               which the platform returns no URL at all
+//	                               (purchase required)
 func entitlement(p *nePrivilege) online.Entitlement {
 	if p == nil {
 		return online.EntUnknown
@@ -113,7 +117,7 @@ func entitlement(p *nePrivilege) online.Entitlement {
 		return online.EntUnavailable
 	case p.Pl > 0:
 		return online.EntFull
-	case p.FreeTrialPrivilege.ResConsumable || p.FreeTrialPrivilege.UserConsumable || p.Fee == 1 || p.Fee == 4:
+	case p.FreeTrialPrivilege.ResConsumable || p.FreeTrialPrivilege.UserConsumable || p.Fee == 1:
 		return online.EntPreview
 	}
 	return online.EntUnavailable

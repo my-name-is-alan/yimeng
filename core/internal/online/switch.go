@@ -90,12 +90,22 @@ func (s *Service) Alternatives(ctx context.Context, id string) ([]Alternative, e
 		if other == o || !s.Reg.LoggedIn(other) {
 			continue
 		}
-		res := s.Search(ctx, strings.TrimSpace(t.Title+" "+t.ArtistName), 10, []string{other})
-		if len(res) == 0 || res[0].Result == nil {
-			continue
+		// title + artist first; platforms spell artists differently (e.g.
+		// "SNH48周诗雨"), so also try the title alone.
+		var cands []Track
+		for _, q := range []string{strings.TrimSpace(t.Title + " " + t.ArtistName), t.Title} {
+			res := s.Search(ctx, q, 10, []string{other})
+			if len(res) > 0 && res[0].Result != nil {
+				cands = append(cands, res[0].Result.Tracks...)
+			}
 		}
 		var mine []Alternative
-		for _, c := range res[0].Result.Tracks {
+		dup := map[string]bool{}
+		for _, c := range cands {
+			if dup[c.ID] {
+				continue
+			}
+			dup[c.ID] = true
 			if c.Playable == EntUnavailable {
 				continue
 			}

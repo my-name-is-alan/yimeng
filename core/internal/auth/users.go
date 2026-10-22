@@ -38,8 +38,23 @@ var argonT, argonM, argonP uint32 = 2, 19 * 1024, 1
 type User struct {
 	ID        string    `json:"id"`
 	Username  string    `json:"username"`
+	Nickname  string    `json:"nickname"`             // defaults to username
+	AvatarURL string    `json:"avatar_url,omitempty"` // uploaded avatar, if any
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+const userCols = `u.id, u.username, u.nickname, u.role, u.created_at, COALESCE(a.updated_at, 0)`
+const userFrom = ` FROM users u LEFT JOIN user_avatars a ON a.user_id=u.id`
+
+func (u *User) finish(created, avatarAt int64) {
+	u.CreatedAt = time.UnixMilli(created).UTC()
+	if u.Nickname == "" {
+		u.Nickname = u.Username
+	}
+	if avatarAt > 0 {
+		u.AvatarURL = fmt.Sprintf("/api/v1/users/%s/avatar?v=%d", u.ID, avatarAt)
+	}
 }
 
 // HashPassword returns an argon2id PHC string.
@@ -266,7 +281,7 @@ func (s *Service) issue(ctx context.Context, name, deviceType string, u User) (D
 }
 
 func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, username, role, created_at FROM users ORDER BY created_at`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+userCols+userFrom+` ORDER BY u.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -274,11 +289,11 @@ func (s *Service) ListUsers(ctx context.Context) ([]User, error) {
 	out := []User{}
 	for rows.Next() {
 		var u User
-		var c int64
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &c); err != nil {
+		var c, av int64
+		if err := rows.Scan(&u.ID, &u.Username, &u.Nickname, &u.Role, &c, &av); err != nil {
 			return nil, err
 		}
-		u.CreatedAt = time.UnixMilli(c).UTC()
+		u.finish(c, av)
 		out = append(out, u)
 	}
 	return out, rows.Err()
@@ -389,12 +404,12 @@ func (s *Service) ResetPassword(ctx context.Context, username, pw string) (creat
 // UserByID loads an account.
 func (s *Service) UserByID(ctx context.Context, id string) (User, error) {
 	var u User
-	var c int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, username, role, created_at FROM users WHERE id=?`, id).Scan(&u.ID, &u.Username, &u.Role, &c)
+	var c, av int64
+	err := s.db.QueryRowContext(ctx, `SELECT `+userCols+userFrom+` WHERE u.id=?`, id).Scan(&u.ID, &u.Username, &u.Nickname, &u.Role, &c, &av)
 	if err != nil {
 		return User{}, ErrNotFound
 	}
-	u.CreatedAt = time.UnixMilli(c).UTC()
+	u.finish(c, av)
 	return u, nil
 }
 
@@ -410,4 +425,42 @@ func (s *Service) RemoveAllUsers(ctx context.Context) (int, error) {
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil
+}
+
+// SetNickname sets the display name ("" = use the username).
+func (s *Service) SetNickname(ctx context.Context, id, nick string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET nickname=?, updated_at=? WHERE id=?`, nick, s.now().UnixMilli(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAvatar stores an already validated avatar image.
+func (s *Service) SetAvatar(ctx context.Context, id, mime string, data []byte) error {
+	if _, err := s.UserByID(ctx, id); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO user_avatars(user_id, mime, data, updated_at) VALUES (?,?,?,?)
+		ON CONFLICT(user_id) DO UPDATE SET mime=excluded.mime, data=excluded.data, updated_at=excluded.updated_at`, id, mime, data, s.now().UnixMilli())
+	return err
+}
+
+// Avatar returns the stored avatar.
+func (s *Service) Avatar(ctx context.Context, id string) (string, []byte, time.Time, error) {
+	var mime string
+	var data []byte
+	var at int64
+	if err := s.db.QueryRowContext(ctx, `SELECT mime, data, updated_at FROM user_avatars WHERE user_id=?`, id).Scan(&mime, &data, &at); err != nil {
+		return "", nil, time.Time{}, ErrNotFound
+	}
+	return mime, data, time.UnixMilli(at).UTC(), nil
+}
+
+func (s *Service) DeleteAvatar(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM user_avatars WHERE user_id=?`, id)
+	return err
 }

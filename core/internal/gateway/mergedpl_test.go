@@ -19,7 +19,8 @@ func TestMergedPlaylistImport(t *testing.T) {
 	json.Unmarshal(body, &pl)
 	// one-click import of a platform playlist into it; unavailable kept + counted
 	res, body = e.do("POST", "/api/online/gw/playlists/p1/clone", `{"into":"`+pl.ID+`","prefer_local":false}`, alice)
-	if res.StatusCode != 200 || !strings.Contains(string(body), `"unavailable":1`) {
+	// gw:full is already in the playlist → skipped as a duplicate
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"unavailable":1`) || !strings.Contains(string(body), `"skipped_duplicates":1`) {
 		t.Fatalf("import into %d %s", res.StatusCode, body)
 	}
 	if res, _ := e.do("POST", "/api/online/gw/playlists/p1/clone", `{"into":"`+pl.ID+`"}`, bob); res.StatusCode != 404 {
@@ -42,8 +43,17 @@ func TestMergedPlaylistImport(t *testing.T) {
 			t.Fatalf("taken-down snapshot %+v", it)
 		}
 	}
-	if len(page.Items) != 5 || got[tr.ID] != "" || got["gw:none"] != "unavailable" || got["gw:prev"] != "preview" || got["gw:full"] != "full" {
+	if len(page.Items) != 4 || got[tr.ID] != "" || got["gw:none"] != "unavailable" || got["gw:prev"] != "preview" || got["gw:full"] != "full" {
 		t.Fatalf("items %s", body)
+	}
+	// re-importing the same playlist adds nothing (D51 de-dup)
+	res, body = e.do("POST", "/api/online/gw/playlists/p1/clone", `{"into":"`+pl.ID+`","prefer_local":false}`, alice)
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"added":0`) || strings.Contains(string(body), `"skipped_duplicates":0`) {
+		t.Fatalf("re-import %d %s", res.StatusCode, body)
+	}
+	_, body = e.do("GET", "/api/playlists/"+pl.ID+"/tracks?limit=50", "", alice)
+	if !strings.Contains(string(body), `"total":4`) {
+		t.Fatalf("duplicates after re-import: %s", body)
 	}
 	// the preview item auto-switches when streamed (D50)
 	res, body = e.do("GET", "/api/stream/gw:prev", "", alice)

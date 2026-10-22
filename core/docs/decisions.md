@@ -468,3 +468,18 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
   - Tracks shorter than 30 s, or without a title or artist, are skipped.
   - An invalid session (Last.fm errors 9, 10, 26) clears the session, so the user must re-authorize.
 - Devices without an account get 403. Disconnecting deletes the Vault entry and the queue.
+
+## D58 — Designer fixes: import de-dup, honest paid-album entitlement, profiles/avatars
+- **Clone/import de-dup.**
+  - Tracks are skipped if they are already in the target playlist (`into`) or repeated in the source. Identity is the track id, the linked local track, the ISRC, or the D50 metadata match (normalised title + artist, duration within 3 s).
+  - The response adds `added` and `skipped_duplicates`. Re-importing the same playlist is a no-op.
+- **NetEase entitlement.**
+  - A paid-album song (fee 4) without a trial privilege is now `unavailable`, not `preview`. The platform returns no URL for it at all (purchase required).
+  - `preview` is used only when a trial clip exists: a trial privilege, or a VIP (fee 1) song. Previews stream the official clip.
+  - Unavailable tracks still try source switching (D50). Alternative search now also queries by title alone, because platforms spell artists differently (e.g. "SNH48周诗雨").
+  - There is still no unblock or DRM bypass.
+- **Profiles.**
+  - `GET /me` returns `{id, username, nickname, avatar_url, role}`, and `PATCH /me` sets the nickname.
+  - Avatars: `PUT/DELETE /me/avatar`, admin `PUT/DELETE /users/{id}/avatar`, and `GET /users/{id}/avatar` for any signed-in device.
+  - Uploads must be JPEG, PNG or WebP (checked by decoding), at most 1 MiB and 4096 px. They are stored in the DB (migration 0026), so they are included in backups.
+  - `server/info` `platforms[].avatar_url` is the platform account avatar, shown to any authenticated caller.

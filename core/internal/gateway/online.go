@@ -664,29 +664,59 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prefer := b.PreferLocal == nil || *b.PreferLocal
-	ids := make([]string, 0, len(p.Tracks))
-	linked, skipped := 0, 0
-	for _, t := range p.Tracks {
-		switch {
-		case prefer && t.LocalID != "":
-			ids = append(ids, t.LocalID)
-			linked++
-		case b.SkipUnavail && t.Playable == online.EntUnavailable:
-			skipped++
-		default:
-			ids = append(ids, t.ID)
+	// Existing tracks of the target (owner-checked by GetPlaylist) seed the
+	// de-duplication set, so re-importing into the same playlist is a no-op.
+	var seen dedupSet
+	if b.Into != "" {
+		for off := 0; ; off += 500 {
+			pg, err := d.Playlists.GetPlaylist(r.Context(), b.Into, 500, off)
+			if err != nil {
+				d.plErr(w, err)
+				return
+			}
+			for _, t := range pg.Tracks.Items {
+				seen.add(t.ID, t.ISRC, t.Title, t.ArtistName, t.DurationMs)
+			}
+			if len(pg.Tracks.Items) < 500 {
+				break
+			}
 		}
 	}
-	unavailable := 0
+	ids := make([]string, 0, len(p.Tracks))
+	linked, skipped, dups, unavailable := 0, 0, 0, 0
 	for _, t := range p.Tracks {
-		if t.Playable == online.EntUnavailable && !(prefer && t.LocalID != "") && !b.SkipUnavail {
+		id := t.ID
+		if prefer && t.LocalID != "" {
+			id = t.LocalID
+		} else if b.SkipUnavail && t.Playable == online.EntUnavailable {
+			skipped++
+			continue
+		}
+		if seen.has(id, t.LocalID, t.ISRC, t.Title, t.ArtistName, t.DurationMs) {
+			dups++
+			continue
+		}
+		seen.add(id, t.ISRC, t.Title, t.ArtistName, t.DurationMs)
+		if t.LocalID != "" {
+			seen.add(t.LocalID, "", "", "", 0)
+		}
+		ids = append(ids, id)
+		if id == t.LocalID {
+			linked++
+		} else if t.Playable == online.EntUnavailable {
 			unavailable++
 		}
 	}
 	var pl library.Playlist
 	status := http.StatusCreated
 	if b.Into != "" { // merge into an existing playlist (owner-checked)
-		pl, err = d.Playlists.EditPlaylist(r.Context(), b.Into, library.PlaylistOp{Op: "append", TrackIDs: ids})
+		if len(ids) == 0 {
+			var pg library.PlaylistPage
+			pg, err = d.Playlists.GetPlaylist(r.Context(), b.Into, 1, 0)
+			pl = pg.Playlist
+		} else {
+			pl, err = d.Playlists.EditPlaylist(r.Context(), b.Into, library.PlaylistOp{Op: "append", TrackIDs: ids})
+		}
 		status = http.StatusOK
 	} else {
 		name := strings.TrimSpace(b.Name)
@@ -701,7 +731,8 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.Hub.Publish("playlist.updated", map[string]string{"id": pl.ID})
-	writeJSON(w, status, map[string]any{"playlist": pl, "tracks": len(ids), "linked_local": linked, "skipped": skipped, "unavailable": unavailable})
+	writeJSON(w, status, map[string]any{"playlist": pl, "tracks": len(ids), "added": len(ids), "skipped_duplicates": dups,
+		"linked_local": linked, "skipped": skipped, "unavailable": unavailable})
 }
 
 // cloudFavorites returns the platform "liked songs" playlist of each logged-in account.
@@ -1061,4 +1092,38 @@ func (d Deps) onlineSearch(r *http.Request, q string, limit int) []online.Origin
 		res = []online.OriginResult{}
 	}
 	return res
+}
+
+// dedupSet recognises the same song by track id, ISRC, or a strong
+// title/artist/duration match (library.MatchScore ≥ 0.9, as in D50).
+type dedupSet struct {
+	ids   map[string]bool
+	metas []library.MatchQuery
+}
+
+func (s *dedupSet) add(id, isrc, title, artist string, dur int64) {
+	if s.ids == nil {
+		s.ids = map[string]bool{}
+	}
+	if id != "" {
+		s.ids[id] = true
+	}
+	if title != "" || isrc != "" {
+		s.metas = append(s.metas, library.MatchQuery{ISRC: isrc, Title: title, Artist: artist, DurationMs: dur})
+	}
+}
+
+func (s *dedupSet) has(id, localID, isrc, title, artist string, dur int64) bool {
+	if s.ids[id] || (localID != "" && s.ids[localID]) {
+		return true
+	}
+	if title == "" && isrc == "" {
+		return false
+	}
+	for _, m := range s.metas {
+		if sc, _ := library.MatchScore(m, isrc, title, artist, dur); sc >= 0.9 {
+			return true
+		}
+	}
+	return false
 }

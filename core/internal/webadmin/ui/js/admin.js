@@ -1,5 +1,5 @@
 // Admin pages: dashboard, devices, settings (roots, providers, transcoding, backups, sources), logs.
-import { get, post, put, patch, del, qs, api, onEvent, wsState, store } from "./api.js";
+import { get, post, put, patch, del, qs, api, onEvent, wsState, store, avatarURL } from "./api.js";
 import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog, strengthMeter, pwIssues } from "./ui.js";
 import { state, isAdmin } from "./state.js";
 import { pluginsSection, localHidden } from "./online.js";
@@ -197,14 +197,29 @@ export async function users(main) {
         } catch (e) { e.code === "last_admin" ? toast("至少需要保留一个管理员账号", "err") : e.code === "username_taken" ? toast("用户名已存在", "err") : errToast(e); }
       } }, "保存")] });
   };
+  const avatarEl = (u) => u.avatar_url ? h("img", { class: "avatar", src: avatarURL(u), alt: "" }) : h("span", { class: "avatar ph" }, (u.nickname || u.username).slice(0, 1).toUpperCase());
+  const pickAvatar = (u) => {
+    const inp = h("input", { type: "file", accept: "image/jpeg,image/png,image/webp", hidden: true, onchange: async () => {
+      const f = inp.files[0]; inp.remove(); if (!f) return;
+      if (f.size > 1 << 20) return toast("头像不能超过 1 MB", "err");
+      try { await api(`/users/${u.id}/avatar`, { method: "PUT", body: f, headers: { "Content-Type": f.type } }); toast("头像已更新"); reload(); }
+      catch (e) { e.status === 415 ? toast("仅支持 JPEG / PNG / WebP", "err") : errToast(e); }
+    } });
+    document.body.append(inp); inp.click();
+  };
   main.replaceChildren(head("用户", `${r.items.length} 个账号 · 密码以 argon2id 哈希保存`, h("button", { class: "btn primary", onclick: () => userForm("添加用户") }, icon("plus"), "添加用户")),
     h("div", { class: "table-wrap card", style: { padding: "6px 10px" } }, h("table", { class: "table" },
       h("thead", null, h("tr", null, ["用户名", "角色", "创建时间", ""].map((x) => h("th", null, x)))),
       h("tbody", null, r.items.map((u) => h("tr", null,
-        h("td", null, h("div", { class: "row" }, icon("artist"), h("b", null, u.username), u.id === me.user_id ? h("span", { class: "badge ok" }, "当前") : null)),
+        h("td", null, h("div", { class: "row" }, avatarEl(u), h("b", null, u.username), u.nickname && u.nickname !== u.username ? h("span", { class: "muted" }, u.nickname) : null, u.id === me.user_id ? h("span", { class: "badge ok" }, "当前") : null)),
         h("td", null, h("span", { class: `badge ${u.role === "admin" ? "ok" : ""}` }, u.role === "admin" ? "管理员" : "成员")),
         h("td", { class: "muted" }, fmtTime(u.created_at)),
         h("td", null, h("div", { class: "row", style: { justifyContent: "flex-end" } },
+          h("button", { class: "btn sm", onclick: () => pickAvatar(u) }, icon("image"), "头像"),
+          u.avatar_url ? h("button", { class: "btn icon sm", "aria-label": "移除头像", title: "移除头像", onclick: async () => {
+            if (!(await confirmDlg("移除头像", `移除「${u.username}」的头像？`, "移除", true))) return;
+            try { await del(`/users/${u.id}/avatar`); reload(); } catch (e) { errToast(e); }
+          } }, icon("close")) : null,
           h("button", { class: "btn sm", onclick: () => userForm(`编辑 · ${u.username}`, u) }, "编辑"),
           h("button", { class: "btn sm danger", disabled: u.id === me.user_id, onclick: async () => {
             if (!(await confirmDlg("删除用户", `删除「${u.username}」？其所有登录会话会立即失效。`, "删除", true))) return;

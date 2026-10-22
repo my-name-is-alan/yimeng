@@ -962,6 +962,66 @@ paths:
         "200": { description: Status, content: { application/json: { schema: { $ref: "#/components/schemas/LastFMStatus" } } } }
         "409": { description: "lastfm_no_token or lastfm_not_authorized (user has not granted access yet)" }
 
+  /api/v1/me:
+    get:
+      tags: [me]
+      summary: The caller's account profile
+      responses:
+        "200": { description: Profile, content: { application/json: { schema: { $ref: "#/components/schemas/MeProfile" } } } }
+        "403": { description: account_required — device not signed in to an account }
+    patch:
+      tags: [me]
+      summary: Update the caller's nickname ("" = use the username)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [nickname], properties: { nickname: { type: string, maxLength: 32 } } } } } }
+      responses:
+        "200": { description: Profile, content: { application/json: { schema: { $ref: "#/components/schemas/MeProfile" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/v1/me/avatar:
+    put:
+      tags: [me]
+      summary: "Upload the caller's avatar: raw JPEG, PNG or WebP body, at most 1 MiB and 4096×4096 px. Stored in the Core database (included in backups)."
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { description: invalid_image (dimensions) }
+        "413": { description: too_large }
+        "415": { description: unsupported_type }
+    delete:
+      tags: [me]
+      summary: Remove the caller's avatar
+      responses:
+        "204": { description: Removed }
+
+  /api/v1/users/{id}/avatar:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [users]
+      summary: An account's avatar image (any authenticated device; also accepts ?access_token= for <img>). Use the avatar_url from /me or /users.
+      security: [{ bearer: [] }, { queryToken: [] }]
+      responses:
+        "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [users]
+      summary: Set an account's avatar (admin); same limits as PUT /me/avatar
+      requestBody: { required: true, content: { image/*: { schema: { type: string, format: binary } } } }
+      responses:
+        "200": { description: Updated user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Remove an account's avatar (admin)
+      responses:
+        "204": { description: Removed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /api/v1/system/export:
     get:
       tags: [system]
@@ -1975,8 +2035,8 @@ paths:
       summary: Import an external playlist into a 译梦 playlist (new, or merged into `into`). Body {name?, prefer_local? (default true), skip_unavailable?, into?}
       description: Tracks are stored as metadata snapshots so they survive takedowns (D51). Unavailable tracks are kept (unless skip_unavailable) and counted in `unavailable`; they carry `entitlement` in playlist listings and auto-switch on playback (D50). `into` must be one of the caller's playlists (404 otherwise).
       responses:
-        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { playlist: { $ref: "#/components/schemas/Playlist" }, tracks: { type: integer }, linked_local: { type: integer }, skipped: { type: integer }, unavailable: { type: integer } } } } } }
-        "200": { description: Merged into an existing playlist (same body) }
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { playlist: { $ref: "#/components/schemas/Playlist" }, tracks: { type: integer, description: Same as added }, added: { type: integer }, skipped_duplicates: { type: integer, description: "Already in the target (or repeated in the source): same track id, linked local track, ISRC, or title+artist with duration within 3 s" }, linked_local: { type: integer }, skipped: { type: integer, description: Unavailable tracks dropped by skip_unavailable }, unavailable: { type: integer } } } } } }
+        "200": { description: "Merged into an existing playlist (same body). Re-importing the same playlist adds nothing." }
         "404": { description: into playlist not found }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -2280,7 +2340,8 @@ components:
               name: { type: string }
               enabled: { type: boolean }
               logged_in: { type: boolean }
-              nickname: { type: string }
+              nickname: { type: string, description: Authenticated callers only }
+              avatar_url: { type: string, description: "Platform account avatar (https), authenticated callers only (any role)" }
               vip: { type: boolean }
               capabilities: { type: array, items: { type: string, enum: [search, stream, lyrics, charts, daily, fm, recommend_playlists, user_playlists] } }
     CoverRef:
@@ -2414,6 +2475,8 @@ components:
       properties:
         id: { type: string }
         username: { type: string }
+        nickname: { type: string, description: Defaults to username }
+        avatar_url: { type: string, description: "Present when an avatar was uploaded" }
         role: { type: string, enum: [admin, user] }
         created_at: { type: string, format: date-time }
     Session:
@@ -2689,6 +2752,14 @@ components:
         ip: { type: string }
         detail: { type: object }
         read: { type: boolean }
+    MeProfile:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: string }
+        nickname: { type: string, description: Defaults to username }
+        avatar_url: { type: string, nullable: true, description: "Relative /api/v1/users/{id}/avatar?v=… or null" }
+        role: { type: string, enum: [admin, user] }
     ReportEntry:
       type: object
       properties: { id: { type: string }, name: { type: string }, artist_name: { type: string }, plays: { type: integer }, listened_ms: { type: integer } }

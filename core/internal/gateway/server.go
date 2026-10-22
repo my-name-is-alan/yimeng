@@ -168,6 +168,13 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/auth/logout", d.authLogout)
 	mux.HandleFunc("POST /api/auth/password", d.authPassword)
 	mux.HandleFunc("GET /api/users", d.adminOnly(d.listUsers))
+	mux.HandleFunc("GET /api/me", d.getMe)
+	mux.HandleFunc("PATCH /api/me", d.patchMe)
+	mux.HandleFunc("PUT /api/me/avatar", d.putMyAvatar)
+	mux.HandleFunc("DELETE /api/me/avatar", d.deleteMyAvatar)
+	mux.HandleFunc("GET /api/users/{id}/avatar", d.getUserAvatar)
+	mux.HandleFunc("PUT /api/users/{id}/avatar", d.adminOnly(d.putUserAvatar))
+	mux.HandleFunc("DELETE /api/users/{id}/avatar", d.adminOnly(d.deleteUserAvatar))
 	mux.HandleFunc("POST /api/users", d.adminOnly(d.createUser))
 	mux.HandleFunc("PATCH /api/users/{id}", d.adminOnly(d.patchUser))
 	mux.HandleFunc("DELETE /api/users/{id}", d.adminOnly(d.deleteUser))
@@ -358,7 +365,8 @@ func allowsQueryToken(r *http.Request) bool {
 	p := r.URL.Path
 	return p == "/ws" || p == "/api/events" || (strings.HasPrefix(p, "/api/rooms/") && strings.HasSuffix(p, "/events")) || strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/covers/") || strings.HasSuffix(p, "/download") ||
 		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/"))) ||
-		(strings.HasSuffix(p, "/image") && strings.HasPrefix(p, "/api/artists/"))
+		(strings.HasSuffix(p, "/image") && strings.HasPrefix(p, "/api/artists/")) ||
+		(strings.HasSuffix(p, "/avatar") && strings.HasPrefix(p, "/api/users/"))
 }
 
 func (d Deps) requireAuth(next http.Handler) http.Handler {

@@ -47,6 +47,7 @@ let coverBust = {};
 export const bustCover = (albumId) => { coverBust[albumId] = Date.now(); };
 export const coverURL = (albumId, size = 300) => albumId ? `/api/v1/albums/${albumId}/cover?size=${size}&access_token=${tok()}${coverBust[albumId] ? `&v=${coverBust[albumId]}` : ""}` : "";
 export const artistImageURL = (ar, size) => ar?.image_updated_at ? `/api/v1/artists/${ar.id}/image?access_token=${tok()}&v=${encodeURIComponent(ar.image_updated_at)}` : "";
+export const avatarURL = (u) => u?.avatar_url ? `${u.avatar_url}&access_token=${tok()}` : "";
 export const streamURL = (trackId) => `/api/v1/stream/${trackId}?access_token=${tok()}`;
 export const downloadURL = (trackId) => `/api/v1/tracks/${trackId}/download?access_token=${tok()}`;
 

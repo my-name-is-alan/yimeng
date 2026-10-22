@@ -15,8 +15,9 @@ type platformStatus struct {
 	Name         string   `json:"name"`
 	Enabled      bool     `json:"enabled"`
 	LoggedIn     bool     `json:"logged_in"`
-	Nickname     string   `json:"nickname,omitempty"` // authenticated callers only
-	VIP          *bool    `json:"vip,omitempty"`      // authenticated callers only
+	Nickname     string   `json:"nickname,omitempty"`   // authenticated callers only
+	AvatarURL    string   `json:"avatar_url,omitempty"` // platform account avatar; authenticated callers only
+	VIP          *bool    `json:"vip,omitempty"`        // authenticated callers only
 	Capabilities []string `json:"capabilities"`
 }
 
@@ -56,6 +57,7 @@ func (d Deps) serverInfo(w http.ResponseWriter, r *http.Request) {
 			ps.Capabilities = appCapabilities(st.Manifest.Capabilities)
 			if authed && st.Account != nil {
 				ps.Nickname = st.Account.Nickname
+				ps.AvatarURL = httpsURL(st.Account.Avatar)
 				v := st.Account.VIP
 				ps.VIP = &v
 			}
@@ -84,4 +86,12 @@ func appCapabilities(cs []online.Capability) []string {
 		}
 	}
 	return out
+}
+
+// httpsURL upgrades platform CDN links so apps (ATS) can load them.
+func httpsURL(u string) string {
+	if strings.HasPrefix(u, "http://") {
+		return "https://" + u[len("http://"):]
+	}
+	return u
 }
