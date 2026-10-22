@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - First-run gate
 
-enum FirstRunPhase: String { case launch, onboarding, sources, main }
+enum FirstRunPhase: String { case launch, intro, onboarding, sources, main }
 
 enum FirstRun {
     static let doneKey = "ym.onboardingDone"
@@ -57,9 +57,13 @@ enum OnboardPalette {
 
 // MARK: - Moonwave icon (draw-on)
 
-struct MoonwaveIcon: View {
+struct MoonwaveIcon: View, Animatable {
     var progress: CGFloat = 1
     var size: CGFloat = 140
+    /// Canvas isn't animatable by itself — without this, withAnimation(progress) jumped straight to the end frame.
+    var animatableData: CGFloat { get { progress } set { progress = newValue } }
+    /// Stroke-by-stroke: crescent, then the wave bars, then the sparkle.
+    private func seg(_ a: CGFloat, _ b: CGFloat) -> CGFloat { min(1, max(0, (progress - a) / (b - a))) }
     var body: some View {
         Canvas { ctx, sz in
             let s = sz.width / 1024
@@ -69,7 +73,7 @@ struct MoonwaveIcon: View {
             var cut = Path()
             cut.addEllipse(in: CGRect(x: 370, y: 210, width: 330, height: 330))
             let crescent = moon.subtracting(cut).applying(CGAffineTransform(scaleX: s, y: s))
-            ctx.stroke(crescent.trimmedPath(from: 0, to: progress), with: .color(.white),
+            ctx.stroke(crescent.trimmedPath(from: 0, to: seg(0, 0.55)), with: .color(.white),
                        style: StrokeStyle(lineWidth: 6 * s, lineCap: .round, lineJoin: .round))
 
             // Wave bars
@@ -82,7 +86,7 @@ struct MoonwaveIcon: View {
                 wave.move(to: CGPoint(x: x * s, y: y0 * s))
                 wave.addLine(to: CGPoint(x: x * s, y: y1 * s))
             }
-            ctx.stroke(wave.trimmedPath(from: 0, to: progress), with: .color(.white),
+            ctx.stroke(wave.trimmedPath(from: 0, to: seg(0.4, 0.85)), with: .color(.white),
                        style: StrokeStyle(lineWidth: 5.5 * s, lineCap: .round))
 
             // Sparkle
@@ -93,7 +97,7 @@ struct MoonwaveIcon: View {
             spark.addQuadCurve(to: CGPoint(x: cx, y: cy + r), control: CGPoint(x: cx, y: cy))
             spark.addQuadCurve(to: CGPoint(x: cx - r, y: cy), control: CGPoint(x: cx, y: cy))
             spark.addQuadCurve(to: CGPoint(x: cx, y: cy - r), control: CGPoint(x: cx, y: cy))
-            ctx.stroke(spark.trimmedPath(from: 0, to: progress), with: .color(.white),
+            ctx.stroke(spark.trimmedPath(from: 0, to: seg(0.78, 1)), with: .color(.white),
                        style: StrokeStyle(lineWidth: 3.5 * s, lineCap: .round, lineJoin: .round))
         }
         .frame(width: size, height: size)
@@ -156,7 +160,10 @@ struct SourceGlyph: View {
 // MARK: - Launch
 
 struct LaunchView: View {
+    /// Returning launches: quick ~0.9s version.
+    var short = false
     var onFinished: () -> Void
+    @State private var scale: CGFloat = 0.82
     @State private var bloom: CGFloat = 1.25
     @State private var bloomOp: Double = 0
     @State private var draw: CGFloat = 0
@@ -169,7 +176,7 @@ struct LaunchView: View {
             BloomField(base: pal.base, blobs: pal.blobs, bloom: bloom, opacity: bloomOp)
             VStack(spacing: 28) {
                 Spacer()
-                MoonwaveIcon(progress: draw, size: 140)
+                MoonwaveIcon(progress: draw, size: 140).scaleEffect(scale)
                 VStack(spacing: 6) {
                     Text("译梦").font(.system(size: 34, weight: .heavy)).tracking(8)
                     Text("TRANSLATING DREAMS").font(.system(size: 12, weight: .medium)).tracking(4).opacity(0.7)
@@ -186,14 +193,23 @@ struct LaunchView: View {
     }
 
     private func run() async {
-        withAnimation(.easeOut(duration: 1.6)) { bloom = 1; bloomOp = 1 }
-        try? await Task.sleep(for: .milliseconds(300))
-        withAnimation(.easeOut(duration: 1.2)) { draw = 1 }
-        try? await Task.sleep(for: .milliseconds(1600))
-        withAnimation(.easeOut(duration: 0.8)) { word = 1 }
-        try? await Task.sleep(for: .milliseconds(1600))
-        withAnimation(.easeInOut(duration: 0.55)) { fadeAll = 0 }
-        try? await Task.sleep(for: .milliseconds(550))
+        if short {
+            withAnimation(.easeOut(duration: 0.5)) { bloom = 1; bloomOp = 1; draw = 1; word = 1 }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { scale = 1 }
+            try? await Task.sleep(for: .milliseconds(650))
+            withAnimation(.easeInOut(duration: 0.3)) { fadeAll = 0 }
+            try? await Task.sleep(for: .milliseconds(300))
+            onFinished(); return
+        }
+        withAnimation(.easeOut(duration: 1.2)) { bloom = 1; bloomOp = 1 }
+        withAnimation(.spring(response: 0.9, dampingFraction: 0.62)) { scale = 1 }
+        try? await Task.sleep(for: .milliseconds(150))
+        withAnimation(.easeInOut(duration: 1.5)) { draw = 1 }
+        try? await Task.sleep(for: .milliseconds(1300))
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) { word = 1 }
+        try? await Task.sleep(for: .milliseconds(900))
+        withAnimation(.easeInOut(duration: 0.45)) { fadeAll = 0 }
+        try? await Task.sleep(for: .milliseconds(450))
         onFinished()
     }
 }
@@ -1057,7 +1073,7 @@ struct RootGate: View {
             }
         }()
         if let forced { _phase = State(initialValue: forced) }
-        else if FirstRun.isDone { _phase = State(initialValue: .main) }
+        else if FirstRun.isDone { _phase = State(initialValue: .intro) }
         else { _phase = State(initialValue: .launch) }
     }
 
@@ -1066,6 +1082,8 @@ struct RootGate: View {
             switch phase {
             case .launch:
                 LaunchView { withAnimation(.easeInOut(duration: 0.35)) { phase = .onboarding } }
+            case .intro:
+                LaunchView(short: true) { withAnimation(.easeInOut(duration: 0.3)) { phase = .main } }
             case .onboarding:
                 OnboardingView(
                     onSkip: { withAnimation { phase = .sources } },
