@@ -34,7 +34,9 @@ targets:
         # Simulator: ad-hoc sign with entitlements so Keychain works (unsigned → errSecMissingEntitlement -34018).
         "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
-        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Yimeng/Yimeng.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Yimeng/YimengSim.entitlements
+        # Free personal team: App Groups only on simulator builds; device widgets fall back to placeholders.
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator*]": "$(inherited) YM_APP_GROUP"
         MARKETING_VERSION: "0.3.6"
         CURRENT_PROJECT_VERSION: "9"
   YimengWidgets:
@@ -63,6 +65,8 @@ targets:
         "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         SKIP_INSTALL: YES
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": YimengWidgets/YimengWidgetsSim.entitlements
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator*]": "$(inherited) YM_APP_GROUP"
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         MARKETING_VERSION: "0.3.6"
         CURRENT_PROJECT_VERSION: "9"

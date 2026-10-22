@@ -2,9 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSUserActivityTypes</key>
+	<key>CFBundleURLTypes</key>
 	<array>
-		<string>art.yimeng.app.playing</string>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>art.yimeng.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>yimeng</string>
+			</array>
+		</dict>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -21,5 +28,9 @@
 			</dict>
 		</dict>
 	</dict>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>art.yimeng.app.playing</string>
+	</array>
 </dict>
 </plist>

@@ -530,6 +530,7 @@ final class PlayerStore: ObservableObject {
         if let album = s.album { info[MPMediaItemPropertyAlbumTitle] = album }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = isPlaying ? .playing : .paused
+        YMWidgetBridge.nowPlaying(s, playing: isPlaying, coverURL: coverURL)
     }
 }
 

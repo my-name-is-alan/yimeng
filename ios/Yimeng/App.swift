@@ -154,6 +154,8 @@ struct YimengApp: App {
     var body: some Scene {
         WindowGroup {
             RootGate(state: state)
+                .onOpenURL { YMWidgetBridge.open($0) }
+                .onAppear { YMWidgetBridge.installHooks() }
                 .preferredColorScheme(appearance == 1 ? .light : appearance == 2 ? .dark : nil)
         }
     }

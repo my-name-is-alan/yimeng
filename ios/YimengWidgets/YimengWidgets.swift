@@ -5,7 +5,7 @@ import ActivityKit
 
 @main
 struct YimengWidgetsBundle: WidgetBundle {
-    var body: some Widget { YimengLiveActivity() }
+    var body: some Widget { NowPlayingWidget(); CardWidget(); FMWidget(); YimengLiveActivity() }
 }
 
 private let lime = Color(red: 0.784, green: 0.961, blue: 0.259)

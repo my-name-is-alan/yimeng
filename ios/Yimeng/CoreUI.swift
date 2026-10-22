@@ -185,6 +185,7 @@ final class PlatformStore: ObservableObject {
         }
         dailies = d; recommend = r
         fmOrigins = CoreState.platforms(can: "fm").map(\.origin)
+        YMWidgetBridge.fm(fmOrigins)
     }
     func loadUserPlaylists() async {
         guard NavidromeClient.core else { userPlaylists = []; return }
