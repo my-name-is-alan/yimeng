@@ -610,3 +610,16 @@ func (s *Service) HTTPClient(origin string) (*Client, error) {
 	}
 	return in.client, nil
 }
+
+// FlushPlugin drops every cached stream lease of a plugin (account switch:
+// leases were resolved with the previous account's entitlement).
+func (s *Service) FlushPlugin(origin string) {
+	s.Invalidate(origin + ":")
+	s.mu.Lock()
+	for k := range s.leases {
+		if strings.HasPrefix(k, origin+":") {
+			delete(s.leases, k)
+		}
+	}
+	s.mu.Unlock()
+}

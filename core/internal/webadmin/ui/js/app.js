@@ -8,6 +8,7 @@ import * as adm from "./admin.js";
 import { lyricsPage } from "./lyrics.js";
 import { metadataPage } from "./metadata.js";
 import * as onl from "./online.js";
+import { initHScroll } from "./hscroll.js";
 
 adm.applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", adm.applyTheme);
@@ -161,4 +162,5 @@ async function boot() {
   route();
 }
 onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
+initHScroll();
 boot();

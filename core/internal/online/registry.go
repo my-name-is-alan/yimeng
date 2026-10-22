@@ -65,6 +65,7 @@ type instance struct {
 	account  *Account
 	accAt    time.Time
 	lastErr  string
+	acctID   string // saved account currently active (plugin_accounts)
 }
 
 // Registry owns plugin instances, their settings (plugin_settings table) and
@@ -151,8 +152,12 @@ func (r *Registry) load(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	acct := ""
+	if loggedIn {
+		acct = r.defaultAccount(ctx, id)
+	}
 	r.mu.Lock()
-	in.plugin, in.client, in.enabled, in.config, in.method, in.loggedIn = p, client, enabled, cfg, method, loggedIn
+	in.plugin, in.client, in.enabled, in.config, in.method, in.loggedIn, in.acctID = p, client, enabled, cfg, method, loggedIn, acct
 	r.mu.Unlock()
 	return nil
 }
@@ -240,6 +245,9 @@ type Status struct {
 	// Secrets reports which "secret" config fields have a value in the Vault
 	// (never the values themselves).
 	Secrets map[string]bool `json:"secrets,omitempty"`
+	// Accounts lists saved accounts (default first); ActiveAccount is the default's id.
+	Accounts      []AccountEntry `json:"accounts,omitempty"`
+	ActiveAccount string         `json:"active_account,omitempty"`
 }
 
 func (r *Registry) get(id string) (*instance, error) {
@@ -253,9 +261,17 @@ func (r *Registry) get(id string) (*instance, error) {
 }
 
 func (r *Registry) status(in *instance) Status {
+	st := r.baseStatus(in)
+	if accs, err := r.Accounts(context.Background(), in.manifest.ID); err == nil && len(accs) > 0 {
+		st.Accounts = accs
+	}
+	return st
+}
+
+func (r *Registry) baseStatus(in *instance) Status {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	st := Status{Manifest: in.manifest, Enabled: in.enabled, Config: in.config, LoggedIn: in.loggedIn,
+	st := Status{ActiveAccount: in.acctID, Manifest: in.manifest, Enabled: in.enabled, Config: in.config, LoggedIn: in.loggedIn,
 		LoginMethod: in.method, Account: in.account, LastError: in.lastErr}
 	for _, f := range in.manifest.Config {
 		if f.Type == "secret" {
@@ -315,6 +331,7 @@ func (r *Registry) checkAccount(ctx context.Context, in *instance, force bool) {
 	switch {
 	case err == nil:
 		in.account, in.accAt, in.lastErr = &acc, time.Now(), ""
+		defer r.updateAccountInfo(ctx, in, acc)
 	case errors.Is(err, ErrNeedsLogin):
 		in.account, in.lastErr = nil, "登录已失效，请重新登录"
 	default:
@@ -443,6 +460,14 @@ func (r *Registry) Persist(ctx context.Context, id string) {
 	if err := r.vault.Put(ctx, vaultKey(id), vault.Credential{Method: vault.LoginMethod(method), Fields: fields}); err != nil {
 		r.log.Error("plugin session persist", "plugin", id, "err", err)
 	}
+	r.mu.Lock()
+	acct := in.acctID
+	r.mu.Unlock()
+	if logged && acct != "" {
+		if err := r.vault.Put(ctx, accountVaultKey(id, acct), vault.Credential{Method: vault.LoginMethod(method), Fields: sessionOnly(fields)}); err != nil {
+			r.log.Error("plugin account persist", "plugin", id, "err", err)
+		}
+	}
 }
 
 func (r *Registry) auth(id string) (*instance, Authenticator, error) {
@@ -465,7 +490,11 @@ func (r *Registry) loggedIn(ctx context.Context, in *instance, m LoginMethod, ac
 	if r.vault == nil {
 		return nil
 	}
-	return r.vault.Put(ctx, vaultKey(in.manifest.ID), vault.Credential{Method: vault.LoginMethod(m), Fields: in.client.Cookies()})
+	if err := r.vault.Put(ctx, vaultKey(in.manifest.ID), vault.Credential{Method: vault.LoginMethod(m), Fields: in.client.Cookies()}); err != nil {
+		return err
+	}
+	r.saveAccount(ctx, in, acc, m)
+	return nil
 }
 
 func (r *Registry) StartQR(ctx context.Context, id string) (QRChallenge, error) {
@@ -585,17 +614,32 @@ func (r *Registry) Refresh(ctx context.Context, id string) (Status, error) {
 	return r.status(in), nil
 }
 
-// Logout forgets the session locally (Vault entry and jar).
+// Logout signs out the default account and forgets it; another saved
+// account (if any) becomes the default.
 func (r *Registry) Logout(ctx context.Context, id string) error {
 	in, err := r.get(id)
 	if err != nil {
 		return err
 	}
+	r.mu.Lock()
+	acct := in.acctID
+	r.mu.Unlock()
+	if acct != "" {
+		_, err := r.RemoveAccount(ctx, id, acct)
+		return err
+	}
+	return r.signOut(ctx, in)
+}
+
+// signOut clears the active session (Vault "plugin.<id>" and jar), keeping
+// device/secret keys and other saved accounts.
+func (r *Registry) signOut(ctx context.Context, in *instance) error {
+	id := in.manifest.ID
 	dev := deviceFields(in.client.Cookies())
 	in.client.ReplaceCookies(dev)
 	in.client.TakeDirty()
 	r.mu.Lock()
-	in.loggedIn, in.account, in.method, in.lastErr = false, nil, "", ""
+	in.loggedIn, in.account, in.method, in.lastErr, in.acctID = false, nil, "", "", ""
 	r.mu.Unlock()
 	if r.vault != nil {
 		if len(dev) > 0 {

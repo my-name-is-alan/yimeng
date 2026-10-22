@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/search"
 )
 
 const (
@@ -40,6 +41,9 @@ type Config struct {
 	UserAgent         string
 	Creds             Creds
 	Now               func() time.Time
+	// Aliases optionally returns other names of an artist (e.g. MusicBrainz
+	// aliases: 周杰伦 → Jay Chou, Zhou Jielun). Used for Chinese ↔ romanised matching.
+	Aliases func(ctx context.Context, name string) []string
 }
 
 type Provider struct {
@@ -269,7 +273,7 @@ type searchResp struct {
 	Artists struct{ Items []artist } `json:"artists"`
 }
 
-func names(as []simpleArtist) string {
+func joinNames(as []simpleArtist) string {
 	out := make([]string, 0, len(as))
 	for _, a := range as {
 		out = append(out, a.Name)
@@ -308,10 +312,70 @@ func sim(a, b string) float64 {
 		return 0
 	case a == b:
 		return 1
-	case strings.Contains(a, b) || strings.Contains(b, a):
+	}
+	// 叶惠美 vs 葉惠美, 晴天 vs 晴天 (Live): compare toneless pinyin keys
+	pa, pb := search.Pinyin(a), search.Pinyin(b)
+	if (search.HasHan(a) || search.HasHan(b)) && pa != "" && pa == pb {
+		return 0.95
+	}
+	if strings.Contains(a, b) || strings.Contains(b, a) || (pa != "" && pb != "" && (strings.Contains(pa, pb) || strings.Contains(pb, pa))) {
 		return 0.6
 	}
 	return 0
+}
+
+// artistNames maps candidate names of the queried artist to a confidence:
+// the name itself (1), external aliases (1) and, for Chinese names, the top
+// Spotify artist search hit (0.85, e.g. 周杰伦 → Jay Chou).
+func (p *Provider) artistNames(ctx context.Context, name string) map[string]float64 {
+	out := map[string]float64{}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return out
+	}
+	out[name] = 1
+	if !search.HasHan(name) {
+		return out
+	}
+	if p.cfg.Aliases != nil {
+		for _, a := range p.cfg.Aliases(ctx, name) {
+			if a = strings.TrimSpace(a); a != "" {
+				out[a] = 1
+			}
+		}
+	}
+	var r searchResp
+	if err := p.get(ctx, "/search", url.Values{"q": {name}, "type": {"artist"}, "limit": {"3"}}, &r); err == nil && len(r.Artists.Items) > 0 {
+		top := r.Artists.Items[0]
+		if _, ok := out[top.Name]; !ok && !search.HasHan(top.Name) && top.Followers.Total >= 10000 {
+			out[top.Name] = 0.85
+		}
+	}
+	return out
+}
+
+// artistSim is the best match between any known name and any credited artist.
+func artistSim(names map[string]float64, credited string) float64 {
+	best := 0.0
+	for _, c := range strings.Split(credited, ", ") {
+		for n, w := range names {
+			if v := w * sim(n, c); v > best {
+				best = v
+			}
+		}
+	}
+	return best
+}
+
+// latinAlias picks the strongest non-Chinese alias (for the search query).
+func latinAlias(names map[string]float64) string {
+	best, bw := "", 0.0
+	for n, w := range names {
+		if !search.HasHan(n) && w > bw {
+			best, bw = n, w
+		}
+	}
+	return best
 }
 
 // quote escapes a value for Spotify's field filter syntax.
@@ -341,33 +405,51 @@ func (p *Provider) LookupTrack(ctx context.Context, q metadata.TrackQuery) ([]me
 		}
 		items = r.Tracks.Items
 	}
+	names := map[string]float64{}
 	if len(items) == 0 {
 		if strings.TrimSpace(q.Title) == "" {
 			return nil, nil
+		}
+		names = p.artistNames(ctx, q.Artist)
+		queries := []string{}
+		if alias := latinAlias(names); alias != "" {
+			queries = append(queries, `track:"`+quote(q.Title)+`" artist:"`+quote(alias)+`"`)
 		}
 		s := `track:"` + quote(q.Title) + `"`
 		if a := quote(q.Artist); a != "" {
 			s += ` artist:"` + a + `"`
 		}
-		r, err := p.search(ctx, s, "track")
-		if err != nil {
-			return nil, err
+		queries = append(queries, s)
+		seen := map[string]bool{}
+		for _, qs := range queries {
+			r, err := p.search(ctx, qs, "track")
+			if err != nil {
+				return nil, err
+			}
+			for _, t := range r.Tracks.Items {
+				if !seen[t.ID] {
+					seen[t.ID] = true
+					items = append(items, t)
+				}
+			}
 		}
-		items = r.Tracks.Items
 		if len(items) == 0 { // field filters are strict; fall back to free text
-			if r, err = p.search(ctx, strings.TrimSpace(q.Title+" "+q.Artist), "track"); err != nil {
+			r, err := p.search(ctx, strings.TrimSpace(q.Title+" "+q.Artist), "track")
+			if err != nil {
 				return nil, err
 			}
 			items = r.Tracks.Items
 		}
+	} else {
+		names = map[string]float64{q.Artist: 1}
 	}
 	out := make([]metadata.TrackMatch, 0, len(items))
 	for _, t := range items {
-		m := metadata.TrackMatch{Provider: metadata.Spotify, ExternalID: t.ID, Title: t.Name, Artist: names(t.Artists),
-			Album: t.Album.Name, AlbumArtist: names(t.Album.Artists), TrackNo: t.TrackNumber, DiscNo: t.DiscNumber,
+		m := metadata.TrackMatch{Provider: metadata.Spotify, ExternalID: t.ID, Title: t.Name, Artist: joinNames(t.Artists),
+			Album: t.Album.Name, AlbumArtist: joinNames(t.Album.Artists), TrackNo: t.TrackNumber, DiscNo: t.DiscNumber,
 			Year: year(t.Album.ReleaseDate), ReleaseDate: t.Album.ReleaseDate, DurationMs: t.DurationMs,
 			ISRC: strings.ToUpper(t.ExternalIDs["isrc"]), CoverURL: bestImage(t.Album.Images), Popularity: t.Popularity}
-		m.Score = trackScore(q, m)
+		m.Score = trackScore(q, m, names)
 		out = append(out, m)
 	}
 	// Genre lives on artists in Spotify's model: fill it for the best match only.
@@ -390,11 +472,14 @@ func bestIdx(ms []metadata.TrackMatch) int {
 	return b
 }
 
-func trackScore(q metadata.TrackQuery, m metadata.TrackMatch) float64 {
+func trackScore(q metadata.TrackQuery, m metadata.TrackMatch, names map[string]float64) float64 {
 	if q.ISRC != "" && strings.EqualFold(q.ISRC, m.ISRC) {
 		return 1
 	}
-	s := 0.5*sim(q.Title, m.Title) + 0.3*sim(q.Artist, m.Artist)
+	if len(names) == 0 && q.Artist != "" {
+		names = map[string]float64{q.Artist: 1}
+	}
+	s := 0.5*sim(q.Title, m.Title) + 0.3*artistSim(names, m.Artist)
 	if q.Album != "" {
 		s += 0.1 * sim(q.Album, m.Album)
 	} else {
@@ -424,22 +509,28 @@ func trackScore(q metadata.TrackQuery, m metadata.TrackMatch) float64 {
 }
 
 func (p *Provider) albumInfo(a album) metadata.AlbumInfo {
-	return metadata.AlbumInfo{Provider: metadata.Spotify, ExternalID: a.ID, Title: a.Name, AlbumArtist: names(a.Artists),
+	return metadata.AlbumInfo{Provider: metadata.Spotify, ExternalID: a.ID, Title: a.Name, AlbumArtist: joinNames(a.Artists),
 		Year: year(a.ReleaseDate), ReleaseDate: a.ReleaseDate, Label: a.Label, Genres: a.Genres,
 		UPC: a.ExternalIDs["upc"], CoverURL: bestImage(a.Images), Popularity: a.Popularity, TrackCount: a.TotalTracks}
 }
 
 func (p *Provider) LookupAlbum(ctx context.Context, q metadata.AlbumQuery) ([]metadata.AlbumInfo, error) {
 	var items []album
+	names := map[string]float64{q.AlbumArtist: 1}
 	if id := q.ExternalIDs[metadata.Spotify]; id != "" {
 		items = []album{{ID: id}}
 	} else {
 		if strings.TrimSpace(q.Title) == "" {
 			return nil, nil
 		}
+		names = p.artistNames(ctx, q.AlbumArtist)
+		artist := quote(q.AlbumArtist)
+		if alias := latinAlias(names); alias != "" {
+			artist = quote(alias)
+		}
 		s := `album:"` + quote(q.Title) + `"`
-		if a := quote(q.AlbumArtist); a != "" {
-			s += ` artist:"` + a + `"`
+		if artist != "" {
+			s += ` artist:"` + artist + `"`
 		}
 		r, err := p.search(ctx, s, "album")
 		if err != nil {
@@ -467,9 +558,19 @@ func (p *Provider) LookupAlbum(ctx context.Context, q metadata.AlbumQuery) ([]me
 		if a.Name == "" {
 			continue
 		}
-		out = append(out, p.albumInfo(a))
+		info := p.albumInfo(a)
+		info.Score = albumScoreQ(q, info, names)
+		out = append(out, info)
 	}
 	return out, nil
+}
+
+func albumScoreQ(q metadata.AlbumQuery, a metadata.AlbumInfo, names map[string]float64) float64 {
+	s := 0.6*sim(q.Title, a.Title) + 0.3*artistSim(names, a.AlbumArtist)
+	if q.Year != 0 && q.Year == a.Year {
+		s += 0.1
+	}
+	return s
 }
 
 func (p *Provider) LookupArtist(ctx context.Context, q metadata.ArtistQuery) ([]metadata.ArtistInfo, error) {

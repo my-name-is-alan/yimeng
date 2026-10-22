@@ -117,6 +117,7 @@ type AlbumInfo struct {
 	MBReleaseID string
 	Description string
 	UPC         string
+	Score       float64 // provider-side confidence (0 = not computed)
 	CoverURL    string
 	Popularity  int
 	TrackCount  int

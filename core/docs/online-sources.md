@@ -204,6 +204,11 @@ Protocol knowledge from MIT sources (see `NOTICE`) and our own live probes; AGPL
 - **Local bootstrap:** when `YIMENG_SPOTIFY_CLIENT_ID/SECRET` are in the environment and the Vault has no value yet, Core seeds them once (logs only the field name). `YIMENG_SPOTIFY_API_BASE_URL` / `_AUTH_BASE_URL` override the endpoints.
 - Tests: `adapters/spotify/spotify_test.go` (fake API with trimmed live fixtures: token caching, 401 refresh, ISRC, bad credentials not echoed, CDN allowlist, Multi skipping) and `online/spotify/plugin_test.go` (secrets never in status/plugin_settings, Vault round-trip, clear, disabled = no secret). Smoke: `go run ./cmd/spotify-smoke` with the env vars set (prints neither credentials nor token).
 
+## 9d. Anonymous metadata & lyrics (no login)
+`internal/online/anon` wraps each platform's catalog on its own cookie-less client: `LookupTrack/LookupAlbum/CoverArt/Lyrics` (pinyin-aware scoring, 叶惠美 ≈ 葉惠美) and `SearchLyrics` for the lyrics workbench (`provider` = netease | qq | kugou, plus `ref` = platform track id). Enabled independently of the streaming plugins. QR login: each plugin declares `qr_channels` (id, label, app, hint); the dialog shows the hint (e.g. 「请使用 QQ 扫码（手机 QQ App，不是 QQ音乐 或 微信）」) and tabs when there is more than one channel.
+
+Stream proxy: the response must look like audio; HTML/JSON bodies (even labelled `audio/mpeg`) make Core try `Stream.Alternates` (QQ: other `sip` / known CDN hosts) and finally answer `502 upstream_rejected`.
+
 ## 10. Known gaps
 
 - One account per platform.

@@ -36,6 +36,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
 			online.CapDiscover, online.CapUserPlaylists, online.CapStream},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie},
+		QRChannels:   []online.QRChannel{{ID: "qq", Label: "QQ 扫码", App: "手机 QQ", Hint: "请使用 QQ 扫码（手机 QQ App，不是 QQ音乐 或 微信）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless},
 		DefaultRate:  40,
 		Notice:       "仅播放当前账号有权收听的内容：付费/会员歌曲在非会员账号下只播放 QQ 音乐官方试听片段。不解密 qmc/mflac，不绕过任何限制。",
@@ -578,6 +579,25 @@ func (p *Plugin) vkey(ctx context.Context, mid string, files []string) (vkeyResp
 	return v, err
 }
 
+// cdnHosts are QQ Music stream hosts tried after the vkey's own sips.
+var cdnHosts = []string{"https://isure.stream.qqmusic.qq.com/", "http://ws.stream.qqmusic.qq.com/", "http://aqqmusic.tc.qq.com/", "https://dl.stream.qqmusic.qq.com/"}
+
+// altURLs lists purl on every other known host (the first sip may answer an
+// HTML "Forbidden" page for some regions/accounts).
+func altURLs(sips []string, purl string) []string {
+	first := pickSip(sips)
+	seen := map[string]bool{first: true}
+	var out []string
+	for _, h := range append(append([]string{}, sips...), cdnHosts...) {
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h+purl)
+	}
+	return out
+}
+
 func pickSip(sips []string) string {
 	for _, s := range sips {
 		if !strings.HasPrefix(s, "http://ws") {
@@ -630,7 +650,7 @@ func (p *Plugin) Resolve(ctx context.Context, id string, q online.Quality) (onli
 		}
 		for i, f := range cands {
 			if u := purls[files[i]]; u != "" && !strings.HasPrefix(u, "RS02") {
-				return online.Stream{URL: pickSip(v.Sip) + u, Header: map[string]string{"Referer": "https://y.qq.com/", "User-Agent": uaWeb},
+				return online.Stream{URL: pickSip(v.Sip) + u, Alternates: altURLs(v.Sip, u), Header: map[string]string{"Referer": "https://y.qq.com/", "User-Agent": uaWeb},
 					Entitlement: online.EntFull, Quality: f.q, Format: f.ext, BitrateKbps: f.kbps, SizeBytes: f.size(s),
 					DurationMs: dur, ExpiresAt: p.now().Add(20 * time.Minute)}, nil
 			}
@@ -646,7 +666,7 @@ func (p *Plugin) Resolve(ctx context.Context, id string, q online.Quality) (onli
 			if end <= s.File.TryBegin {
 				end = s.File.TryBegin + 30000
 			}
-			return online.Stream{URL: pickSip(v.Sip) + v.MidURLInfo[0].Purl, Header: map[string]string{"Referer": "https://y.qq.com/", "User-Agent": uaWeb},
+			return online.Stream{URL: pickSip(v.Sip) + v.MidURLInfo[0].Purl, Alternates: altURLs(v.Sip, v.MidURLInfo[0].Purl), Header: map[string]string{"Referer": "https://y.qq.com/", "User-Agent": uaWeb},
 				Entitlement: online.EntPreview, Quality: online.QStandard, Format: "mp3", BitrateKbps: 128, SizeBytes: s.File.SizeTry,
 				DurationMs: dur, PreviewStartMs: s.File.TryBegin, PreviewEndMs: end,
 				Reason: "付费/会员歌曲：当前账号仅可播放 QQ 音乐官方试听片段", ExpiresAt: p.now().Add(20 * time.Minute)}, nil

@@ -1,6 +1,6 @@
 // Reusable library widgets: album/artist cards, track lists with actions, editors.
 import { get, post, put, del, qs, coverURL, downloadURL, bustCover } from "./api.js";
-import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG } from "./ui.js";
+import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg, promptDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel } from "./ui.js";
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
@@ -168,7 +168,7 @@ async function resetOverride(type, id) {
 function mbPane(kind, obj, form, fields) {
   const q1 = h("input", { class: "input", value: obj.title || "", placeholder: "标题" });
   const q2 = h("input", { class: "input", value: obj.artist_name || "", placeholder: "艺人" });
-  const res = h("div", { class: "stack" }, h("p", { class: "muted", style: { margin: 0 } }, "从 MusicBrainz 与 Spotify（已在「在线音源」中配置时）查找候选，按置信度排序；选中后对比差异，勾选要应用的字段写入本地覆盖（不修改音频文件）。"));
+  const res = h("div", { class: "stack" }, h("p", { class: "muted", style: { margin: 0 } }, "从 MusicBrainz、Spotify（配置 Client 凭据后）、网易云、QQ音乐、酷狗 查找候选（匿名公开接口，无需登录），按置信度排序；选中后对比差异，勾选要应用的字段写入本地覆盖（不修改音频文件）。"));
   const run = async () => {
     res.replaceChildren(h("div", { class: "skel", style: { height: "70px" } }), h("div", { class: "skel", style: { height: "70px" } }));
     try {
@@ -177,9 +177,9 @@ function mbPane(kind, obj, form, fields) {
       res.replaceChildren(...r.items.sort((a, b) => b.score - a.score).map((c) => {
         const b = h("button", { class: "cand", onclick: () => { [...res.children].forEach((x) => x.setAttribute("aria-selected", x === b)); showDiff(c); } },
           h("div", { class: "row" }, c.cover_url ? h("img", { src: c.cover_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer", style: { width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover" } }) : null,
-            h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: "badge" }, c.provider === "spotify" ? "Spotify" : "MusicBrainz"), conf(c.score)),
+            h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: `badge src-${c.provider || ""}` }, providerLabel(c.provider)), conf(c.score)),
           h("div", { class: "muted", style: { fontSize: "13px" } }, [c.artist, c.album, c.release_date || c.year, c.label, c.duration_ms ? fmtDur(c.duration_ms) : "", c.track_count ? `${c.track_count} 首` : ""].filter(Boolean).join(" · ")),
-          h("div", { class: "dim mono" }, [c.isrc && `ISRC ${c.isrc}`, c.upc && `UPC ${c.upc}`, c.popularity ? `热度 ${c.popularity}` : "", (c.genres || []).slice(0, 3).join(" / "), c.mb_recording_id || c.mb_release_id || (c.provider === "spotify" ? "" : c.external_id)].filter(Boolean).join(" · ")));
+          h("div", { class: "dim mono" }, [c.isrc && `ISRC ${c.isrc}`, c.upc && `UPC ${c.upc}`, c.popularity ? `热度 ${c.popularity}` : "", (c.genres || []).slice(0, 3).join(" / "), c.mb_recording_id || c.mb_release_id || (c.provider === "musicbrainz" ? c.external_id : "")].filter(Boolean).join(" · ")));
         return b;
       }));
     } catch (e) { res.replaceChildren(h("p", { class: "muted" }, e.status === 503 ? "元数据来源未配置。" : `查询失败：${e.message}`)); }

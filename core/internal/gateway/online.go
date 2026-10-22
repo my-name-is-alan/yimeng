@@ -1,8 +1,10 @@
 package gateway
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -50,6 +52,9 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/plugins/{id}/login/qr/{key}", d.adminOnly(d.pluginQRPoll))
 	mux.HandleFunc("POST /api/plugins/{id}/refresh", d.adminOnly(d.pluginRefresh))
 	mux.HandleFunc("DELETE /api/plugins/{id}/session", d.adminOnly(d.pluginLogout))
+	mux.HandleFunc("GET /api/plugins/{id}/accounts", d.adminOnly(d.pluginAccounts))
+	mux.HandleFunc("POST /api/plugins/{id}/accounts/{acct}/default", d.adminOnly(d.pluginAccountDefault))
+	mux.HandleFunc("DELETE /api/plugins/{id}/accounts/{acct}", d.adminOnly(d.pluginAccountRemove))
 
 	mux.HandleFunc("GET /api/home", d.home)
 	mux.HandleFunc("GET /api/charts", d.charts)
@@ -190,6 +195,30 @@ func (d Deps) pluginDone(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (d Deps) pluginQR(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Channel string `json:"channel"`
+	}
+	if r.ContentLength > 0 {
+		if err := decodeBody(r, &b); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
+			return
+		}
+	}
+	if b.Channel != "" {
+		st, err := d.Online.Reg.Status(r.Context(), r.PathValue("id"))
+		if err != nil {
+			d.onlineErr(w, "qr", err)
+			return
+		}
+		known := false
+		for _, c := range st.Manifest.QRChannels {
+			known = known || c.ID == b.Channel
+		}
+		if !known {
+			writeErr(w, http.StatusBadRequest, "unsupported_channel", "this plugin has no QR channel "+b.Channel)
+			return
+		}
+	}
 	ch, err := d.Online.Reg.StartQR(r.Context(), r.PathValue("id"))
 	if err != nil {
 		d.onlineErr(w, "qr", err)
@@ -226,6 +255,45 @@ func (d Deps) pluginLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (d Deps) pluginAccounts(w http.ResponseWriter, r *http.Request) {
+	accs, err := d.Online.Reg.Accounts(r.Context(), r.PathValue("id"))
+	if err != nil {
+		d.onlineErr(w, "accounts", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": accs})
+}
+
+func (d Deps) accountErr(w http.ResponseWriter, op string, err error) {
+	if errors.Is(err, online.ErrUnknownAccount) {
+		writeErr(w, http.StatusNotFound, "unknown_account", err.Error())
+		return
+	}
+	d.onlineErr(w, op, err)
+}
+
+func (d Deps) pluginAccountDefault(w http.ResponseWriter, r *http.Request) {
+	st, err := d.Online.Reg.SwitchAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
+	if err != nil {
+		d.accountErr(w, "switch account", err)
+		return
+	}
+	d.Online.FlushPlugin(r.PathValue("id"))
+	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (d Deps) pluginAccountRemove(w http.ResponseWriter, r *http.Request) {
+	st, err := d.Online.Reg.RemoveAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
+	if err != nil {
+		d.accountErr(w, "remove account", err)
+		return
+	}
+	d.Online.FlushPlugin(r.PathValue("id"))
+	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+	writeJSON(w, http.StatusOK, st)
 }
 
 // ---- mode ---------------------------------------------------------------
@@ -683,28 +751,16 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 		if !prof.IsOriginal() {
 			method = http.MethodGet
 		}
-		req, _ := http.NewRequestWithContext(r.Context(), method, res.URL, nil)
-		for k, v := range res.Header {
-			req.Header.Set(k, v)
-		}
-		if rg := r.Header.Get("Range"); rg != "" && prof.IsOriginal() {
-			req.Header.Set("Range", rg)
-		}
-		resp, err := upstreamHC.Do(req)
-		if err != nil {
-			writeErr(w, http.StatusBadGateway, "upstream", "upstream fetch failed")
+		resp, status := d.fetchUpstream(r, method, res, prof.IsOriginal())
+		if resp == nil {
+			if status == http.StatusForbidden && attempt == 0 {
+				d.Online.Invalidate(id)
+				continue // URL expired / host refused: re-resolve once
+			}
+			writeErr(w, http.StatusBadGateway, "upstream_rejected", fmt.Sprintf("音源服务器拒绝了请求（HTTP %d）。可能是登录失效或该曲目暂不可播放，请稍后重试或重新登录平台账号。", status))
 			return true
-		}
-		if (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusGone || resp.StatusCode == http.StatusNotFound) && attempt == 0 {
-			resp.Body.Close()
-			d.Online.Invalidate(id)
-			continue // URL expired: re-resolve once
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			writeErr(w, http.StatusBadGateway, "upstream", "upstream status "+strconv.Itoa(resp.StatusCode))
-			return true
-		}
 		h := w.Header()
 		if !prof.IsOriginal() {
 			d.pipeExternal(w, r, resp.Body, prof, res)
@@ -739,6 +795,69 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	writeErr(w, http.StatusBadGateway, "upstream", "upstream url expired")
 	return true
+}
+
+// fetchUpstream GETs the resolved URL, then each alternate host, and
+// returns the first response that is actually audio (CDNs sometimes answer
+// 200 with an HTML "Forbidden" page). On failure it returns nil and the
+// last upstream status (403 for HTML/JSON error pages).
+func (d Deps) fetchUpstream(r *http.Request, method string, res online.Resolution, passRange bool) (*http.Response, int) {
+	status := http.StatusBadGateway
+	for _, raw := range append([]string{res.URL}, res.Alternates...) {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			continue
+		}
+		req, _ := http.NewRequestWithContext(r.Context(), method, raw, nil)
+		for k, v := range res.Header {
+			req.Header.Set(k, v)
+		}
+		if rg := r.Header.Get("Range"); rg != "" && passRange {
+			req.Header.Set("Range", rg)
+		}
+		resp, err := upstreamHC.Do(req)
+		if err != nil {
+			if r.Context().Err() != nil {
+				return nil, status
+			}
+			continue
+		}
+		ct := strings.ToLower(resp.Header.Get("Content-Type"))
+		if resp.StatusCode < 400 && !strings.HasPrefix(ct, "text/") && !strings.Contains(ct, "json") {
+			if cr := resp.Header.Get("Content-Range"); method == http.MethodHead || (cr != "" && !strings.HasPrefix(cr, "bytes 0-")) {
+				return resp, resp.StatusCode
+			}
+			// some CDNs label an HTML error page audio/*: sniff the body
+			br := bufio.NewReaderSize(resp.Body, 512)
+			head, _ := br.Peek(64)
+			if !looksLikeErrorPage(head) {
+				resp.Body = struct {
+					io.Reader
+					io.Closer
+				}{br, resp.Body}
+				return resp, resp.StatusCode
+			}
+		}
+		status = resp.StatusCode
+		if status < 400 {
+			status = http.StatusForbidden // error page served as 200
+		}
+		resp.Body.Close()
+		d.Log.Warn("online upstream rejected", "origin", res.Origin, "host", u.Host, "status", resp.StatusCode, "content_type", ct)
+	}
+	return nil, status
+}
+
+// looksLikeErrorPage reports whether a supposed audio body starts like an
+// HTML/XML/JSON document.
+func looksLikeErrorPage(b []byte) bool {
+	t := strings.ToLower(strings.TrimLeft(string(b), " \t\r\n\ufeff"))
+	for _, p := range []string{"<html", "<!doctype", "<?xml", "<head", "<body", "{", "["} {
+		if strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // onlineProfile picks the stream profile for an online track: explicit

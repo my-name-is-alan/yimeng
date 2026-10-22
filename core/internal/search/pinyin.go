@@ -93,3 +93,31 @@ func uniq(in []string) []string {
 	}
 	return out
 }
+
+// Pinyin returns a comparison key: Han characters become toneless pinyin
+// syllables (traditional and simplified map to the same syllables), other
+// letters/digits are lowercased, everything else is dropped.
+func Pinyin(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Han, r):
+			if syll := pinyin.SinglePinyin(r, args); len(syll) > 0 && syll[0] != "" {
+				b.WriteString(syll[0])
+			}
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(unicode.ToLower(r))
+		}
+	}
+	return b.String()
+}
+
+// HasHan reports whether s contains a Chinese character.
+func HasHan(s string) bool {
+	for _, r := range s {
+		if unicode.Is(unicode.Han, r) {
+			return true
+		}
+	}
+	return false
+}

@@ -285,3 +285,9 @@ alternative considered. Newest items at the bottom.
 - Failed logins: 8/min per IP and 5/min per username, then a 15-minute lockout (same limiter as pairing). Unknown usernames take the same time as wrong passwords.
 - Escape hatches: `yimeng-core reset-password [user]` and `YIMENG_ADMIN_RESET=1` (removes all web accounts; paired apps stay).
 - Pairing codes are generated only by admins in the web UI (设备 → 添加设备 / 生成配对码) or printed to the log via `/api/pair/request`.
+
+## D39 Anonymous platform metadata/lyrics sources
+网易云 / QQ音乐 / 酷狗 search, detail and lyrics are used through their anonymous public endpoints on a separate cookie-less client per platform (`internal/online/anon`), rate-limited (60/min). They feed 在线匹配, the lyrics workbench and (when listed in `providers`) the background lyrics fetch for local tracks with no lyrics. They never touch a logged-in session and work whether or not the streaming plugin is enabled. Spotify still needs only the client credentials in the Vault.
+
+## D40 Upstream audio must be audio
+Platform CDNs sometimes answer `200 audio/mpeg` with an HTML "Forbidden" page (QQ: some `sip` hosts). The stream proxy sniffs the first bytes, tries the plugin's alternate CDN hosts (`Stream.Alternates`), and otherwise returns a JSON `502 upstream_rejected` with a Chinese message; the web player turns stream errors into Chinese reasons instead of the browser's generic message.

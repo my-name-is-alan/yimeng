@@ -158,17 +158,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 		enrich = en.Kick
 		log.Info("MusicBrainz enrichment enabled")
 	}
+	anonSrc := anonSources(log)
 	var lyricChain providers.Chain
 	for _, name := range cfg.Providers {
 		switch strings.ToLower(name) {
 		case "lrclib":
 			lyricChain = append(lyricChain, &providers.LRCLIB{UA: ua})
-		case "netease":
-			lyricChain = append(lyricChain, providers.NetEase{})
-			log.Warn("netease lyrics provider is a stub (no safe public API)")
-		case "qq":
-			lyricChain = append(lyricChain, providers.QQ{})
-			log.Warn("qq lyrics provider is a stub (no safe public API)")
+		case "netease", "qq", "kugou":
+			// anonymous public lyrics endpoints (no login, no account)
+			if s := anonSrc[strings.ToLower(name)]; s != nil {
+				lyricChain = append(lyricChain, anonLyrics{s})
+			}
 		case "musicbrainz":
 			// handled above via Registry
 		default:
@@ -180,7 +180,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 	// Matcher = MusicBrainz + Spotify (metadata-only, client credentials read
 	// from the Vault via the "spotify" plugin settings; skipped until set).
 	var pluginReg *online.Registry
+	var mbAliases metadata.MetadataProvider
+	if mb, err := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: ua}); err == nil {
+		mbAliases = mb
+	}
 	spotifyMeta := spotifyapi.New(spotifyapi.Config{
+		Aliases: metadata.AliasLookup(mbAliases),
 		APIBase: os.Getenv("YIMENG_SPOTIFY_API_BASE_URL"), AuthBase: os.Getenv("YIMENG_SPOTIFY_AUTH_BASE_URL"),
 		HTTP: &http.Client{Timeout: 15 * time.Second}, UserAgent: ua,
 		Creds: func() (string, string, bool) {
@@ -197,6 +202,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 		matchers = append(matchers, mbc)
 	}
 	matchers = append(matchers, spotifyMeta)
+	for _, id := range []string{"netease", "qq", "kugou"} {
+		if s := anonSrc[id]; s != nil {
+			matchers = append(matchers, s)
+		}
+	}
 	var matcher metadata.MetadataProvider = matchers
 	var lyricsFetcher library.LyricsFetcher
 	if len(lyricChain) > 0 {
@@ -370,7 +380,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 			OnlineLib:      scanner,
 			Vault:          vlt,
 			UserEdits:      scanner,
-			LyricsSearch:   lrclibSearch.Search,
+			LyricsSearch:   lyricsSearch(lrclibSearch, anonSrc),
 			Matcher:        matcher,
 			Logs:           logRing,
 			Runtime: map[string]any{

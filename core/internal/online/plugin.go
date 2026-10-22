@@ -84,20 +84,22 @@ type ConfigOption struct {
 
 // Manifest is the static description of a plugin.
 type Manifest struct {
-	ID           string         `json:"id"` // also the origin of its items
-	Name         string         `json:"name"`
-	Description  string         `json:"description,omitempty"`
-	Homepage     string         `json:"homepage,omitempty"`
-	Version      string         `json:"version"`
-	Capabilities []Capability   `json:"capabilities"`
-	LoginMethods []LoginMethod  `json:"login_methods"`
-	Qualities    []Quality      `json:"qualities"`
-	Config       []ConfigField  `json:"config"`
-	Notice       string         `json:"notice,omitempty"`
-	Skeleton     bool           `json:"skeleton,omitempty"` // partial implementation
-	Credits      []string       `json:"credits,omitempty"`
-	DefaultRate  int            `json:"-"` // requests/minute default
-	Extra        map[string]any `json:"extra,omitempty"`
+	ID           string        `json:"id"` // also the origin of its items
+	Name         string        `json:"name"`
+	Description  string        `json:"description,omitempty"`
+	Homepage     string        `json:"homepage,omitempty"`
+	Version      string        `json:"version"`
+	Capabilities []Capability  `json:"capabilities"`
+	LoginMethods []LoginMethod `json:"login_methods"`
+	// QRChannels names which app scans each QR channel (UI labels / tabs).
+	QRChannels  []QRChannel    `json:"qr_channels,omitempty"`
+	Qualities   []Quality      `json:"qualities"`
+	Config      []ConfigField  `json:"config"`
+	Notice      string         `json:"notice,omitempty"`
+	Skeleton    bool           `json:"skeleton,omitempty"` // partial implementation
+	Credits     []string       `json:"credits,omitempty"`
+	DefaultRate int            `json:"-"` // requests/minute default
+	Extra       map[string]any `json:"extra,omitempty"`
 }
 
 func (m Manifest) Has(c Capability) bool {
@@ -206,6 +208,14 @@ type Account struct {
 	Tier     string `json:"tier,omitempty"`
 }
 
+// QRChannel describes one QR login channel: which app must scan the code.
+type QRChannel struct {
+	ID    string `json:"id"`    // e.g. "qq", "wechat", "app"
+	Label string `json:"label"` // tab label, e.g. "QQ 扫码"
+	App   string `json:"app"`   // the app to scan with, e.g. "手机 QQ"
+	Hint  string `json:"hint"`  // full instruction shown under the code
+}
+
 type QRStatus string
 
 const (
@@ -232,6 +242,7 @@ type QRPoll struct {
 // Stream is a just-in-time resolved upstream URL. URL and Header never leave Core.
 type Stream struct {
 	URL            string            `json:"-"`
+	Alternates     []string          `json:"-"` // same file on other CDN hosts, tried in order when URL fails
 	Header         map[string]string `json:"-"`
 	Entitlement    Entitlement       `json:"entitlement"`
 	Quality        Quality           `json:"quality,omitempty"`

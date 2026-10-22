@@ -1592,9 +1592,13 @@ paths:
   /api/plugins/{id}/login/qr:
     post:
       tags: [online]
-      summary: Start a QR login (admin); returns {key, content, image (PNG data URL), expires_at}
+      summary: "Start a QR login (admin); returns {key, content, image (PNG data URL), expires_at}. Optional body {channel} picks one of manifest.qr_channels (which app scans: QQ / 微信 / platform app)"
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, properties: { channel: { type: string } } } } }
       responses:
         "200": { description: QR challenge, content: { application/json: { schema: { type: object } } } }
+        "400": { description: "unsupported_channel", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -1622,6 +1626,33 @@ paths:
       summary: "Log out: forget the stored session (admin)"
       responses:
         "204": { description: Logged out }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/accounts:
+    get:
+      tags: [online]
+      summary: "Saved accounts of a platform plugin (admin): {items: [{account_id, nickname, avatar, vip, tier, method, is_default, active, added_at, used_at}], active}"
+      responses:
+        "200": { description: Accounts, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/plugins/{id}/accounts/{acct}/default:
+    post:
+      tags: [online]
+      summary: "Make an account the default and switch the plugin to it (admin)"
+      responses:
+        "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "404": { description: unknown_account }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/plugins/{id}/accounts/{acct}:
+    delete:
+      tags: [online]
+      summary: "Remove a saved account and its Vault session (admin). Removing the active account switches to the next one or signs out"
+      responses:
+        "204": { description: Removed }
+        "404": { description: unknown_account }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 

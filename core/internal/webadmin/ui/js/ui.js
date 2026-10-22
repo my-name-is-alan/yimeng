@@ -1,3 +1,19 @@
+// Guard: native append/replaceChildren/prepend/before/after stringify null and
+// undefined into literal "null"/"undefined" text. Drop them (and false) so
+// optional sections can be passed inline everywhere.
+export const clean = (kids) => kids.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false);
+for (const proto of [Element.prototype, DocumentFragment.prototype, Document.prototype]) {
+  for (const m of ["append", "prepend", "replaceChildren"]) {
+    const orig = proto[m];
+    if (orig && !orig.__ymGuard) { const f = function (...k) { return orig.apply(this, clean(k)); }; f.__ymGuard = true; proto[m] = f; }
+  }
+}
+for (const m of ["before", "after", "replaceWith"]) {
+  const orig = Element.prototype[m];
+  if (orig && !orig.__ymGuard) { const f = function (...k) { return orig.apply(this, clean(k)); }; f.__ymGuard = true; Element.prototype[m] = f; }
+}
+// txt renders a possibly-missing value: null/undefined/"null"/NaN → fallback.
+export const txt = (v, fallback = "") => (v === null || v === undefined || v === "null" || v === "undefined" || (typeof v === "number" && Number.isNaN(v)) ? fallback : String(v));
 // DOM helpers, icons, toasts, dialogs, menus, formatting.
 export function h(tag, attrs, ...kids) {
   const el = document.createElement(tag);
@@ -10,7 +26,7 @@ export function h(tag, attrs, ...kids) {
     else if (k === "value" || k === "checked" || k === "disabled" || k === "selected") el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
-  for (const c of kids.flat(Infinity)) if (c !== null && c !== undefined && c !== false) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  for (const c of clean(kids)) el.append(c instanceof Node ? c : document.createTextNode(txt(c)));
   return el;
 }
 export const $ = (s, r = document) => r.querySelector(s);
@@ -197,6 +213,8 @@ export function conf(score) {
 
 // Only local library items (origin "local") can be edited/matched; online
 // StreamSource items are read-only (backend answers 409 not_local_source).
+export const PROVIDER_LABEL = { musicbrainz: "MusicBrainz", spotify: "Spotify", lrclib: "LRCLIB", netease: "网易云", qq: "QQ音乐", kugou: "酷狗" };
+export const providerLabel = (p) => PROVIDER_LABEL[p] || p || "未知来源";
 const ORIGINS = { netease: "网易云", qq: "QQ 音乐", apple: "Apple Music", spotify: "Spotify", tidal: "TIDAL", qobuz: "Qobuz", kugou: "酷狗", kuwo: "酷我" };
 export const isLocal = (x) => !x || !x.origin || x.origin === "local";
 export const originName = (o) => ORIGINS[o] || o;

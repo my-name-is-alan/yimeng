@@ -86,6 +86,7 @@ func (l *LRCLIB) Fetch(ctx context.Context, t library.Track) (string, error) {
 // Candidate is one LRCLIB search hit shown to an admin for manual binding.
 type Candidate struct {
 	ID           int64  `json:"id"`
+	Ref          string `json:"ref,omitempty"` // platform track id (non-LRCLIB sources)
 	Provider     string `json:"provider"`
 	Title        string `json:"title"`
 	Artist       string `json:"artist"`

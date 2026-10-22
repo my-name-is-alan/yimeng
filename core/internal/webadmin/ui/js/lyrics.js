@@ -1,6 +1,6 @@
 // Lyrics workbench: LRCLIB candidates → preview → bind; manual edit / upload LRC; offset; tap-to-sync.
 import { get, put, del, qs, coverURL } from "./api.js";
-import { h, icon, cover, fmtDur, toast, errToast, empty, debounce, confirmDlg, isLocal, sourceBadge, NOT_LOCAL_MSG } from "./ui.js";
+import { h, icon, cover, fmtDur, toast, errToast, empty, debounce, confirmDlg, isLocal, sourceBadge, NOT_LOCAL_MSG, providerLabel } from "./ui.js";
 import { player } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
@@ -89,15 +89,15 @@ export async function lyricsPage(main, id, { cleanup }) {
     cands.replaceChildren(h("div", { class: "skel", style: { height: "64px" } }), h("div", { class: "skel", style: { height: "64px" } }));
     try {
       const r = await get(`/tracks/${id}/lyrics/search${qs({ q: q.value })}`);
-      if (!r.items.length) return cands.replaceChildren(h("p", { class: "muted" }, "LRCLIB 没有找到候选，换个关键词试试。"));
+      if (!r.items.length) return cands.replaceChildren(h("p", { class: "muted" }, "LRCLIB / 网易云 / QQ音乐 / 酷狗 都没有找到候选，换个关键词试试。"));
       const dur = t.duration_ms;
       const scored = r.items.map((c) => ({ c, diff: c.duration_ms && dur ? Math.abs(c.duration_ms - dur) : 1e9 })).sort((a, b) => (b.c.synced - a.c.synced) || (a.diff - b.diff));
       cands.replaceChildren(...scored.map(({ c, diff }) => {
         const b = h("button", { class: "cand", onclick: () => {
           [...cands.children].forEach((x) => x.setAttribute("aria-selected", x === b));
-          ta.value = c.synced_lyrics || c.plain_lyrics || ""; source = "lrclib"; offset = 0; syncOff(); renderPreview();
+          ta.value = c.synced_lyrics || c.plain_lyrics || ""; source = c.provider || "lrclib"; offset = 0; syncOff(); renderPreview();
         } },
-          h("div", { class: "row" }, h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }),
+          h("div", { class: "row" }, h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: "badge src" }, providerLabel(c.provider)),
             c.instrumental ? h("span", { class: "badge" }, "纯音乐") : h("span", { class: `badge ${c.synced ? "ok" : ""}` }, c.synced ? "逐行同步" : "纯文本")),
           h("div", { class: "muted ellipsis", style: { fontSize: "13px" } }, [c.artist, c.album, c.duration_ms ? fmtDur(c.duration_ms) : ""].filter(Boolean).join(" · "),
             diff < 1e9 ? h("span", { style: { color: diff < 2000 ? "var(--accent)" : diff < 5000 ? "var(--warn)" : "var(--danger)", marginLeft: "8px" } }, diff < 2000 ? "时长吻合" : `时长差 ${(diff / 1000).toFixed(1)}s`) : null),

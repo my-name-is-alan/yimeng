@@ -106,3 +106,11 @@ Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
 - Migration 0016 `users` + `players.user_id`; `internal/auth/users.go` (argon2id, strength policy, setup/login with lockout, roles, change/reset password, remove-all); `/api/auth/{setup,login,logout,password}`, `/api/users` CRUD (admin); `/api/pair/codes` is admin-only.
 - Web: first-run setup page with strength meter, username/password login, 账号 section in 设置 (change password), 用户 page (add/edit role/reset password/delete), 设备 page shows the account per session and 添加设备 / 生成配对码.
 - CLI `yimeng-core reset-password`, env `YIMENG_ADMIN_RESET=1`. Tests: `auth/users_test.go`, `gateway/users_test.go`.
+
+## 2026-10-22 urgent batch
+- Live Core cleaned of demo data (backup `backups/pre-cleanup-*.db`); library root now `~/Music`; users, Vault and plugin logins kept.
+- QR login dialogs name the app to scan with (`manifest.qr_channels`): QQ音乐 → 手机 QQ（不是 QQ音乐/微信）, 网易云 → 网易云音乐 App, 酷狗 → 酷狗音乐 App. `POST /login/qr {channel}` validated. WeChat channel for QQ音乐 not implemented yet.
+- Scrollbars hidden everywhere; horizontal rows (.shelf/.tabs/.table-wrap) get edge fades + ‹ › buttons only when they overflow.
+- Anonymous 网易云/QQ音乐/酷狗 metadata + lyrics sources (D39).
+- QQ playback fixed (HTML error page served as audio; alternate CDN hosts) and Chinese player errors (D40).
+- Literal "null" removed: DOM append/replaceChildren guard + `txt()`; history resolves online plays from the external cache.

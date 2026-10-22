@@ -172,7 +172,37 @@ audio.addEventListener("play", () => player.emit("state"));
 audio.addEventListener("pause", () => { player.emit("state"); });
 audio.addEventListener("ended", () => player.next(true));
 audio.addEventListener("loadedmetadata", () => player.emit("time"));
-audio.addEventListener("error", () => { if (audio.getAttribute("src") && player.track) toast("音频加载失败（该格式可能不受浏览器支持）", "err"); });
+// Explain playback failures in Chinese: ask Core why (JSON error), else map
+// the browser MediaError code.
+const STREAM_ERR = {
+  not_entitled: "当前账号无权播放此曲目（无版权或需要 VIP）",
+  plugin_login_required: "平台登录已失效，请在「在线音源」重新登录",
+  unavailable: "该曲目在当前账号下不可播放（无版权或需要 VIP）",
+  risk_control: "平台风控限制，请稍后再试",
+  upstream_rejected: "音源服务器拒绝了请求，请稍后重试或重新登录平台账号",
+  upstream: "无法从音源平台获取音频，请稍后重试",
+  plugin_disabled: "该平台音源已停用",
+  not_found: "曲目不存在或已被删除",
+};
+async function explainError() {
+  const src = audio.getAttribute("src");
+  if (!src || !player.track) return;
+  const me = audio.error;
+  let msg = { 1: "播放被中断", 2: "网络错误，音频加载失败", 3: "音频解码失败（文件可能已损坏）", 4: "音频格式不受浏览器支持，可在设置中开启转码" }[me?.code] || "音频加载失败";
+  try {
+    const r = await fetch(src, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" });
+    if (r.status === 401) msg = "登录已过期，请重新登录";
+    else if (!r.ok && (r.headers.get("content-type") || "").includes("json")) {
+      const j = await r.json().catch(() => null);
+      const code = typeof j?.error === "string" ? j.error : j?.error?.code;
+      const m = j?.message || j?.error?.message;
+      msg = (code === "not_entitled" && m) ? m : STREAM_ERR[code] || m || msg;
+    }
+    r.body?.cancel?.();
+  } catch { /* keep the media error message */ }
+  toast(msg, "err");
+}
+audio.addEventListener("error", explainError);
 if ("mediaSession" in navigator) {
   const ms = navigator.mediaSession;
   ms.setActionHandler("play", () => audio.play());

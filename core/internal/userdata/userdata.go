@@ -116,8 +116,12 @@ func (s *Store) History(ctx context.Context, playerID string, limit, offset int)
 		return nil, 0, err
 	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT p.track_id, COALESCE(p.player_id,''), p.played_at, COALESCE(p.duration_ms,0), p.completed, p.source,
-		COALESCE(t.title,''), COALESCE(t.artist_name,''), COALESCE(t.album_id,''), COALESCE(al.title,''), t.id IS NOT NULL
-		FROM plays p LEFT JOIN tracks t ON t.id=p.track_id LEFT JOIN albums al ON al.id=t.album_id`+where+`
+		COALESCE(t.title, json_extract(ec.body,'$.title'), ''), COALESCE(t.artist_name, json_extract(ec.body,'$.artist_name'), ''),
+		COALESCE(t.album_id, json_extract(ec.body,'$.album.id'), ''), COALESCE(al.title, json_extract(ec.body,'$.album.name'), ''),
+		t.id IS NOT NULL OR instr(p.track_id, ':') > 0
+		FROM plays p LEFT JOIN tracks t ON t.id=p.track_id LEFT JOIN albums al ON al.id=t.album_id
+		LEFT JOIN external_cache ec ON t.id IS NULL AND instr(p.track_id, ':') > 0
+			AND ec.key = substr(p.track_id, 1, instr(p.track_id, ':')-1) || ':track:' || substr(p.track_id, instr(p.track_id, ':')+1)`+where+`
 		ORDER BY p.played_at DESC, p.id DESC LIMIT ? OFFSET ?`, append(args, limit, offset)...)
 	if err != nil {
 		return nil, 0, err

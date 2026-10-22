@@ -186,3 +186,34 @@ func TestMultiSkipsUnconfigured(t *testing.T) {
 		t.Fatalf("all unconfigured → ErrUnavailable, got %v", err)
 	}
 }
+
+func TestChineseArtistAliases(t *testing.T) {
+	f := &fake{}
+	srv := httptest.NewServer(f.handler(t))
+	defer srv.Close()
+	p := New(Config{APIBase: srv.URL + "/v1", AuthBase: srv.URL, HTTP: srv.Client(), Creds: ok,
+		Aliases: func(_ context.Context, name string) []string {
+			if name == "周杰伦" {
+				return []string{"Jay Chou", "Zhou Jielun"}
+			}
+			return nil
+		}})
+	ms, err := p.LookupTrack(context.Background(), metadata.TrackQuery{Title: "晴天", Artist: "周杰伦", DurationMs: 269000})
+	if err != nil || len(ms) == 0 {
+		t.Fatal(err)
+	}
+	if ms[0].Score < 0.9 {
+		t.Fatalf("周杰伦 vs Jay Chou should score high, got %.2f", ms[0].Score)
+	}
+	if q, _ := f.lastQ.Load().(string); !strings.Contains(q, `artist:"`) {
+		t.Fatalf("query %q", q)
+	}
+	// traditional vs simplified album title + alias
+	as, err := p.LookupAlbum(context.Background(), metadata.AlbumQuery{Title: "叶惠美", AlbumArtist: "周杰伦", Year: 2003})
+	if err != nil || len(as) == 0 || as[0].Score < 0.9 {
+		t.Fatalf("%v %+v", err, as)
+	}
+	if sim("叶惠美", "葉惠美") < 0.9 || sim("晴天", "七里香") != 0 {
+		t.Fatal("pinyin sim")
+	}
+}

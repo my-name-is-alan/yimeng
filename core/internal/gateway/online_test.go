@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,16 +23,19 @@ import (
 // httptest server; tracks: full, prev (30 s preview), none (unavailable),
 // expire (first fetch answers 403 to exercise re-resolve).
 type gwPlugin struct {
-	env     online.Env
-	cdn     string
-	expired atomic.Int32
-	real    []byte // when set, the CDN serves these bytes (a real mp3) for every track
+	env            online.Env
+	cdn            string
+	expired        atomic.Int32
+	userFromCookie bool   // Account() user id = cookie U
+	real           []byte // when set, the CDN serves these bytes (a real mp3) for every track
+	forbiddenHost  bool   // primary URL answers 200 audio/mpeg with an HTML "Forbidden" page
 }
 
 func (p *gwPlugin) Manifest() online.Manifest {
 	return online.Manifest{ID: "gw", Name: "测试平台", Version: "t",
 		Capabilities: []online.Capability{online.CapSearch, online.CapCharts, online.CapRecommend, online.CapUserPlaylists, online.CapStream, online.CapLyrics},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie},
+		QRChannels:   []online.QRChannel{{ID: "app", Label: "App 扫码", App: "测试 App", Hint: "请使用 测试 App 扫码"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh}}
 }
 
@@ -105,6 +109,10 @@ func (p *gwPlugin) Resolve(ctx context.Context, id string, q online.Quality) (on
 	s := online.Stream{Entitlement: t.Playable, Quality: q, Format: "mp3", ExpiresAt: time.Now().Add(time.Hour)}
 	if t.Playable != online.EntUnavailable {
 		s.URL = p.cdn + "/" + id + ".mp3"
+		if p.forbiddenHost {
+			s.Alternates = []string{s.URL}
+			s.URL = p.cdn + "/forbidden/" + id + ".mp3"
+		}
 		s.Header = map[string]string{"X-Cdn-Auth": "secret-cdn"}
 	} else {
 		s.Reason = "需要付费购买"
@@ -127,6 +135,9 @@ func (p *gwPlugin) LoginCookie(ctx context.Context, c string) (online.Account, e
 		return online.Account{}, online.ErrNeedsLogin
 	}
 	p.env.HTTP.ReplaceCookies(m)
+	if p.userFromCookie {
+		return online.Account{UserID: m["U"], Nickname: "用户" + m["U"]}, nil
+	}
 	return online.Account{UserID: "1", Nickname: "小明"}, nil
 }
 func (p *gwPlugin) LoginPassword(context.Context, string, string) (online.Account, error) {
@@ -135,6 +146,9 @@ func (p *gwPlugin) LoginPassword(context.Context, string, string) (online.Accoun
 func (p *gwPlugin) Account(ctx context.Context) (online.Account, error) {
 	if p.env.HTTP.Cookie("S") == "" {
 		return online.Account{}, online.ErrNeedsLogin
+	}
+	if p.userFromCookie {
+		return online.Account{UserID: p.env.HTTP.Cookie("U"), Nickname: "用户" + p.env.HTTP.Cookie("U")}, nil
 	}
 	return online.Account{UserID: "1", Nickname: "小明"}, nil
 }
@@ -152,6 +166,10 @@ func newOnlineEnv(t *testing.T) (*env, *gwPlugin) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/mpeg")
+		if strings.HasPrefix(r.URL.Path, "/forbidden/") {
+			io.WriteString(w, "<html>\r\n<head><title>Forbidden</title></head><body>denied</body></html>")
+			return
+		}
 		if plug.real != nil {
 			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(plug.real))
 			return
@@ -413,5 +431,89 @@ func TestOnlineStreamTranscode(t *testing.T) {
 		if res.Header.Get("X-Stream-Profile") != "original" {
 			t.Fatalf("%s: %v", q, res.Header.Get("X-Stream-Profile"))
 		}
+	}
+}
+
+func TestPluginMultiAccount(t *testing.T) {
+	e, plug := newOnlineEnv(t)
+	tok := e.token
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, tok)
+	// account A (cookie), then account B: the plugin reports a user id from cookie U
+	plug.userFromCookie = true
+	e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=A-SESSION; U=a"}`, tok)
+	res, body := e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=B-SESSION; U=b"}`, tok)
+	if res.StatusCode != 200 {
+		t.Fatal(string(body))
+	}
+	var st struct {
+		Accounts []struct {
+			ID      string
+			Default bool
+		} `json:"accounts"`
+		ActiveAccount string `json:"active_account"`
+	}
+	_, body = e.do("GET", "/api/plugins/gw", "", tok)
+	json.Unmarshal(body, &st)
+	if len(st.Accounts) != 2 || st.ActiveAccount != "b" || !st.Accounts[0].Default || strings.Contains(string(body), "SESSION") {
+		t.Fatalf("%s", body)
+	}
+	if plug.env.HTTP.Cookie("S") != "B-SESSION" {
+		t.Fatal("B should be active")
+	}
+	// switch back to A
+	if res, body := e.do("POST", "/api/plugins/gw/accounts/a/default", "", tok); res.StatusCode != 200 || !strings.Contains(string(body), `"active_account":"a"`) {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	if plug.env.HTTP.Cookie("S") != "A-SESSION" {
+		t.Fatal("A session not loaded:", plug.env.HTTP.Cookie("S"))
+	}
+	if res, _ := e.do("POST", "/api/plugins/gw/accounts/zzz/default", "", tok); res.StatusCode != 404 {
+		t.Fatal("unknown account")
+	}
+	// remove the active one → falls back to B
+	res, body = e.do("DELETE", "/api/plugins/gw/accounts/a", "", tok)
+	if res.StatusCode != 200 || !strings.Contains(string(body), `"active_account":"b"`) || plug.env.HTTP.Cookie("S") != "B-SESSION" {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	// logout forgets the last one
+	e.do("DELETE", "/api/plugins/gw/session", "", tok)
+	_, body = e.do("GET", "/api/plugins/gw", "", tok)
+	if strings.Contains(string(body), `"accounts"`) || strings.Contains(string(body), `"logged_in":true`) {
+		t.Fatalf("%s", body)
+	}
+}
+
+func TestOnlineStreamRejectsHTMLAndUsesAlternates(t *testing.T) {
+	e, plug := newOnlineEnv(t)
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, e.token)
+	e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=SECRET-SESSION"}`, e.token)
+	plug.forbiddenHost = true
+	res, body := e.do("GET", "/api/stream/gw:full", "", e.token)
+	if res.StatusCode != 200 || string(body) != "AUDIO-full" {
+		t.Fatalf("alternate not used: %d %q", res.StatusCode, body)
+	}
+	// every host refuses: a clear JSON error instead of HTML labelled audio
+	plug.forbiddenHost = false
+	res, body = e.do("GET", "/api/stream/gw:prev?x=1", "", e.token)
+	_ = res
+	if strings.Contains(string(body), "<html") {
+		t.Fatal("html leaked")
+	}
+}
+
+func TestPluginQRChannel(t *testing.T) {
+	e, _ := newOnlineEnv(t)
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, e.token)
+	res, body := e.do("POST", "/api/plugins/gw/login/qr", `{"channel":"wechat"}`, e.token)
+	if res.StatusCode != 400 || !strings.Contains(string(body), "unsupported_channel") {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	res, body = e.do("POST", "/api/plugins/gw/login/qr", `{"channel":"app"}`, e.token)
+	if res.StatusCode != 200 {
+		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+	res, body = e.do("POST", "/api/plugins/gw/login/qr", "", e.token)
+	if res.StatusCode != 200 {
+		t.Fatalf("%d %s", res.StatusCode, body)
 	}
 }

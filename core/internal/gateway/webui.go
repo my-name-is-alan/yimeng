@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
+	"github.com/my-name-is-alan/yimeng/core/internal/search"
 	"github.com/my-name-is-alan/yimeng/core/internal/webadmin"
 )
 
@@ -267,7 +269,7 @@ func (d Deps) matchTrack(w http.ResponseWriter, r *http.Request) {
 		d.editErr(w, "track", err)
 		return
 	}
-	q := metadata.TrackQuery{Title: t.Title, Artist: t.ArtistName, Album: t.AlbumTitle, DurationMs: t.DurationMs}
+	q := metadata.TrackQuery{Title: t.Title, Artist: t.ArtistName, Album: t.AlbumTitle, DurationMs: t.DurationMs, ISRC: t.ISRC} // ISRC first
 	if v := strings.TrimSpace(r.URL.Query().Get("title")); v != "" {
 		q.Title = v
 	}
@@ -290,6 +292,7 @@ func (d Deps) matchTrack(w http.ResponseWriter, r *http.Request) {
 			MBRecordingID: m.MBRecordingID, MBReleaseID: m.MBReleaseID, ReleaseDate: m.ReleaseDate,
 			CoverURL: m.CoverURL, Popularity: m.Popularity})
 	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
@@ -327,6 +330,9 @@ func (d Deps) matchAlbum(w http.ResponseWriter, r *http.Request) {
 			c.Genre = in.Genres[0]
 		}
 		c.Score = albumScore(al, in)
+		if in.Score > c.Score {
+			c.Score = in.Score
+		}
 		out = append(out, c)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -337,7 +343,7 @@ func albumScore(al library.Album, in metadata.AlbumInfo) float64 {
 	norm := func(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
 	s := 0.0
 	switch {
-	case norm(al.Title) == norm(in.Title):
+	case norm(al.Title) == norm(in.Title), search.HasHan(al.Title+in.Title) && search.Pinyin(al.Title) == search.Pinyin(in.Title):
 		s += 0.6
 	case strings.Contains(norm(in.Title), norm(al.Title)) || strings.Contains(norm(al.Title), norm(in.Title)):
 		s += 0.35

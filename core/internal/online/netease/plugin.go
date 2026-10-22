@@ -40,6 +40,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
 			online.CapDiscover, online.CapUserPlaylists, online.CapStream},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword},
+		QRChannels:   []online.QRChannel{{ID: "app", Label: "网易云 App 扫码", App: "网易云音乐 App", Hint: "请使用 网易云音乐 App 扫码（不是微信/QQ）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
 		DefaultRate:  60,
 		Notice:       "仅播放当前账号有权收听的内容：非会员播放会员歌曲时只提供官方试听片段。",

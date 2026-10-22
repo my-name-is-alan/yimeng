@@ -275,9 +275,9 @@ export async function favorites(main) {
 export async function historyPage(main) {
   const [hist, top] = await Promise.all([get(`/history${qs({ limit: 100 })}`), get(`/history/top${qs({ type: "track", period: "30d", limit: 10 })}`).catch(() => ({ items: [] }))]);
   const rows = hist.items.map((x) => h("div", { class: "li" }, cover(x.album_id ? coverURL(x.album_id, 80) : "", x.title, ""),
-    h("div", { class: "grow" }, h("div", { class: "t ellipsis" }, x.title), h("div", { class: "s ellipsis" }, [x.artist_name, x.album_title].filter(Boolean).join(" — "))),
+    h("div", { class: "grow" }, h("div", { class: "t ellipsis" }, x.title || "未知曲目"), h("div", { class: "s ellipsis" }, [x.artist_name, x.album_title].filter(Boolean).join(" — "))),
     h("span", { class: "dim", style: { fontSize: "12px" } }, fmtAgo(x.played_at)),
-    x.available ? h("button", { class: "btn icon sm ghost", "aria-label": "播放", onclick: async () => { try { player.playList([await get(`/tracks/${x.track_id}`)]); } catch (e) { errToast(e); } } }, icon("play")) : h("span", { class: "badge" }, "已移除")));
+    x.available ? h("button", { class: "btn icon sm ghost", "aria-label": "播放", onclick: async () => { try { player.playList([x.track_id.includes(":") ? { id: x.track_id, origin: x.track_id.split(":")[0], title: x.title, artist_name: x.artist_name, album_id: x.album_id, album_title: x.album_title } : await get(`/tracks/${x.track_id}`)]); } catch (e) { errToast(e); } } }, icon("play")) : h("span", { class: "badge" }, "已移除")));
   rows.forEach((r) => { const c = r.querySelector(".cover"); c.style.width = "44px"; c.style.borderRadius = "8px"; });
   main.replaceChildren(head("播放历史", `共 ${fmtNum(hist.total)} 次播放`),
     top.items?.length ? h("section", { class: "section", style: { marginTop: 0 } }, h("div", { class: "section-head" }, h("h2", null, "本月最常播放")),

@@ -73,6 +73,7 @@ function pluginRow(p, rerender) {
   const btns = [];
   if (admin && p.enabled) {
     if (p.logged_in) {
+      btns.push(h("button", { class: "btn sm", onclick: () => pluginAccounts(p, rerender) }, icon("artist"), `账号${p.accounts?.length > 1 ? ` (${p.accounts.length})` : ""}`));
       btns.push(h("button", { class: "btn sm", onclick: async () => { try { await post(`/plugins/${m.id}/refresh`); toast("会话已刷新"); rerender(); } catch (e) { errToast(e); } } }, icon("refresh"), "刷新"));
       btns.push(h("button", { class: "btn sm danger", onclick: async () => { if (await confirmDlg("退出登录", `清除 ${m.name} 的登录会话？`, "退出", true)) { try { await del(`/plugins/${m.id}/session`); rerender(); } catch (e) { errToast(e); } } } }, "退出"));
     } else if (m.login_methods?.length) btns.push(h("button", { class: "btn sm primary", onclick: () => pluginLogin(p, rerender) }, icon("key"), "登录"));
@@ -85,6 +86,21 @@ function pluginRow(p, rerender) {
       h("div", { class: "s" }, p.enabled ? acct : (m.description || ""), p.enabled && !meta ? ` · 音质 ${qName(p.config?.quality)} · ${p.config?.rate_per_min ?? "–"} 次/分` : ""),
       p.last_error ? h("div", { class: "s", style: { color: "var(--danger)" } }, p.last_error) : null),
     ...btns, h("label", { class: "row", title: "启用 / 停用" }, toggle));
+}
+// Saved accounts of a plugin: switch the default, remove, or add another.
+function pluginAccounts(p, done) {
+  const m = p.manifest;
+  const list = h("div", { class: "stack" });
+  const render = (accs, active) => list.replaceChildren(...(accs.length ? accs.map((a) => h("div", { class: "li", style: { gap: "10px" } },
+    a.avatar ? h("img", { src: a.avatar, alt: "", referrerpolicy: "no-referrer", style: { width: "32px", height: "32px", borderRadius: "50%" } }) : h("div", { class: "src-logo", style: { width: "32px", height: "32px" } }, (a.nickname || "?")[0]),
+    h("div", { class: "grow" }, h("div", { class: "t" }, a.nickname || a.id, " ", a.id === active ? h("span", { class: "badge ok" }, "默认") : null, " ", h("span", { class: `badge ${a.vip ? "ok" : ""}` }, a.vip ? (a.tier || "会员") : "非会员")),
+      h("div", { class: "s muted" }, `${LOGIN[a.method] || a.method || ""} · 添加于 ${new Date(a.added_at).toLocaleDateString("zh-CN")}`)),
+    a.id === active ? null : h("button", { class: "btn sm", onclick: async () => { try { const st = await post(`/plugins/${m.id}/accounts/${encodeURIComponent(a.id)}/default`); toast(`已切换到 ${a.nickname || a.id}`); render(st.accounts || [], st.active_account); done(); } catch (e) { errToast(e); } } }, "设为默认"),
+    h("button", { class: "btn sm danger", onclick: async () => { if (!(await confirmDlg("移除账号", `移除 ${a.nickname || a.id}？其登录会话会从 Vault 删除。`, "移除", true))) return; try { const st = await del(`/plugins/${m.id}/accounts/${encodeURIComponent(a.id)}`); render(st?.accounts || [], st?.active_account); done(); } catch (e) { errToast(e); } } }, "移除")))
+    : [h("p", { class: "muted" }, "没有已保存的账号")]));
+  render(p.accounts || [], p.active_account);
+  const d = dialog({ title: `${m.name} · 账号`, body: [h("p", { class: "muted", style: { margin: 0, fontSize: "13px" } }, "可保存多个账号，播放与浏览使用「默认」账号。每个账号的凭据单独保存在 Vault 中。"), list],
+    foot: [h("button", { class: "btn", onclick: () => d.close() }, "关闭"), h("button", { class: "btn primary", onclick: () => { d.close(); pluginLogin(p, done); } }, icon("plus"), "添加账号")] });
 }
 const qName = (q) => ({ standard: "标准", high: "极高", lossless: "无损", hires: "Hi-Res" }[q] || q || "–");
 
@@ -116,13 +132,18 @@ export function pluginLogin(p, done) {
   const stop = () => { clearTimeout(poll); poll = null; };
   const d = dialog({ title: `登录 ${m.name}`, body, onClose: () => { alive = false; stop(); done(); } });
   const ok = () => { toast("登录成功"); d.close(); };
+  const chans = m.qr_channels && m.qr_channels.length ? m.qr_channels : [{ id: "", label: "扫码", app: `${m.name} App`, hint: `请使用 ${m.name} App 扫码` }];
+  let chan = chans[0];
   const show = (meth) => {
     stop();
     if (meth === "qr") {
-      body.replaceChildren(h("div", { class: "skel", style: { width: "220px", height: "220px", justifySelf: "center" } }));
-      post(`/plugins/${m.id}/login/qr`).then((c) => {
-        const st = h("p", { class: "muted", style: { textAlign: "center", margin: 0 } }, `请使用 ${m.name} App 扫码`);
-        body.replaceChildren(h("img", { class: "qr", src: c.image, alt: "登录二维码", width: 220, height: 220, style: { justifySelf: "center", background: "#fff", padding: "10px", borderRadius: "12px" } }), st,
+      const tabs = chans.length > 1 ? h("div", { class: "seg", role: "tablist", style: { justifySelf: "center" } }, chans.map((c) =>
+        h("button", { class: "btn sm" + (c === chan ? " primary" : " ghost"), role: "tab", "aria-selected": String(c === chan), onclick: () => { chan = c; show("qr"); } }, c.label))) : null;
+      const appTag = h("p", { class: "qr-app", style: { textAlign: "center", margin: 0, fontWeight: 600 } }, chan.hint);
+      body.replaceChildren(...[tabs, appTag, h("div", { class: "skel", style: { width: "220px", height: "220px", justifySelf: "center" } })].filter(Boolean));
+      post(`/plugins/${m.id}/login/qr`, chan.id ? { channel: chan.id } : undefined).then((c) => {
+        const st = h("p", { class: "muted", style: { textAlign: "center", margin: 0 } }, "等待扫码…");
+        body.replaceChildren(...[tabs, appTag].filter(Boolean), h("img", { class: "qr", src: c.image, alt: "登录二维码", width: 220, height: 220, style: { justifySelf: "center", background: "#fff", padding: "10px", borderRadius: "12px" } }), st,
           h("button", { class: "btn sm ghost", style: { justifySelf: "center" }, onclick: () => show("qr") }, icon("refresh"), "刷新二维码"));
         const tick = async () => {
           if (!alive) return;

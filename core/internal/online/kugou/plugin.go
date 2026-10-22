@@ -38,6 +38,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
 			online.CapDiscover, online.CapUserPlaylists, online.CapStream},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginSMS, online.LoginCookie},
+		QRChannels:   []online.QRChannel{{ID: "app", Label: "酷狗 App 扫码", App: "酷狗音乐 App", Hint: "请使用 酷狗音乐 App 扫码（我的 → 右上角扫一扫）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
 		DefaultRate:  30,
 		Notice:       "仅播放当前账号有权收听的内容：非会员播放会员歌曲时只提供酷狗官方试听片段（通常 60 秒）。不解密 kgm，不绕过任何限制。",
