@@ -13,6 +13,14 @@ final class FnosClientTests: XCTestCase {
         XCTAssertEqual(FnosClient.normalize("http://nas:5666/music/api/v1")?.absoluteString, "http://nas:5666")
         XCTAssertNil(FnosClient.normalize(""))
     }
+    func testRelayCookie() {
+        let relay = FnosClient.normalize("http://abc.fnos.net/music/")!
+        XCTAssertEqual(relay.absoluteString, "https://abc.fnos.net")
+        XCTAssertEqual(FnosClient.cookieHeader(root: relay, token: nil), "mode=relay")
+        XCTAssertEqual(FnosClient.cookieHeader(root: relay, token: "T"), "mode=relay; music-token=T")
+        XCTAssertEqual(FnosClient.cookieHeader(root: URL(string: "http://192.168.1.5:5666")!, token: "T"), "music-token=T")
+        XCTAssertNil(FnosClient.cookieHeader(root: URL(string: "http://nas:5666")!, token: nil))
+    }
     func testSha256() {
         XCTAssertEqual(FnosClient.sha256("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }

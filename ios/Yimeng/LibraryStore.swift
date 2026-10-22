@@ -180,6 +180,13 @@ final class LibraryStore: ObservableObject {
         let cfg = SourceStore.shared.config(for: .fnos)
         guard !cfg.host.isEmpty, !cfg.username.isEmpty,
               let pw = Keychain.get(service: SourceKind.fnos.keychainService, account: cfg.username), !pw.isEmpty else {
+            #if DEBUG
+            // Sim/dev only: YIMENG_FNOS_URL / _USER / _PASSWORD from the launch env (never logged); login stores it in Keychain.
+            let env = ProcessInfo.processInfo.environment
+            if let u = env["YIMENG_FNOS_URL"], let n = env["YIMENG_FNOS_USER"], let p = env["YIMENG_FNOS_PASSWORD"], !u.isEmpty, !n.isEmpty {
+                liveMode = true; await connectFnos(host: u, username: n, password: p); return
+            }
+            #endif
             status = "待连接飞牛音乐"; return
         }
         liveMode = true

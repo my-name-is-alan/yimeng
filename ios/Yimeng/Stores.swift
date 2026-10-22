@@ -23,10 +23,18 @@ final class HomeStore: ObservableObject {
     private static var file: URL {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        return d.appendingPathComponent("home.v1.json")
+        // Per source: switching Emby ↔ 飞牛 must not paint the other library's cached home.
+        let id = MusicSources.activeId
+        return d.appendingPathComponent(id == SourceKind.navidrome.rawValue ? "home.v1.json" : "home.\(id).v1.json")
     }
 
+    private var loadedFor = MusicSources.activeId
     init() {
+        data = (try? JSONDecoder().decode(HomePayload.self, from: Data(contentsOf: Self.file))) ?? HomePayload()
+    }
+    private func reloadIfSourceChanged() {
+        guard loadedFor != MusicSources.activeId else { return }
+        loadedFor = MusicSources.activeId
         data = (try? JSONDecoder().decode(HomePayload.self, from: Data(contentsOf: Self.file))) ?? HomePayload()
     }
 
@@ -52,6 +60,7 @@ final class HomeStore: ObservableObject {
 
     /// Refresh silently if stale (or forced by pull-to-refresh). Never clears what's on screen.
     func refresh(force: Bool = false) async {
+        reloadIfSourceChanged()
         guard !refreshing else { return }
         guard force || Date().timeIntervalSince(data.savedAt) > Self.ttl || data.isEmpty else { await refreshPlayed(); return }
         refreshing = true; defer { refreshing = false }

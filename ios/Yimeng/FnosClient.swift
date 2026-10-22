@@ -30,8 +30,19 @@ actor FnosClient {
         if !h.contains("://") { h = "http://" + h }
         while h.hasSuffix("/") { h.removeLast() }
         for suffix in ["/music/api/v1", "/music"] where h.hasSuffix(suffix) { h.removeLast(suffix.count) }
-        guard let u = URL(string: h), u.host != nil else { return nil }
+        guard var u = URL(string: h), let host = u.host else { return nil }
+        // FN Connect (*.fnos.net) only answers on HTTPS; plain http gets dropped.
+        if isRelay(host), u.scheme == "http", var c = URLComponents(url: u, resolvingAgainstBaseURL: false) { c.scheme = "https"; u = c.url ?? u }
         return u
+    }
+    /// FN Connect relay: its nginx bounces every request without `mode=relay` to the fnos.net landing page, whose JS
+    /// probes direct vs relay (`/api/v1/fn/con`, `/trimcon`) and then gets the cookie set. The cookie is static, so we just send it.
+    nonisolated static func isRelay(_ host: String?) -> Bool { host.map { $0 == "fnos.net" || $0.hasSuffix(".fnos.net") } ?? false }
+    nonisolated static func cookieHeader(root: URL?, token: String?) -> String? {
+        var parts: [String] = []
+        if isRelay(root?.host) { parts.append("mode=relay") }
+        if let token, !token.isEmpty { parts.append("music-token=\(token)") }
+        return parts.isEmpty ? nil : parts.joined(separator: "; ")
     }
     nonisolated static func sha256(_ s: String) -> String {
         SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
@@ -46,6 +57,7 @@ actor FnosClient {
     func configure(host: String) throws {
         guard let u = Self.normalize(host) else { throw NavidromeError.badURL }
         root = u
+        Self.installCookie(root: u, token: "")
     }
 
     func login(username: String, password: String) async throws {
@@ -63,9 +75,14 @@ actor FnosClient {
 
     /// Cover loads go through CoverCache's default-config URLSession, which uses the shared cookie jar.
     nonisolated static func installCookie(root: URL, token: String) {
-        guard let host = root.host,
-              let c = HTTPCookie(properties: [.domain: host, .path: "/", .name: "music-token", .value: token, .secure: root.scheme == "https" ? "TRUE" : "FALSE"]) else { return }
-        HTTPCookieStorage.shared.setCookie(c)
+        guard let host = root.host else { return }
+        let sec = root.scheme == "https" ? "TRUE" : "FALSE"
+        var jar: [(String, String)] = []
+        if !token.isEmpty { jar.append(("music-token", token)) }
+        if isRelay(host) { jar.append(("mode", "relay")) }
+        for (n, v) in jar {
+            if let c = HTTPCookie(properties: [.domain: host, .path: "/", .name: n, .value: v, .secure: sec]) { HTTPCookieStorage.shared.setCookie(c) }
+        }
     }
 
     // MARK: transport
@@ -76,10 +93,12 @@ actor FnosClient {
         if !query.isEmpty { c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         guard let url = c.url else { throw NavidromeError.badURL }
         var req = URLRequest(url: url); req.httpMethod = method
-        if auth { req.setValue("v1", forHTTPHeaderField: "X-Music-API"); req.setValue("music-token=\(token)", forHTTPHeaderField: "Cookie") }
+        if auth { req.setValue("v1", forHTTPHeaderField: "X-Music-API") }
+        if let ck = Self.cookieHeader(root: root, token: auth ? token : nil) { req.setValue(ck, forHTTPHeaderField: "Cookie") }
         if let body { req.setValue("application/json", forHTTPHeaderField: "Content-Type"); req.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, resp) = try await session.data(for: req)
         let http = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if resp.url?.host == "fnos.net" { throw NavidromeError.api("FN Connect 中转拒绝了请求（被重定向到 fnos.net 落地页）") }
         if http == 401 { throw NavidromeError.api("飞牛音乐登录已失效，请重新登录") }
         guard (200..<300).contains(http) else { throw NavidromeError.http(http) }
         return try Self.unwrap(data)
