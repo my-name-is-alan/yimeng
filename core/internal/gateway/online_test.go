@@ -1,11 +1,13 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,6 +25,7 @@ type gwPlugin struct {
 	env     online.Env
 	cdn     string
 	expired atomic.Int32
+	real    []byte // when set, the CDN serves these bytes (a real mp3) for every track
 }
 
 func (p *gwPlugin) Manifest() online.Manifest {
@@ -149,6 +152,10 @@ func newOnlineEnv(t *testing.T) (*env, *gwPlugin) {
 			return
 		}
 		w.Header().Set("Content-Type", "audio/mpeg")
+		if plug.real != nil {
+			http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(plug.real))
+			return
+		}
 		http.ServeContent(w, r, "", time.Time{}, strings.NewReader("AUDIO-"+strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/"), ".mp3")))
 	}))
 	t.Cleanup(cdn.Close)
@@ -378,5 +385,33 @@ func TestOnlineStreamEntitlement(t *testing.T) {
 	}
 	if res, _ := e.do("GET", "/api/stream/gw:missing", "", tok); res.StatusCode != 404 {
 		t.Fatalf("missing %d", res.StatusCode)
+	}
+}
+
+func TestOnlineStreamTranscode(t *testing.T) {
+	e, plug := newOnlineEnv(t)
+	if e.tc == nil {
+		t.Skip("ffmpeg not available")
+	}
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, e.token)
+	e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=SECRET-SESSION"}`, e.token)
+	plug.real, _ = os.ReadFile("../adapters/local/testdata/notags.mp3")
+	// default stays the original passthrough (Range honoured)
+	res, body := e.do("GET", "/api/stream/gw:full", "", e.token, "Range", "bytes=0-9")
+	if res.StatusCode != 206 || len(body) != 10 || res.Header.Get("X-Stream-Profile") != "original" {
+		t.Fatalf("original %d %d %v", res.StatusCode, len(body), res.Header)
+	}
+	// explicit opus: piped through ffmpeg, never cached, entitlement headers kept
+	res, body = e.do("GET", "/api/stream/gw:prev?format=opus&bitrate=96", "", e.token)
+	if res.StatusCode != 200 || res.Header.Get("X-Stream-Profile") != "opus-96" || !strings.HasPrefix(string(body), "OggS") ||
+		res.Header.Get("X-Yimeng-Entitlement") != "preview" || res.Header.Get("Cache-Control") != "private, no-store" {
+		t.Fatalf("opus %d %v %q", res.StatusCode, res.Header, body[:min(8, len(body))])
+	}
+	// same codec / lossless-from-lossy requests fall back to the original
+	for _, q := range []string{"format=mp3&bitrate=128", "format=flac"} {
+		res, _ = e.do("GET", "/api/stream/gw:full?"+q, "", e.token)
+		if res.Header.Get("X-Stream-Profile") != "original" {
+			t.Fatalf("%s: %v", q, res.Header.Get("X-Stream-Profile"))
+		}
 	}
 }

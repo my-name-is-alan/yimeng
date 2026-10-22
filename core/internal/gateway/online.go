@@ -14,6 +14,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
+	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 )
 
 // OnlineLibrary is the slice of *library.Scanner the online endpoints need.
@@ -675,11 +676,18 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			writeErr(w, http.StatusBadGateway, "upstream", "invalid upstream url")
 			return true
 		}
-		req, _ := http.NewRequestWithContext(r.Context(), r.Method, res.URL, nil)
+		// Optional transcode (explicit ?format= or the device default); the
+		// original passthrough stays the default.
+		prof := d.onlineProfile(r, res.Format)
+		method := r.Method
+		if !prof.IsOriginal() {
+			method = http.MethodGet
+		}
+		req, _ := http.NewRequestWithContext(r.Context(), method, res.URL, nil)
 		for k, v := range res.Header {
 			req.Header.Set(k, v)
 		}
-		if rg := r.Header.Get("Range"); rg != "" {
+		if rg := r.Header.Get("Range"); rg != "" && prof.IsOriginal() {
 			req.Header.Set("Range", rg)
 		}
 		resp, err := upstreamHC.Do(req)
@@ -698,6 +706,11 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			return true
 		}
 		h := w.Header()
+		if !prof.IsOriginal() {
+			d.pipeExternal(w, r, resp.Body, prof, res)
+			return true
+		}
+		h.Set("X-Stream-Profile", transcode.Original)
 		for _, k := range []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "Last-Modified", "ETag"} {
 			if v := resp.Header.Get(k); v != "" {
 				h.Set(k, v)
@@ -726,6 +739,78 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	writeErr(w, http.StatusBadGateway, "upstream", "upstream url expired")
 	return true
+}
+
+// onlineProfile picks the stream profile for an online track: explicit
+// query, else the device default; anything unsupported or pointless
+// (lossless target from a lossy source, same codec) falls back to original.
+func (d Deps) onlineProfile(r *http.Request, srcFormat string) transcode.Profile {
+	orig := transcode.Profile{Format: transcode.Original}
+	p, _, err := d.streamProfile(r)
+	if err != nil || p.IsOriginal() || d.Transcoder == nil || !d.Transcoder.Supports(p) {
+		return orig
+	}
+	src := strings.ToLower(srcFormat)
+	if p.Lossless() && src != "flac" {
+		return orig
+	}
+	if (p.Format == "mp3" && src == "mp3") || (p.Format == "aac" && (src == "aac" || src == "m4a")) {
+		return orig // same codec: re-encoding only loses quality
+	}
+	return p
+}
+
+func (d Deps) setOnlineHeaders(h http.Header, res online.Resolution) {
+	h.Set("Cache-Control", "private, no-store")
+	h.Set("X-Yimeng-Entitlement", string(res.Entitlement))
+	h.Set("X-Yimeng-Play-Id", res.PlayID)
+	if res.Fallback != "" {
+		h.Set("X-Yimeng-Fallback", res.Fallback)
+	}
+	if res.Entitlement == online.EntPreview {
+		h.Set("X-Yimeng-Preview-Start-Ms", strconv.FormatInt(res.PreviewStartMs, 10))
+		h.Set("X-Yimeng-Preview-End-Ms", strconv.FormatInt(res.PreviewEndMs, 10))
+	}
+}
+
+// pipeExternal streams an ffmpeg transcode of the upstream body (no cache).
+func (d Deps) pipeExternal(w http.ResponseWriter, r *http.Request, body io.Reader, p transcode.Profile, res online.Resolution) {
+	h := w.Header()
+	d.setOnlineHeaders(h, res)
+	h.Set("Content-Type", p.ContentType())
+	h.Set("Accept-Ranges", "none")
+	h.Set("X-Stream-Profile", p.Key())
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	rc, err := d.Transcoder.Pipe(r.Context(), body, p)
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "transcode_failed", "transcode could not be started")
+		return
+	}
+	defer rc.Close()
+	w.WriteHeader(http.StatusOK)
+	rcw := http.NewResponseController(w)
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := rc.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				return
+			}
+			rcw.Flush()
+		}
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			if r.Context().Err() == nil {
+				d.Log.Warn("online transcode", "profile", p.Key(), "err", err)
+			}
+			panic(http.ErrAbortHandler)
+		}
+	}
 }
 
 func (d Deps) externalLyrics(w http.ResponseWriter, r *http.Request, id string) bool {
