@@ -45,6 +45,7 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/plugins/{id}", d.adminOnly(d.putPlugin))
 	mux.HandleFunc("POST /api/plugins/{id}/login", d.adminOnly(d.pluginLogin))
 	mux.HandleFunc("POST /api/plugins/{id}/login/qr", d.adminOnly(d.pluginQR))
+	mux.HandleFunc("POST /api/plugins/{id}/login/sms", d.adminOnly(d.pluginSMS))
 	mux.HandleFunc("GET /api/plugins/{id}/login/qr/{key}", d.adminOnly(d.pluginQRPoll))
 	mux.HandleFunc("POST /api/plugins/{id}/refresh", d.adminOnly(d.pluginRefresh))
 	mux.HandleFunc("DELETE /api/plugins/{id}/session", d.adminOnly(d.pluginLogout))
@@ -123,6 +124,8 @@ func (d Deps) pluginLogin(w http.ResponseWriter, r *http.Request) {
 		Cookie   string `json:"cookie"`
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Phone    string `json:"phone"`
+		Code     string `json:"code"`
 	}
 	if err := decodeBody(r, &b); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_body", err.Error())
@@ -143,8 +146,14 @@ func (d Deps) pluginLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, err = d.Online.Reg.LoginPassword(r.Context(), id, b.Username, b.Password)
+	case "sms":
+		if b.Phone == "" || b.Code == "" {
+			writeErr(w, http.StatusBadRequest, "invalid_body", "phone and code required")
+			return
+		}
+		_, err = d.Online.Reg.LoginSMS(r.Context(), id, b.Phone, b.Code)
 	default:
-		writeErr(w, http.StatusBadRequest, "invalid_body", "method must be cookie or password (QR: POST …/login/qr)")
+		writeErr(w, http.StatusBadRequest, "invalid_body", "method must be cookie, password or sms (QR: POST …/login/qr)")
 		return
 	}
 	if err != nil {
@@ -152,6 +161,21 @@ func (d Deps) pluginLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d.pluginDone(w, r, id)
+}
+
+func (d Deps) pluginSMS(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Phone string `json:"phone"`
+	}
+	if err := decodeBody(r, &b); err != nil || strings.TrimSpace(b.Phone) == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_body", "phone required")
+		return
+	}
+	if err := d.Online.Reg.SendSMS(r.Context(), r.PathValue("id"), strings.TrimSpace(b.Phone)); err != nil {
+		d.onlineErr(w, "plugin sms", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sent": true})
 }
 
 func (d Deps) pluginDone(w http.ResponseWriter, r *http.Request, id string) {

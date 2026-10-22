@@ -216,7 +216,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	plugins := online.NewRegistry(database, vlt, log, nil)
-	for _, f := range []online.Factory{netease.New(netease.Options{}), kugou.New()} {
+	for _, f := range []online.Factory{netease.New(netease.Options{}), kugou.New(kugou.Options{})} {
 		if err := plugins.Register(f); err != nil {
 			return err
 		}

@@ -88,7 +88,7 @@ export const player = {
           return;
         }
         this.skips = 0;
-        if (r.entitlement === "preview") toast(`「${t.title}」仅可试听 ${fmtDur(r.preview_start_ms || 0)}–${fmtDur(r.preview_end_ms || 0)}（平台限制）`, "ok", 3500);
+        if (r.entitlement === "preview") toast(`「${t.title}」仅可试听（平台限制）`, "ok", 3500);
         start(); this.emit("track");
       }).catch((e) => { if (seq === this.loadSeq) { toast(`无法播放「${t.title}」：${e.message}`, "err"); this.emit("track"); } });
     } else start();
@@ -151,7 +151,7 @@ const isOnline = (id) => typeof id === "string" && id.includes(":");
 export const artURL = (t, s = 120) => t?.cover_url ? (/music\.126\.net/.test(t.cover_url) ? `${t.cover_url.replace(/^http:/, "https:")}?param=${s}y${s}` : t.cover_url) : t?.album_id ? coverURL(t.album_id, s) : "";
 export function entBadge(ent) {
   if (!ent) return null;
-  if (ent.entitlement === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的官方试听片段" }, `试听 ${fmtDur(ent.preview_start_ms || 0)}–${fmtDur(ent.preview_end_ms || 0)}`);
+  if (ent.entitlement === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的官方试听片段" }, "试听");
   if (ent.entitlement === "unavailable") return h("span", { class: "badge err" }, "不可播放");
   if (ent.fallback === "local") return h("span", { class: "badge ok", title: "已使用本地曲库中的同一首歌" }, "本地文件");
   if (ent.fallback) return h("span", { class: "badge src", title: "已使用你登录的另一个平台账号播放" }, `经 ${ent.fallback}`);
@@ -333,7 +333,7 @@ export function openNP(nav, tab = "lyrics") {
       ti.textContent = t.title;
       su.replaceChildren(t.artist_name || "", t.album_title ? " — " : "", t.album_id ? h("a", { href: isOnline(t.album_id) ? `#/online/${t.album_id.replace(":", "/album/")}` : `#/album/${t.album_id}`, onclick: () => close() }, t.album_title) : "");
     }
-    if (k === "track") { ti.replaceChildren(t.title, " ", entBadge(player.ent) || ""); }
+    if (k === "track") { ti.replaceChildren(t.title, " ", entBadge(player.ent) || ""); editLyr.style.visibility = isLocal(player.track) ? "visible" : "hidden"; }
     if (k === "lyrics" || k === "track") { if (mode === "lyrics") renderLyrics(true); }
     if (mode === "queue" && (k === "queue" || k === "track")) renderQueue();
     c.sync(); s.sync();

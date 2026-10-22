@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,7 +140,7 @@ func (r *Registry) load(ctx context.Context, id string) error {
 			client.ReplaceCookies(c.Fields)
 			client.TakeDirty()
 			method = LoginMethod(c.Method)
-			loggedIn = len(c.Fields) > 0
+			loggedIn = hasSession(c.Fields)
 		}
 	}
 	p, err := in.factory(Env{HTTP: client, Config: cfg})
@@ -391,10 +392,19 @@ func (r *Registry) Persist(ctx context.Context, id string) {
 	r.mu.Lock()
 	logged, method := in.loggedIn, in.method
 	r.mu.Unlock()
-	if !logged || !in.client.TakeDirty() {
+	if !in.client.TakeDirty() {
 		return
 	}
-	if err := r.vault.Put(ctx, vaultKey(id), vault.Credential{Method: vault.LoginMethod(method), Fields: in.client.Cookies()}); err != nil {
+	fields := in.client.Cookies()
+	if !logged {
+		// Anonymous: only the device identity (DevicePrefix keys) is kept.
+		fields = deviceFields(fields)
+		if len(fields) == 0 {
+			return
+		}
+		method = ""
+	}
+	if err := r.vault.Put(ctx, vaultKey(id), vault.Credential{Method: vault.LoginMethod(method), Fields: fields}); err != nil {
 		r.log.Error("plugin session persist", "plugin", id, "err", err)
 	}
 }
@@ -490,6 +500,41 @@ func (r *Registry) LoginPassword(ctx context.Context, id, user, pass string) (Ac
 	return acc, r.loggedIn(ctx, in, LoginPassword, acc)
 }
 
+func (r *Registry) smsAuth(id string) (*instance, SMSAuthenticator, error) {
+	in, err := r.get(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	a, ok := in.plugin.(SMSAuthenticator)
+	if !ok {
+		return nil, nil, ErrNotSupported
+	}
+	return in, a, nil
+}
+
+// SendSMS asks the platform to text a verification code to phone.
+func (r *Registry) SendSMS(ctx context.Context, id, phone string) error {
+	in, a, err := r.smsAuth(id)
+	if err != nil {
+		return err
+	}
+	err = a.SendSMS(ctx, phone)
+	r.Persist(ctx, in.manifest.ID)
+	return err
+}
+
+func (r *Registry) LoginSMS(ctx context.Context, id, phone, code string) (Account, error) {
+	in, a, err := r.smsAuth(id)
+	if err != nil {
+		return Account{}, err
+	}
+	acc, err := a.LoginSMS(ctx, phone, code)
+	if err != nil {
+		return acc, err
+	}
+	return acc, r.loggedIn(ctx, in, LoginSMS, acc)
+}
+
 func (r *Registry) Refresh(ctx context.Context, id string) (Status, error) {
 	in, a, err := r.auth(id)
 	if err != nil {
@@ -510,17 +555,45 @@ func (r *Registry) Logout(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	in.client.ReplaceCookies(nil)
+	dev := deviceFields(in.client.Cookies())
+	in.client.ReplaceCookies(dev)
 	in.client.TakeDirty()
 	r.mu.Lock()
 	in.loggedIn, in.account, in.method, in.lastErr = false, nil, "", ""
 	r.mu.Unlock()
 	if r.vault != nil {
+		if len(dev) > 0 {
+			return r.vault.Put(ctx, vaultKey(id), vault.Credential{Fields: dev})
+		}
 		if err := r.vault.Delete(ctx, vaultKey(id)); err != nil && !errors.Is(err, vault.ErrNotFound) {
 			return err
 		}
 	}
 	return nil
+}
+
+// DevicePrefix marks jar entries that are a plugin's device identity (e.g.
+// Kugou dfid/mid) rather than a login session. They are persisted to the
+// Vault even while anonymous and survive logout; they never count as login.
+const DevicePrefix = "device."
+
+func deviceFields(m map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range m {
+		if strings.HasPrefix(k, DevicePrefix) {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func hasSession(m map[string]string) bool {
+	for k := range m {
+		if !strings.HasPrefix(k, DevicePrefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // IDs returns every registered plugin id, sorted by registration.

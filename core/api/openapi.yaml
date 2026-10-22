@@ -1461,12 +1461,24 @@ paths:
   /api/plugins/{id}/login:
     post:
       tags: [online]
-      summary: Log in with cookie ({method:"cookie",cookie}) or account+password ({method:"password",username,password}) (admin). Session stored in the Vault only
+      summary: Log in with cookie ({method:"cookie",cookie}), account+password ({method:"password",username,password}) or phone+SMS code ({method:"sms",phone,code}) (admin). Session stored in the Vault only
       requestBody:
         required: true
         content: { application/json: { schema: { type: object } } }
       responses:
         "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/plugins/{id}/login/sms:
+    post:
+      tags: [online]
+      summary: Ask the platform to text an SMS login code to {phone} (admin)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "200": { description: Code sent, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 

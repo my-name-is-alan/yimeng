@@ -413,3 +413,9 @@ dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: blur(6px); }
 .mode-card .s { color: var(--fg-2); font-size: 13px; line-height: 1.5; }
 .mode-card[aria-pressed=true] { border-color: var(--lime); box-shadow: 0 0 0 2px rgb(200 245 66 / .25) inset; }
 .online-group { padding-top: 6px; border-top: 1px solid var(--divider); }
+
+/* Mobile: keep the last list row clear of the floating now-playing bar + tab bar. */
+@media (max-width: 860px) {
+  .app:not([data-state=login]) .main { padding-bottom: calc(var(--bar) + 120px + env(safe-area-inset-bottom)); }
+  .main .tracks:last-child, .main .list:last-child { margin-bottom: 0; }
+}

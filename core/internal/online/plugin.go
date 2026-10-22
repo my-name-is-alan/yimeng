@@ -47,6 +47,7 @@ const (
 	LoginQR       LoginMethod = "qr"
 	LoginCookie   LoginMethod = "cookie"
 	LoginPassword LoginMethod = "password"
+	LoginSMS      LoginMethod = "sms" // phone number + SMS verification code
 )
 
 // Quality is the platform-neutral quality ladder.
@@ -259,6 +260,14 @@ type Authenticator interface {
 	// Account validates the current session (ErrNeedsLogin when logged out).
 	Account(ctx context.Context) (Account, error)
 	Refresh(ctx context.Context) error
+}
+
+// SMSAuthenticator is optional: phone-number login with an SMS code. The
+// platform may answer SendSMS with ErrRiskControl when it wants a captcha
+// that only its own app can show.
+type SMSAuthenticator interface {
+	SendSMS(ctx context.Context, phone string) error
+	LoginSMS(ctx context.Context, phone, code string) (Account, error)
 }
 
 type Catalog interface {
