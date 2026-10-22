@@ -23,6 +23,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 )
 
 func (d Deps) imageByKey(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +123,7 @@ func (d Deps) remoteArtistImage(ctx context.Context, id string) string {
 	if u, ok := d.Covers.Aliased(alias); ok {
 		return u
 	}
-	d.queueArtistMatch(id)
+	d.queueArtistMatch(ctx, id)
 	return ""
 }
 
@@ -130,13 +131,18 @@ func (d Deps) remoteArtistImage(ctx context.Context, id string) string {
 
 var (
 	artistMatchOnce  sync.Once
-	artistMatchQueue chan string
+	artistMatchQueue chan artistJob
 	artistMatchSeen  sync.Map // id → time of last attempt
 )
 
 const artistMatchRetry = 7 * 24 * time.Hour
 
-func (d Deps) queueArtistMatch(id string) {
+type artistJob struct {
+	id  string
+	own owner.Owner
+}
+
+func (d Deps) queueArtistMatch(ctx context.Context, id string) {
 	if d.Matcher == nil || d.Library == nil || !d.ArtistImageAuto {
 		return
 	}
@@ -145,16 +151,16 @@ func (d Deps) queueArtistMatch(id string) {
 	}
 	artistMatchSeen.Store(id, time.Now())
 	artistMatchOnce.Do(func() {
-		artistMatchQueue = make(chan string, 512)
+		artistMatchQueue = make(chan artistJob, 512)
 		go func() {
-			for id := range artistMatchQueue {
-				d.matchArtistImage(id)
+			for j := range artistMatchQueue {
+				d.matchArtistImage(j.own, j.id)
 				time.Sleep(1500 * time.Millisecond) // paced: be gentle with providers
 			}
 		}()
 	})
 	select {
-	case artistMatchQueue <- id:
+	case artistMatchQueue <- artistJob{id, owner.From(ctx)}:
 	default:
 		artistMatchSeen.Delete(id)
 	}
@@ -164,11 +170,12 @@ func normName(s string) string { return strings.ToLower(strings.Join(strings.Fie
 
 // matchArtistImage only accepts an exact (normalised) name match so a wrong
 // person's photo is never attached automatically.
-func (d Deps) matchArtistImage(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+func (d Deps) matchArtistImage(own owner.Owner, id string) {
+	ctx, cancel := context.WithTimeout(owner.With(context.Background(), own.ID, own.Admin), 20*time.Second)
 	defer cancel()
 	a, err := d.Library.GetArtist(ctx, id)
 	if err != nil || a.Name == "" {
+		d.Log.Info("artist image: artist not found", "artist", id)
 		return
 	}
 	infos, err := d.Matcher.LookupArtist(ctx, metadata.ArtistQuery{Name: a.Name, MBArtistID: a.MBID})
@@ -267,7 +274,7 @@ func (d *Deps) clearCacheAll(w http.ResponseWriter, r *http.Request) {
 
 // artistAlias returns a remembered remote picture of an artist (no network);
 // for local artists without one a background match is queued.
-func (d Deps) artistAlias(id string) (string, bool) {
+func (d Deps) artistAlias(ctx context.Context, id string) (string, bool) {
 	if d.Covers == nil {
 		return "", false
 	}
@@ -275,7 +282,7 @@ func (d Deps) artistAlias(id string) (string, bool) {
 		return u, true
 	}
 	if !library.IsExternalID(id) {
-		d.queueArtistMatch(id)
+		d.queueArtistMatch(ctx, id)
 	}
 	return "", false
 }

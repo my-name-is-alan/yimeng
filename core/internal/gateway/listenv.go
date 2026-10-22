@@ -151,7 +151,7 @@ func (d Deps) decorateArtists(ctx context.Context, as []library.Artist) {
 		}
 		if a.ImageUpdatedAt > 0 {
 			a.Cover = &library.CoverRef{URL: a.ImageURL}
-		} else if u, ok := d.artistAlias(a.ID); ok {
+		} else if u, ok := d.artistAlias(ctx, a.ID); ok {
 			a.Cover = &library.CoverRef{URL: a.ImageURL}
 			if lp, ok := d.Covers.RemoteCached(u); ok {
 				if m, ok := d.Covers.MetaCached(lp); ok {
