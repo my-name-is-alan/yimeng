@@ -926,6 +926,18 @@ struct SourceConnectView: View {
                             draft.connected = LibraryStore.shared.connected
                             draft.statusNote = LibraryStore.shared.status
                             store.upsert(draft)
+                        } else if kind == .fnos {
+                            // 飞牛音乐: the separate 「音乐」 app account (not the fnOS system login).
+                            let u = draft.username.trimmingCharacters(in: .whitespaces)
+                            let pw = draft.secret.isEmpty ? (Keychain.get(service: SourceKind.fnos.keychainService, account: u) ?? "") : draft.secret
+                            var c = draft; c.username = u; c.secret = ""; store.upsert(c)
+                            if !pw.isEmpty { Keychain.set(pw, service: SourceKind.fnos.keychainService, account: u) }
+                            if store.active != .fnos { await store.activate(.fnos) }
+                            else { await LibraryStore.shared.connectFnos(host: draft.host, username: u, password: pw) }
+                            draft = store.config(for: .fnos)
+                            draft.connected = LibraryStore.shared.connected
+                            draft.statusNote = LibraryStore.shared.status
+                            store.upsert(draft)
                         } else {
                             try? await Task.sleep(for: .milliseconds(400))
                             draft = store.connectDemo(draft)

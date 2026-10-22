@@ -253,7 +253,11 @@ final class PlayerStore: ObservableObject {
     }
 
     private static func asset(_ url: URL) -> AVURLAsset {
-        let headers = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
+        var headers = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
+        // 飞牛: stream auth is the music-token cookie; AVPlayer sends these headers on every Range request.
+        if NavidromeClient.fnos, !LibraryStore.shared.fnosToken.isEmpty {
+            headers["Cookie"] = "music-token=\(LibraryStore.shared.fnosToken)"; headers["X-Music-API"] = "v1"
+        }
         return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
     }
 

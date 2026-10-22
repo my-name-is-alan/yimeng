@@ -19,6 +19,8 @@ targets:
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        INFOPLIST_FILE: Config/Yimeng-Info.plist
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "连接局域网里的飞牛 NAS / 音乐服务器"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
@@ -60,3 +62,24 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         MARKETING_VERSION: "0.3.6"
         CURRENT_PROJECT_VERSION: "9"
+  YimengTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - YimengTests
+    dependencies:
+      - target: Yimeng
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  Yimeng:
+    build:
+      targets:
+        Yimeng: all
+        YimengTests: [test]
+    test:
+      targets:
+        - YimengTests

@@ -123,7 +123,8 @@ final class LibraryStore: ObservableObject {
 
     /// Source switched away: drop session + in-memory library.
     func reset() {
-        connected = false; liveMode = false; loading = false
+        connected = false; liveMode = false; loading = false; fnosRoot = nil; fnosToken = ""
+        Task { await FnosClient.shared.logout() }
         albums = []; artists = []; allAlbums = []; albumTotal = nil; songTotal = nil
         status = ""; user = ""; host = ""
         coverBase = nil; coverToken = ""; coverSalt = ""; coverUser = ""
@@ -170,6 +171,42 @@ final class LibraryStore: ObservableObject {
         }
         if let e = ProcessInfo.processInfo.environment["YIMENG_ND_PASSWORD"], !e.isEmpty { return e }
         return nil
+    }
+
+    /// 飞牛音乐: separate 「音乐」 app account; token → Cookie. Library calls route via NavidromeClient.fnos.
+    @Published var fnosRoot: URL?
+    @Published var fnosToken = ""
+    func bootstrapFnos() async {
+        let cfg = SourceStore.shared.config(for: .fnos)
+        guard !cfg.host.isEmpty, !cfg.username.isEmpty,
+              let pw = Keychain.get(service: SourceKind.fnos.keychainService, account: cfg.username), !pw.isEmpty else {
+            status = "待连接飞牛音乐"; return
+        }
+        liveMode = true
+        await connectFnos(host: cfg.host, username: cfg.username, password: pw)
+    }
+    func connectFnos(host: String, username: String, password: String) async {
+        loading = true; status = "连接中…"
+        defer { loading = false }
+        do {
+            let f = FnosClient.shared
+            try await f.configure(host: host)
+            try await f.login(username: username, password: password)
+            let snap = await f.snapshot()
+            fnosRoot = snap.root; fnosToken = snap.token
+            albums = try await f.albums(offset: 0, size: 30)
+            artists = Array(try await f.artists().prefix(40))
+            connected = true; liveMode = true
+            user = username; self.host = snap.root?.absoluteString ?? host
+            songTotal = await f.songTotal()
+            status = (["飞牛音乐 · \(username)", songTotal.map { "\($0) 首歌曲" } ?? ""].filter { !$0.isEmpty }).joined(separator: " · ")
+            var cfg = SourceStore.shared.config(for: .fnos)
+            cfg.host = self.host; cfg.username = username; cfg.connected = true; cfg.statusNote = status
+            SourceStore.shared.upsert(cfg)
+        } catch {
+            connected = false
+            status = error.localizedDescription
+        }
     }
 
     func connect(host: String, username: String, password: String) async {
@@ -243,6 +280,10 @@ final class LibraryStore: ObservableObject {
 
     func coverArtURL(id: String?, size: Int = 300) -> URL? {
         guard let id else { return nil }
+        if NavidromeClient.fnos {
+            guard let r = fnosRoot else { return nil }
+            return id.hasPrefix("ar-") ? nil : FnosClient.coverURL(root: r, coverId: id, size: size)
+        }
         guard let base = coverBase, !coverToken.isEmpty else {
             // Before login: token-less cache-only URL (same id_size key) so disk-cached covers render instantly.
             var c = URLComponents(); c.scheme = CoverCache.offlineScheme; c.host = "cover"; c.path = "/getCoverArt.view"
@@ -256,6 +297,7 @@ final class LibraryStore: ObservableObject {
 
     /// Subsonic stream.view — AVPlayer uses this URL (u+t+s auth).
     func streamURL(for songId: String) -> URL? {
+        if NavidromeClient.fnos { return fnosRoot.flatMap { FnosClient.streamURL(root: $0, guid: songId) } }
         guard let base = coverBase, !coverToken.isEmpty else { return nil }
         return NavidromeClient.authedURL(base: base, method: "stream.view",
                                          user: coverUser, token: coverToken, salt: coverSalt,

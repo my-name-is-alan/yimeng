@@ -8,11 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		0C467222F0AF212833502E34 /* NowPlayingInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */; };
+		0D9231157F1515B2203FAF61 /* fnos-track-list.json in Resources */ = {isa = PBXBuildFile; fileRef = 5178F9895770BE93EE018F18 /* fnos-track-list.json */; };
 		1019C65652F5758BB605EAAC /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
 		22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033899009C62F1F8197A0B44 /* Doodle.swift */; };
 		2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E0E76B00DA967820F46BDB /* DreamField.swift */; };
 		3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFCEC6EA2D41604DD20F029 /* Effects.swift */; };
+		37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */ = {isa = PBXBuildFile; fileRef = 80FCD065D95D1B20100769C5 /* fnos-login.json */; };
 		3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */; };
+		3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */; };
 		3CE0EA45936DC53ADF0A7061 /* LibraryCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26134EFA3C10B18CD7770A97 /* LibraryCache.swift */; };
 		3EED2DA7DE24AB4AF15BBE5C /* YimengWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D351EB4C609FA891763BACE /* EmptyStates.swift */; };
@@ -29,11 +32,13 @@
 		76AFD4C3DBEAA91001A468E3 /* Stores.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BD4E0C93F027C9E0B46E7 /* Stores.swift */; };
 		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		8AC49EA4E44CFE3C1087E7C6 /* HomeLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB02095FC07F92D72E49BD6D /* HomeLive.swift */; };
+		95004421BB25025814B1211C /* fnos-expired.json in Resources */ = {isa = PBXBuildFile; fileRef = 56439C44803E5E2178CD3157 /* fnos-expired.json */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
 		B0043E714DFAA55272AAF5C7 /* DebugSnap.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9712EB28EE125918AEB1DEF /* DebugSnap.swift */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		BC405548F384C5E721439CC2 /* ArtistDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256431CE394BDB30A1B80C87 /* ArtistDetailView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
+		C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14B0D85AF014834401939FD /* FnosClient.swift */; };
 		C75CCB742A37FD581CEE8890 /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16EAA934AB97BEE0902D11F2 /* MeView.swift */; };
 		D2BF61DEDC447CB142074774 /* NowPlayingMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35378CC4779ABA225F390237 /* NowPlayingMore.swift */; };
 		D5339D65B2F278E0D24B78FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
@@ -60,6 +65,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 829E2B72F0534C7CEFFD4D36;
 			remoteInfo = YimengWidgets;
+		};
+		7D3F30EBC7C44DE9106749EF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9143D217C1B9D8FEBCD6E6F2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 684AFA6F6859FAFB66C8BEAD;
+			remoteInfo = Yimeng;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -100,6 +112,8 @@
 		4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingView.swift; sourceTree = "<group>"; };
 		4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionView.swift; sourceTree = "<group>"; };
 		4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevatorIndex.swift; sourceTree = "<group>"; };
+		5178F9895770BE93EE018F18 /* fnos-track-list.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-track-list.json"; sourceTree = "<group>"; };
+		56439C44803E5E2178CD3157 /* fnos-expired.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-expired.json"; sourceTree = "<group>"; };
 		575967C96AA037C6933C8F7B /* Yimeng.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Yimeng.entitlements; sourceTree = "<group>"; };
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		624D971C2C9BF41CC02A1560 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
@@ -107,12 +121,16 @@
 		673E45F12B4A88C9F60BEDEF /* DreamData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamData.swift; sourceTree = "<group>"; };
 		6C66FE3A48511F18C8FF2DEF /* Banner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Banner.swift; sourceTree = "<group>"; };
 		71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		80FCD065D95D1B20100769C5 /* fnos-login.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "fnos-login.json"; sourceTree = "<group>"; };
 		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
 		8D351EB4C609FA891763BACE /* EmptyStates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStates.swift; sourceTree = "<group>"; };
+		9743CD154042418ED809DFA6 /* YimengTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = YimengTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		98436E751CC570C4F8472C05 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
+		A14B0D85AF014834401939FD /* FnosClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClient.swift; sourceTree = "<group>"; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		AA72C33C6DC672957DBBB779 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FnosClientTests.swift; sourceTree = "<group>"; };
 		ADFCEC6EA2D41604DD20F029 /* Effects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Effects.swift; sourceTree = "<group>"; };
 		B727C7B6B00ECD4C014811FE /* Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio.swift; sourceTree = "<group>"; };
 		B8E0E76B00DA967820F46BDB /* DreamField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamField.swift; sourceTree = "<group>"; };
@@ -134,20 +152,41 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		6F61438FCEA08D7E70B67C51 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				56439C44803E5E2178CD3157 /* fnos-expired.json */,
+				80FCD065D95D1B20100769C5 /* fnos-login.json */,
+				5178F9895770BE93EE018F18 /* fnos-track-list.json */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
 		7827A76DC18E589318589CC6 = {
 			isa = PBXGroup;
 			children = (
 				416552256942BFE9A95705C8 /* Shared */,
 				A1698FBD18401288FE2B1498 /* Yimeng */,
+				7F632480824F1FEF77789F46 /* YimengTests */,
 				AB95D4DD651112BF89637B28 /* YimengWidgets */,
 				83C83E9C79A3D06FAA6C1809 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		7F632480824F1FEF77789F46 /* YimengTests */ = {
+			isa = PBXGroup;
+			children = (
+				AAA07C54BE80E009DA871ECF /* FnosClientTests.swift */,
+				6F61438FCEA08D7E70B67C51 /* Fixtures */,
+			);
+			path = YimengTests;
 			sourceTree = "<group>";
 		};
 		83C83E9C79A3D06FAA6C1809 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				F1B679B920A57BE24DC98F91 /* Yimeng.app */,
+				9743CD154042418ED809DFA6 /* YimengTests.xctest */,
 				184013605DC0F6EEC27F5170 /* YimengWidgets.appex */,
 			);
 			name = Products;
@@ -172,6 +211,7 @@
 				ADFCEC6EA2D41604DD20F029 /* Effects.swift */,
 				4F9DA8A507CC4909B208CEA3 /* ElevatorIndex.swift */,
 				8D351EB4C609FA891763BACE /* EmptyStates.swift */,
+				A14B0D85AF014834401939FD /* FnosClient.swift */,
 				CB7AA12279A810579DDAD711 /* GenreView.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
@@ -250,6 +290,25 @@
 			productReference = 184013605DC0F6EEC27F5170 /* YimengWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		BF4387F73AADECAF45257D71 /* YimengTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E79851F46ED8D025B6962776 /* Build configuration list for PBXNativeTarget "YimengTests" */;
+			buildPhases = (
+				928AE546E888248B21921276 /* Sources */,
+				E3BAF8F8968F12A7630B6DC2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				67030B387C2013E7F4657CD5 /* PBXTargetDependency */,
+			);
+			name = YimengTests;
+			packageProductDependencies = (
+			);
+			productName = YimengTests;
+			productReference = 9743CD154042418ED809DFA6 /* YimengTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -277,6 +336,7 @@
 			targets = (
 				684AFA6F6859FAFB66C8BEAD /* Yimeng */,
 				829E2B72F0534C7CEFFD4D36 /* YimengWidgets */,
+				BF4387F73AADECAF45257D71 /* YimengTests */,
 			);
 		};
 /* End PBXProject section */
@@ -298,9 +358,27 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E3BAF8F8968F12A7630B6DC2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				95004421BB25025814B1211C /* fnos-expired.json in Resources */,
+				37C29E65136B1FD0CB5CFF42 /* fnos-login.json in Resources */,
+				0D9231157F1515B2203FAF61 /* fnos-track-list.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		928AE546E888248B21921276 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3BECD695C903C0364724F4F0 /* FnosClientTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		92E0B154BCDC0C840A802708 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -320,6 +398,7 @@
 				3614CFE174A8EDB0C81F0FF0 /* Effects.swift in Sources */,
 				F121E6889A7727D6E86A89D3 /* ElevatorIndex.swift in Sources */,
 				410CFCF4A86C2E0DACDEAED0 /* EmptyStates.swift in Sources */,
+				C1AFBDD21372DF8623C2CAC5 /* FnosClient.swift in Sources */,
 				E971D67C7B4F23F9598F45D1 /* GenreView.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
@@ -364,9 +443,31 @@
 			target = 829E2B72F0534C7CEFFD4D36 /* YimengWidgets */;
 			targetProxy = 4C31823F9C9B2FF0E99BCDCC /* PBXContainerItemProxy */;
 		};
+		67030B387C2013E7F4657CD5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 684AFA6F6859FAFB66C8BEAD /* Yimeng */;
+			targetProxy = 7D3F30EBC7C44DE9106749EF /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		3109F7364F5A8AC6083E231B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.YimengTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng";
+			};
+			name = Release;
+		};
 		3110FD4CF162AFC231FD9B1E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -441,7 +542,9 @@
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
 				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Yimeng-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网里的飞牛 NAS / 音乐服务器";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -456,6 +559,23 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
+		};
+		46B318FE58CE2B7F24862BF4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.YimengTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng";
+			};
+			name = Debug;
 		};
 		780A084BBDD89C83AABE8BEE /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -516,7 +636,9 @@
 				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
 				CURRENT_PROJECT_VERSION = 9;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Yimeng-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "连接局域网里的飞牛 NAS / 音乐服务器";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -614,6 +736,15 @@
 			buildConfigurations = (
 				B98973126D30A9C84F513A2D /* Debug */,
 				35E2E09FAAB66F9FBAB8BA97 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E79851F46ED8D025B6962776 /* Build configuration list for PBXNativeTarget "YimengTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				46B318FE58CE2B7F24862BF4 /* Debug */,
+				3109F7364F5A8AC6083E231B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

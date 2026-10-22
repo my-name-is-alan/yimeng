@@ -35,7 +35,7 @@ enum SourceKind: String, CaseIterable, Identifiable, Codable {
     var hostPlaceholder: String {
         switch self {
         case .core: "https://core.yimeng.lan:8443"
-        case .fnos: "https://fnos.home.lan:5666"
+        case .fnos: "http://192.168.1.10:5666/music"
         case .navidrome: "https://music.example.com"
         case .emby: "https://emby.home.lan:8096"
         case .local: ""
@@ -67,6 +67,7 @@ enum MusicSources {
     @MainActor static func make(_ k: SourceKind) -> MusicSource {
         switch k {
         case .navidrome: NavidromeSource()
+        case .fnos: FnosSource()
         default: ComingSoonSource(kind: k)
         }
     }
@@ -79,6 +80,16 @@ enum MusicSources {
     let isImplemented = true
     func activate() async {
         await LibraryStore.shared.bootstrap()
+        await PlayerStore.shared.restore()
+    }
+    func deactivate() { LibraryStore.shared.reset() }
+}
+
+@MainActor struct FnosSource: MusicSource {
+    let kind = SourceKind.fnos
+    let isImplemented = true
+    func activate() async {
+        await LibraryStore.shared.bootstrapFnos()
         await PlayerStore.shared.restore()
     }
     func deactivate() { LibraryStore.shared.reset() }
