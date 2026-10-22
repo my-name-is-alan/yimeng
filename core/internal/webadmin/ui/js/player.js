@@ -345,7 +345,7 @@ export function mountNowBar(nav) {
   const qBtn = h("button", { class: "btn icon ghost", "aria-label": "播放队列", title: "播放队列", onclick: () => openNP(nav, "queue") }, icon("queue"));
   const mini = h("div", { class: "mini-prog" }, h("i"));
   bar.replaceChildren(tint, info, h("div", { class: "nb-center" }, c.el, s.el), h("div", { class: "nb-right" }, lyrBtn, qBtn, volBox), mini);
-  let cur;
+  let cur, curArt;
   const entSlot = h("span", { class: "ent-slot" });
   player.on((k) => {
     const t = player.track;
@@ -353,10 +353,9 @@ export function mountNowBar(nav) {
     if (!t) { cur = null; return; }
     if (k === "time") { s.sync(); mini.firstChild.style.width = `${(player.time / (player.duration || 1)) * 100}%`; subLine(); return; }
     if (k === "lyrics" || k === "state" || k === "play" || k === "pause") subLine();
+    if (curArt !== artURL(t, 120)) { curArt = artURL(t, 120); art.replaceChildren(cover(curArt, t.album_title || t.title)); tint.style.backgroundImage = curArt ? `url("${curArt}")` : "none"; }
     if (cur !== t.id) {
       cur = t.id;
-      art.replaceChildren(cover(artURL(t, 120), t.album_title || t.title));
-      tint.style.backgroundImage = artURL(t, 120) ? `url("${artURL(t, 120)}")` : "none";
       title.replaceChildren(t.title, " "); const qb = qualityBadge(t); if (qb) title.append(qb);
       title.append(entSlot);
       artistText = [t.artist_name, t.album_title].filter(Boolean).join(" — ");
