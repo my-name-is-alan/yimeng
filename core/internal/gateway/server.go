@@ -15,6 +15,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
 	"github.com/my-name-is-alan/yimeng/core/internal/covers"
 	"github.com/my-name-is-alan/yimeng/core/internal/events"
+	"github.com/my-name-is-alan/yimeng/core/internal/infra/logging"
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
@@ -23,7 +24,6 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 	"github.com/my-name-is-alan/yimeng/core/internal/userdata"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
-	"github.com/my-name-is-alan/yimeng/core/internal/webadmin"
 )
 
 // LibraryUseCases is implemented by app.Library.
@@ -84,6 +84,13 @@ type Deps struct {
 	Subsonic       *subsonic.Handler // optional; mounts /rest/*
 	Sources        *playback.Registry
 	Vault          vault.Vault // for logout / credential delete; never exposed
+
+	// Web admin extras (all optional).
+	UserEdits    UserEdits
+	LyricsSearch LyricsSearcher
+	Matcher      metadata.MetadataProvider // on-demand MusicBrainz lookups for the metadata editor
+	Logs         *logging.Ring
+	Runtime      map[string]any // non-secret effective config snapshot
 }
 
 type contextT = context.Context
@@ -96,16 +103,8 @@ func NewRouter(d Deps) http.Handler {
 		d.Presence = NewPresence(d.Hub)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /admin/", func(w http.ResponseWriter, r *http.Request) {
-		b, err := webadmin.FS.ReadFile("index.html")
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(b)
-	})
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin/", http.StatusFound) })
+	d.mountWebUI(mux)
+	d.mountWebAdminAPI(mux)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "service": "yimeng-core"})
 	})

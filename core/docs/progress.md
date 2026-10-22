@@ -32,3 +32,31 @@ Branch: `feat/core-sqlite-scanner` · local commits only · no remote · no Dock
 | E10 | Config hot-reload | done | `c7ac85d` |
 | E11 | `/api/v1` alias | done | `c7ac85d` |
 | E12 | TS types → `packages/shared` | done | `6f46277` |
+
+## Web admin + player (`feat/web-admin`)
+
+The UI is embedded at `/admin/` (`internal/webadmin/ui`, vanilla ES modules, no build step). It is in Chinese and follows the iOS visual style.
+
+Features:
+- Pairing and login; device management.
+- Live dashboard: scan progress, jobs, health and logs.
+- Library: albums, artists, tracks and search, including pinyin and initials.
+- Playlists, smart playlists and M3U.
+- Web player: queue, shuffle, repeat, synced lyrics and Media Session.
+- Metadata editing: cover replace, MusicBrainz match with confidence scores, and batch edit.
+- Lyrics workbench: LRCLIB search, bind, edit, upload, offset and tap-to-sync.
+- Settings: roots, rescan, providers, transcoding, backups and sources.
+
+New endpoints (admin-only):
+- `GET|PUT|DELETE /api/tracks/{id}/lyrics(/user)`
+- `GET /api/tracks/{id}/lyrics/search`
+- `PUT|DELETE /api/albums/{id}/cover`
+- `GET /api/tracks/{id}/match`
+- `GET /api/albums/{id}/match`
+- `POST /api/overrides/batch`
+- `GET /api/system/logs`
+- `GET /api/settings/runtime`
+
+Migration `0013_user_edits` adds `user_lyrics` and `user_covers`. Both survive rescans.
+
+Covers: WebP thumbnails require cgo. `CGO_ENABLED=0` builds now fall back to JPEG.

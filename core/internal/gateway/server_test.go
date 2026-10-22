@@ -98,7 +98,9 @@ func newEnv(t *testing.T) *env {
 			CacheMaxBytes: 1 << 30, Transcoder: tc, Backup: &backup.Service{DB: d, DBPath: filepath.Join(tmp, "lib.db"), Dir: filepath.Join(tmp, "backups")},
 			LatestScan: sc.Latest, Version: "test", SchemaVersion: db.Latest(migrations.FS), Started: time.Now(),
 			Features: map[string]bool{"backup": true, "lyrics": true, "history": true, "playlists": true}},
-		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS)}))
+		RestoreMaxBytes: 1 << 30, SchemaVersion: db.Latest(migrations.FS),
+		UserEdits: sc, Logs: testRing, LyricsSearch: testLyricsSearch, Matcher: fakeMatcher{},
+		Runtime: map[string]any{"watch_mode": "auto"}}))
 	t.Cleanup(srv.Close)
 	e := &env{t: t, srv: srv, sc: sc, auth: a, tc: tc}
 	code, _, _ := a.NewCode()

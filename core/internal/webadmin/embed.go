@@ -2,5 +2,7 @@ package webadmin
 
 import "embed"
 
-//go:embed index.html
+// FS holds the no-build web admin/player (ui/*: HTML, CSS, ES modules).
+//
+//go:embed all:ui
 var FS embed.FS

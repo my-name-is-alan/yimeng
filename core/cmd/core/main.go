@@ -41,6 +41,8 @@ import (
 
 var version = "dev"
 
+var logRing *logging.Ring
+
 func main() {
 	boot := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	cfg, err := config.Load()
@@ -53,6 +55,8 @@ func main() {
 		boot.Error("log", "err", err)
 		os.Exit(1)
 	}
+	logRing = logging.NewRing(1000)
+	log = slog.New(logRing.Wrap(log.Handler())) // web admin log viewer (secrets redacted)
 	slog.SetDefault(log)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck(cfg.Bind))
@@ -159,6 +163,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 		default:
 			log.Warn("unknown provider ignored", "id", name)
 		}
+	}
+	// On-demand (admin-initiated) lookups for the web metadata/lyrics editors; never run in the background.
+	lrclibSearch := &providers.LRCLIB{UA: ua}
+	var matcher metadata.MetadataProvider
+	if mbc, err := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: ua}); err == nil {
+		matcher = mbc
 	}
 	var lyricsFetcher library.LyricsFetcher
 	if len(lyricChain) > 0 {
@@ -275,18 +285,35 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Auth:     authSvc,
 			Log:      log,
 
-			Backup:          bk,
-			UserData:        ud,
-			Playlists:       scanner,
-			Admin:           scanner,
-			Covers:          &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
-			LyricsFetcher:   lyricsFetcher,
-			Providers:       reg,
-			TrustedProxies:  tp,
-			RateLimits:      rl,
-			Subsonic:        sub,
-			Sources:         streamReg,
-			Vault:           vlt,
+			Backup:         bk,
+			UserData:       ud,
+			Playlists:      scanner,
+			Admin:          scanner,
+			Covers:         &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
+			LyricsFetcher:  lyricsFetcher,
+			Providers:      reg,
+			TrustedProxies: tp,
+			RateLimits:     rl,
+			Subsonic:       sub,
+			Sources:        streamReg,
+			Vault:          vlt,
+			UserEdits:      scanner,
+			LyricsSearch:   lrclibSearch.Search,
+			Matcher:        matcher,
+			Logs:           logRing,
+			Runtime: map[string]any{
+				"version": version, "bind": cfg.Bind, "library_roots": cfg.LibraryRoots,
+				"db_path": cfg.DBPath, "cache_dir": cfg.CacheDir, "cache_max_bytes": cfg.CacheMaxBytes,
+				"scan_on_start": cfg.ScanOnStart, "watch_mode": cfg.WatchMode,
+				"watch_debounce": cfg.WatchDebounce.String(), "rescan_interval": cfg.RescanInterval.String(),
+				"musicbrainz_enabled":     cfg.MusicBrainz.Enabled || containsCI(cfg.Providers, "musicbrainz"),
+				"musicbrainz_contact_set": cfg.MusicBrainz.Contact != "",
+				"providers":               cfg.Providers, "ffmpeg": tc.FFmpeg() != "", "transcode_concurrency": cfg.TranscodeConcurrency,
+				"loudness_analysis": cfg.Library.LoudnessAnalysis, "backup_dir": cfg.Backup.Dir,
+				"backup_interval": cfg.Backup.Interval.String(), "backup_keep": cfg.Backup.Keep,
+				"subsonic": cfg.Subsonic, "mdns": cfg.MDNS, "tls": cfg.Server.TLSCert != "",
+				"pair_code_ttl": cfg.PairCodeTTL.String(), "log_level": cfg.Log.Level, "log_format": cfg.Log.Format,
+			},
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,

@@ -305,6 +305,9 @@ func (s *Scanner) Merge(ctx context.Context) error {
 	if err := s.applyOverrides(ctx, tx); err != nil {
 		return err
 	}
+	if err := applyUserCovers(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/chai2010/webp"
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 )
@@ -48,6 +47,9 @@ func (c *Cache) Thumb(src string, size int, format string) (path, contentType st
 	}
 	if !allowed[format] {
 		return "", "", fmt.Errorf("format must be jpeg|webp|png")
+	}
+	if format == "webp" && !webpEncoder {
+		format = "jpeg" // CGO_ENABLED=0 builds have no WebP encoder
 	}
 	st, err := os.Stat(src)
 	if err != nil {
@@ -145,7 +147,7 @@ func encodeImg(w io.Writer, img image.Image, format string) error {
 	case "png":
 		return png.Encode(w, img)
 	case "webp":
-		return webp.Encode(w, img, &webp.Options{Quality: 80})
+		return encodeWebP(w, img)
 	default:
 		return jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
 	}

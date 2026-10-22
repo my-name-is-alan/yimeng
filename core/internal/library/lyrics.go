@@ -23,7 +23,7 @@ type TrackLyrics struct {
 // LyricsFetcher is an optional remote provider consulted when no local lyrics exist.
 type LyricsFetcher func(ctx context.Context, t Track) (string, string, error)
 
-// Lyrics resolves lyrics: sidecar .lrc next to the best file (synced, edit
+// Lyrics resolves lyrics: user-bound (web admin) → sidecar .lrc next to the best file (synced, edit
 // without rescan) → embedded tag → optional fetcher. Synced lyrics win over
 // plain ones from a lower tier only if the higher tier is plain.
 func (s *Scanner) Lyrics(ctx context.Context, trackID string, fetch LyricsFetcher) (TrackLyrics, error) {
@@ -38,6 +38,9 @@ func (s *Scanner) Lyrics(ctx context.Context, trackID string, fetch LyricsFetche
 	}
 	if err != nil {
 		return out, err
+	}
+	if u, ok := s.userLyrics(ctx, trackID); ok {
+		return u, nil
 	}
 	var cands []TrackLyrics
 	if f, err := s.TrackFile(ctx, trackID); err == nil {

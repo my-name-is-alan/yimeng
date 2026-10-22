@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0A0A0C">
+<title>译梦 · 控制台</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230A0A0C'/%3E%3Cpath d='M20 7a9 9 0 1 0 5 15A7 7 0 0 1 20 7z' fill='%23C8F542'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<div id="app" class="app" data-state="boot">
+  <aside class="sidebar" aria-label="主导航">
+    <a class="brand" href="#/"><span class="brand-orb" aria-hidden="true"></span><span><b>译梦</b><small>Yimeng Core</small></span></a>
+    <form class="side-search" role="search" id="searchForm">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="searchInput" type="search" placeholder="搜索 · 支持拼音 / 首字母" autocomplete="off" aria-label="搜索曲库">
+    </form>
+    <nav id="nav"></nav>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+  <main id="main" class="main" tabindex="-1"></main>
+  <nav class="tabbar" id="tabbar" aria-label="快捷导航"></nav>
+  <div id="nowbar" class="nowbar" hidden></div>
+</div>
+<div id="np" class="np" hidden></div>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>
