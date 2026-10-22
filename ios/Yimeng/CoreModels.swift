@@ -183,7 +183,16 @@ struct CoreTokens: Codable, Sendable {
     // Both spellings: plain decoders see access_token, snake-case-converting ones see accessToken.
     enum K: String, CodingKey { case accessToken = "access_token", refreshToken = "refresh_token", expiresIn = "expires_in", token, device, user,
                                      accessTokenC = "accessToken", refreshTokenC = "refreshToken", expiresInC = "expiresIn" }
-    private struct Who: Codable { var id: String?; var userId: String?; var username: String? }
+    private struct Who: Codable {
+        var id: String?; var userId: String?; var username: String?
+        enum Q: String, CodingKey { case id, username, userId, user_id }
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: Q.self)
+            id = try c.decodeIfPresent(String.self, forKey: .id); username = try c.decodeIfPresent(String.self, forKey: .username)
+            userId = try c.decodeIfPresent(String.self, forKey: .user_id) ?? c.decodeIfPresent(String.self, forKey: .userId)
+        }
+        func encode(to e: Encoder) throws {}
+    }
     init(accessToken: String, refreshToken: String?, expiresIn: Int?) { self.accessToken = accessToken; self.refreshToken = refreshToken; self.expiresIn = expiresIn }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
