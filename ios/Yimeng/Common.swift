@@ -38,6 +38,7 @@ struct AlbumRow: View {
 
 struct TrackRow: View {
     let index: Int; let title: String; var subtitle: String? = nil; var trailing = ""; var art: String? = nil; var playing = false
+    var onTap: (() -> Void)? = nil
     @Environment(\.colorScheme) var scheme
     var body: some View {
         HStack(spacing: 16) {
@@ -59,5 +60,45 @@ struct TrackRow: View {
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5) }
         }
         .frame(height: art == nil ? 56 : 64).padding(.horizontal, Theme.margin).scrollReveal()
+        .contentShape(Rectangle())
+        .onTapGesture { onTap?() }
+    }
+}
+
+struct RemoteCover: View {
+    let url: URL?
+    var size: CGFloat = 148
+    var corner: CGFloat = 12
+    var body: some View {
+        CoverImage(url: url)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+    }
+}
+
+struct RemoteAlbumRow: View {
+    let albums: [NDAlbum]
+    @ObservedObject private var library = LibraryStore.shared
+    @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) var scheme
+    @Environment(\.heroNS) var ns
+    var size: CGFloat = 148
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 16) {
+                ForEach(albums) { a in
+                    VStack(alignment: .leading, spacing: 2) {
+                        RemoteCover(url: library.coverURL(a), size: size)
+                            .zoomSource("nd-\(a.id)", ns)
+                        Text(a.name).font(.system(size: 14, weight: .medium)).lineLimit(1).padding(.top, 6)
+                        Text(a.artist).font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
+                    }
+                    .frame(width: size)
+                    .scrollReveal(.horizontal)
+                    .contentShape(Rectangle())
+                    .onTapGesture { state.path.append(.ndAlbum(a)) }
+                }
+            }.padding(.horizontal, Theme.margin)
+        }
     }
 }

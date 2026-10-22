@@ -212,6 +212,9 @@ struct OnboardingView: View {
     var initialPage: Int = 0
     @State private var page = 0
     @State private var draw: CGFloat = 0
+    @State private var bar: CGFloat = 0
+    @State private var barAdvance: Task<Void, Never>? = nil
+    private let pageHold: TimeInterval = 4.6
     private let pages: [OnboardingPage] = [
         .init(id: 0, title: "一处听遍所有音乐", subtitle: "译梦服务端、飞牛、Navidrome、Emby 与本机音乐，合成一个安静的曲库。"),
         .init(id: 1, title: "涂鸦随歌而变", subtitle: "每首歌都有自己的梦：节奏、情绪与封面颜色，决定画在它身边的涂鸦。"),
@@ -236,7 +239,10 @@ struct OnboardingView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .onChange(of: page) { _, _ in redraw() }
+            .onChange(of: page) { _, _ in
+                restartBar()
+                redraw()
+            }
 
             VStack {
                 HStack {
@@ -245,18 +251,26 @@ struct OnboardingView: View {
                         .font(.system(size: 16)).foregroundStyle(.white.opacity(0.75)).padding(20)
                 }
                 Spacer()
-                HStack(spacing: 6) {
+
+                // Progress segments (not dots): current page fills over pageHold
+                HStack(spacing: 5) {
                     ForEach(0..<5, id: \.self) { i in
-                        Capsule().fill(.white).frame(width: i == page ? 18 : 6, height: 6)
-                            .opacity(i == page ? 1 : 0.35)
-                            .animation(.easeOut(duration: 0.35), value: page)
+                        GeometryReader { g in
+                            Capsule().fill(Color.white.opacity(0.28))
+                                .overlay(alignment: .leading) {
+                                    Capsule().fill(Color.white)
+                                        .frame(width: g.size.width * fill(for: i))
+                                }
+                        }
+                        .frame(height: 3)
                     }
-                    Spacer()
                 }
                 .padding(.horizontal, 28).padding(.bottom, 16)
 
                 Button {
-                    if page < 4 { withAnimation { page += 1 } } else { onDone() }
+                    if page < 4 {
+                        withAnimation(.easeInOut(duration: 0.55)) { page += 1 }
+                    } else { onDone() }
                 } label: {
                     Text(page == 4 ? "开始使用" : "继续")
                 }
@@ -265,14 +279,24 @@ struct OnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { page = initialPage; redraw() }
+        .onAppear {
+            page = initialPage
+            redraw()
+            restartBar()
+        }
+    }
+
+    private func fill(for i: Int) -> CGFloat {
+        if i < page { return 1 }
+        if i > page { return 0 }
+        return bar
     }
 
     @ViewBuilder
     private func pageContent(_ p: OnboardingPage) -> some View {
         VStack(spacing: 0) {
             ZStack {
-                OnboardArt(page: p.id, progress: draw)
+                OnboardArt(page: p.id, progress: draw, active: page == p.id)
             }
             .frame(height: 520)
             .padding(.top, 40)
@@ -292,167 +316,421 @@ struct OnboardingView: View {
         draw = 0
         withAnimation(.easeOut(duration: 1.15)) { draw = 1 }
     }
+
+    /// Continuous linear fill via SwiftUI animation (display-linked), not Timer ticks.
+    private func restartBar() {
+        barAdvance?.cancel()
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { bar = 0 }
+        // Next runloop so the zero-width frame commits before linear fill.
+        DispatchQueue.main.async {
+            withAnimation(.linear(duration: pageHold)) { bar = 1 }
+        }
+        let hold = pageHold
+        let cur = page
+        barAdvance = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(hold))
+            guard !Task.isCancelled, page == cur else { return }
+            if page < 4 {
+                withAnimation(.easeInOut(duration: 0.55)) { page += 1 }
+            }
+        }
+    }
 }
 
-/// Simplified page illustrations (doodle + mock UI).
+/// Animated page illustrations — TimelineView only ticks while `active`.
 struct OnboardArt: View {
     let page: Int
     var progress: CGFloat
+    var active: Bool
     var body: some View {
-        GeometryReader { g in
-            let w = g.size.width
-            ZStack {
-                switch page {
-                case 0:
-                    // Hub: moon + 4 source tiles
+        Group {
+            switch page {
+            case 0: SourcesAnim(progress: progress, active: active)
+            case 1: DoodleAnim(progress: progress, active: active)
+            case 2: LyricsAnim(progress: progress, active: active)
+            case 3: StackAnim(progress: progress, active: active)
+            default: IslandAnim(progress: progress, active: active)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: Page 1 — sources float + pulse links
+
+private struct SourcesAnim: View {
+    var progress: CGFloat
+    var active: Bool
+    private let kinds: [SourceKind] = [.fnos, .navidrome, .emby, .local]
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { tl in
+            let t = active ? tl.date.timeIntervalSinceReferenceDate : 0
+            GeometryReader { g in
+                let w = g.size.width
+                let c = CGPoint(x: w / 2, y: 220)
+                let anchors: [CGPoint] = [
+                    CGPoint(x: w * 0.18, y: 120), CGPoint(x: w * 0.82, y: 120),
+                    CGPoint(x: w * 0.18, y: 340), CGPoint(x: w * 0.82, y: 340),
+                ]
+                ZStack {
+                    // dashed spokes with marching dash + pulse opacity
+                    Canvas { ctx, _ in
+                        for (i, pt) in anchors.enumerated() {
+                            var p = Path(); p.move(to: pt); p.addLine(to: c)
+                            let pulse = 0.35 + 0.35 * (0.5 + 0.5 * sin(t * 2.2 + Double(i) * 0.9))
+                            ctx.stroke(p.trimmedPath(from: 0, to: progress),
+                                       with: .color(.white.opacity(pulse * Double(progress))),
+                                       style: StrokeStyle(lineWidth: 1.6, lineCap: .round,
+                                                          dash: [3, 7], dashPhase: CGFloat(-t * 28 + Double(i) * 6)))
+                        }
+                        // soft ring pulses from center
+                        for k in 0..<3 {
+                            let age = (t * 0.55 + Double(k) / 3).truncatingRemainder(dividingBy: 1)
+                            let r = 18 + CGFloat(age) * 70
+                            var ring = Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+                            ctx.stroke(ring, with: .color(.white.opacity((1 - age) * 0.35 * Double(progress))),
+                                       style: StrokeStyle(lineWidth: 1.5))
+                        }
+                    }
                     MoonwaveIcon(progress: progress, size: 90)
-                        .position(x: w / 2, y: 220)
-                    tile(.fnos, x: w * 0.18, y: 120)
-                    tile(.navidrome, x: w * 0.82, y: 120)
-                    tile(.emby, x: w * 0.18, y: 340)
-                    tile(.local, x: w * 0.82, y: 340)
-                    dashedSpokes(w: w, progress: progress)
-                case 1:
-                    CoverBubble(name: "cvD", progress: progress)
-                case 2:
-                    LyricsPreview(progress: progress)
-                case 3:
-                    StackPreview(progress: progress)
-                default:
-                    IslandPreview(progress: progress)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
+                        .scaleEffect(1 + 0.03 * sin(t * 1.4))
+                        .position(c)
+                        .opacity(Double(progress))
 
-    private func tile(_ k: SourceKind, x: CGFloat, y: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(k.tile)
-            .frame(width: 48, height: 48)
-            .overlay { SourceGlyph(kind: k).opacity(Double(progress)) }
-            .position(x: x, y: y)
-            .opacity(Double(progress))
-    }
-
-    private func dashedSpokes(w: CGFloat, progress: CGFloat) -> some View {
-        Canvas { ctx, _ in
-            var p = Path()
-            let c = CGPoint(x: w / 2, y: 220)
-            for pt in [CGPoint(x: w * 0.18, y: 120), CGPoint(x: w * 0.82, y: 120),
-                       CGPoint(x: w * 0.18, y: 340), CGPoint(x: w * 0.82, y: 340)] {
-                p.move(to: pt); p.addLine(to: c)
-            }
-            ctx.stroke(p.trimmedPath(from: 0, to: progress), with: .color(.white.opacity(0.55)),
-                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2, 7]))
-        }
-    }
-}
-
-private struct CoverBubble: View {
-    let name: String; var progress: CGFloat
-    var body: some View {
-        ZStack {
-            Image(name).resizable().scaledToFill()
-                .frame(width: 180, height: 180).clipShape(Circle())
-                .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-            Canvas { ctx, sz in
-                var orbit = Path()
-                orbit.addEllipse(in: CGRect(x: 40, y: 40, width: sz.width - 80, height: sz.height - 80))
-                ctx.stroke(orbit.trimmedPath(from: 0, to: progress), with: .color(.white.opacity(0.75)),
-                           style: StrokeStyle(lineWidth: 2.2, lineCap: .round, dash: [1, 0]))
-            }
-        }
-        .frame(width: 280, height: 280)
-        .opacity(0.3 + 0.7 * Double(progress))
-    }
-}
-
-private struct LyricsPreview: View {
-    var progress: CGFloat
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("你说别回头").font(.system(size: 22, weight: .heavy)).opacity(0.45)
-            Text("You said don't look back").font(.system(size: 13)).opacity(0.35)
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color(hex: 0xffd23f).opacity(0.4 * Double(progress)))
-                    .frame(width: 220 * progress, height: 28).offset(y: -2)
-                Text("弄丢了爱 失去了你").font(.system(size: 28, weight: .heavy))
-            }
-            Text("Lost my love, lost you too").font(.system(size: 15)).opacity(0.75)
-            Text("橘子海 在心里起伏").font(.system(size: 22, weight: .heavy)).opacity(0.3).blur(radius: 1)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 32)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .opacity(Double(progress))
-    }
-}
-
-private struct StackPreview: View {
-    var progress: CGFloat
-    var body: some View {
-        ZStack {
-            Image("cvF").resizable().scaledToFill().frame(width: 200, height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 8)).rotation3DEffect(.degrees(-58), axis: (1, 0, 0))
-                .offset(y: -40).opacity(0.55)
-            Image("cvE").resizable().scaledToFill().frame(width: 200, height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 8)).rotation3DEffect(.degrees(-58), axis: (1, 0, 0))
-                .offset(y: -10).opacity(0.75)
-            Image("cvC").resizable().scaledToFill().frame(width: 200, height: 200)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(color: .black.opacity(0.4), radius: 24, y: 16)
-                .overlay { RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.5), lineWidth: 1) }
-        }
-        .scaleEffect(0.85 + 0.15 * progress)
-        .opacity(Double(progress))
-    }
-}
-
-private struct IslandPreview: View {
-    var progress: CGFloat
-    var body: some View {
-        VStack(spacing: 28) {
-            // Compact Dynamic Island mock
-            HStack(spacing: 10) {
-                Image("cvG").resizable().scaledToFill().frame(width: 40, height: 40)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("月光人").font(.system(size: 14, weight: .semibold))
-                    Text("Ólafur Arnalds").font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "waveform").foregroundStyle(Theme.lime)
-            }
-            .padding(16)
-            .frame(width: 270)
-            .background(Capsule().fill(Color.black))
-            .shadow(color: .black.opacity(0.4), radius: 20, y: 12)
-
-            // Lock-screen player mock
-            ZStack {
-                Image("cvG").resizable().scaledToFill().blur(radius: 28).brightness(-0.25)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("锁屏 · 9:41").font(.system(size: 12)).opacity(0.7)
-                    Text("月光人").font(.system(size: 16, weight: .semibold))
-                    HStack(spacing: 8) {
-                        Text("1:12").font(.system(size: 11)).monospacedDigit()
-                        GeometryReader { g in
-                            Capsule().fill(.white.opacity(0.3)).overlay(alignment: .leading) {
-                                Capsule().fill(.white).frame(width: g.size.width * 0.3 * progress)
+                    ForEach(Array(kinds.enumerated()), id: \.offset) { i, kind in
+                        let base = anchors[i]
+                        let bob = CGFloat(sin(t * 1.6 + Double(i) * 1.3)) * 7
+                        let pop = 0.88 + 0.12 * progress
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(kind.tile)
+                            .frame(width: 48, height: 48)
+                            .overlay { SourceGlyph(kind: kind) }
+                            .overlay {
+                                Circle().stroke(Theme.lime.opacity(0.55 + 0.45 * sin(t * 2.8 + Double(i))), lineWidth: 2)
+                                    .frame(width: 54, height: 54)
+                                    .opacity(kind == .navidrome || kind == .fnos ? 0.7 : 0.25)
                             }
-                        }.frame(height: 3)
-                        Text("4:16").font(.system(size: 11)).monospacedDigit()
+                            .scaleEffect(pop)
+                            .shadow(color: kind.tile.opacity(0.5), radius: 10, y: 4)
+                            .position(x: base.x, y: base.y + bob * progress)
+                            .opacity(Double(progress))
                     }
                 }
-                .foregroundStyle(.white)
-                .padding(18)
             }
-            .frame(height: 130)
-            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .padding(.horizontal, 46)
         }
-        .opacity(Double(progress))
+    }
+}
+
+// MARK: Page 2 — doodle draw + beat wobble + cover breathe
+
+private struct DoodleAnim: View {
+    var progress: CGFloat
+    var active: Bool
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { tl in
+            let t = active ? tl.date.timeIntervalSinceReferenceDate : 0
+            let beat = 60.0 / 128.0
+            let br = 0.5 - 0.5 * cos(t / beat * .pi * 2)
+            let floatY = CGFloat(4 * sin(t * 1.2))
+            // looped redraw every ~5.5s
+            let cycle = t.truncatingRemainder(dividingBy: 5.5)
+            let loopDraw: CGFloat = cycle < 1.2 ? CGFloat(cycle / 1.2) : 1
+            let trim = progress * loopDraw
+            ZStack {
+                // glow breathe
+                Circle()
+                    .fill(RadialGradient(colors: [Color(hex: 0xffd36b).opacity(0.55), .clear],
+                                         center: .center, startRadius: 20, endRadius: 140))
+                    .frame(width: 260, height: 260)
+                    .scaleEffect(1 + 0.06 * CGFloat(sin(t / 3.2 * .pi * 2)) + 0.02 * CGFloat(br))
+                    .opacity(0.35 + 0.25 * (0.5 + 0.5 * sin(t / 3.2 * .pi * 2)))
+
+                Image("cvD").resizable().scaledToFill()
+                    .frame(width: 180, height: 180).clipShape(Circle())
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+                    .scaleEffect((0.96 + 0.04 * progress) * (1 + 0.012 * CGFloat(br)))
+                    .offset(y: floatY)
+
+                // orbit doodle + sparkles
+                Canvas { ctx, sz in
+                    let mid = CGPoint(x: sz.width / 2, y: sz.height / 2)
+                    var orbit = Path()
+                    let n = 90
+                    for i in 0...n {
+                        let a = Double(i) / Double(n) * 2 * .pi * 1.15 - 0.3
+                        let rx = 118.0 + 4 * sin(a * 3 + t)
+                        let ry = 118.0 + 3 * cos(a * 2 + t * 0.7)
+                        let pt = CGPoint(x: mid.x + CGFloat(cos(a) * rx), y: mid.y + CGFloat(sin(a) * ry) + floatY * 0.4)
+                        i == 0 ? orbit.move(to: pt) : orbit.addLine(to: pt)
+                    }
+                    ctx.stroke(orbit.trimmedPath(from: 0, to: trim), with: .color(.white.opacity(0.8)),
+                               style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                    // zig accents
+                    var zig = Path()
+                    let ox = mid.x + 90, oy = mid.y - 40 + floatY
+                    zig.move(to: CGPoint(x: ox, y: oy))
+                    for k in 0..<6 {
+                        zig.addLine(to: CGPoint(x: ox + CGFloat(k) * 10, y: oy + (k % 2 == 0 ? -8 : 8)))
+                    }
+                    ctx.stroke(zig.trimmedPath(from: 0, to: trim), with: .color(.white.opacity(0.75)),
+                               style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                    // stars
+                    for (i, pt) in [CGPoint(x: mid.x - 110, y: mid.y - 90),
+                                    CGPoint(x: mid.x + 105, y: mid.y + 95),
+                                    CGPoint(x: mid.x - 95, y: mid.y + 100)].enumerated() {
+                        let tw = 0.5 + 0.5 * sin(t * 2.5 + Double(i))
+                        var star = Path()
+                        let r: CGFloat = 7
+                        star.move(to: CGPoint(x: pt.x, y: pt.y - r))
+                        star.addQuadCurve(to: CGPoint(x: pt.x + r, y: pt.y), control: pt)
+                        star.addQuadCurve(to: CGPoint(x: pt.x, y: pt.y + r), control: pt)
+                        star.addQuadCurve(to: CGPoint(x: pt.x - r, y: pt.y), control: pt)
+                        star.addQuadCurve(to: CGPoint(x: pt.x, y: pt.y - r), control: pt)
+                        ctx.stroke(star, with: .color(.white.opacity(0.55 + 0.4 * tw)),
+                                   style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    }
+                }
+                .frame(width: 300, height: 300)
+                .rotationEffect(.degrees(0.7 * sin(t / (beat * 4) * .pi * 2) * Double(trim)))
+                .scaleEffect(1 + 0.012 * CGFloat(br) * trim)
+            }
+            .opacity(0.25 + 0.75 * Double(progress))
+        }
+    }
+}
+
+// MARK: Page 3 — lyrics smooth scroll (continuous interpolate)
+
+private struct LyricsAnim: View {
+    var progress: CGFloat
+    var active: Bool
+    private let lines: [(String, String)] = [
+        ("夜色漫过旧城的街", "Night spills over the old town"),
+        ("你说别回头", "You said don't look back"),
+        ("弄丢了爱 失去了你", "Lost my love, lost you too"),
+        ("橘子海 在心里起伏", "A tangerine sea rising in me"),
+        ("风把晚霞吹散", "The wind scatters the dusk"),
+        ("我们终会再见", "We will meet again"),
+        ("在梦里", "In a dream"),
+        ("在每一个清晨", "In every morning"),
+    ]
+    private let lineH: CGFloat = 64
+    private let dwell: Double = 1.9
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { tl in
+            let t = active ? tl.date.timeIntervalSinceReferenceDate : 0
+            // Continuous position — no integer jumps. Ease within each dwell for a soft settle.
+            let raw = t / dwell
+            let base = floor(raw)
+            let frac = raw - base
+            let easedFrac = smooth(frac)          // linger then ease to next
+            let pos = base + easedFrac            // continuous scroll index
+            let n = lines.count
+
+            ZStack {
+                // yellow highlight under active line, width follows frac
+                let highlightW = 36 + CGFloat(smooth(min(1, frac * 1.35))) * 210
+                Capsule()
+                    .fill(Color(hex: 0xffd23f).opacity(0.36))
+                    .frame(width: highlightW, height: 32)
+                    .offset(y: -lineH * 0.15)
+                    .opacity(Double(progress))
+
+                ForEach(0..<n, id: \.self) { i in
+                    let d = Self.wrap(Double(i) - pos, n: Double(n))
+                    let ad = abs(d)
+                    let op = max(0, 1.0 - ad * 0.55) * (ad < 0.15 ? 1 : (ad < 1.1 ? 0.55 : 0.22))
+                    let blur = min(2.2, CGFloat(ad) * 1.15)
+                    let scale = 1.0 - min(0.12, ad * 0.07)
+                    let weight: Font.Weight = ad < 0.35 ? .heavy : .bold
+                    let size: CGFloat = 22 + CGFloat(max(0, 1 - ad)) * 6
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(lines[i].0)
+                            .font(.system(size: size, weight: weight))
+                        Text(lines[i].1)
+                            .font(.system(size: ad < 0.35 ? 15 : 13))
+                            .opacity(ad < 0.35 ? 0.78 : 0.35)
+                    }
+                    .foregroundStyle(.white)
+                    .scaleEffect(scale, anchor: .leading)
+                    .blur(radius: blur)
+                    .opacity(op * Double(progress))
+                    .offset(y: CGFloat(d) * lineH)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .opacity(Double(progress))
+            .mask(
+                LinearGradient(colors: [.clear, .black, .black, .clear],
+                               startPoint: .top, endPoint: .bottom)
+            )
+        }
+    }
+
+    private func smooth(_ x: Double) -> Double {
+        let u = min(1, max(0, x))
+        return u * u * u * (u * (u * 6 - 15) + 10)
+    }
+    private static func wrap(_ v: Double, n: Double) -> Double {
+        var d = v
+        while d > n / 2 { d -= n }
+        while d < -n / 2 { d += n }
+        return d
+    }
+}
+
+// MARK: Page 4 — smooth Cover Flow (continuous rotateY / perspective)
+
+private struct StackAnim: View {
+    var progress: CGFloat
+    var active: Bool
+    private let covers = ["cvC", "cvE", "cvF", "cvD", "cvG", "cvA"]
+    /// Seconds to advance one card — continuous, never snaps.
+    private let pace: Double = 2.6
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { tl in
+            let t = active ? tl.date.timeIntervalSinceReferenceDate : 0
+            // Continuous floating index (no floor jumps for pose).
+            let pos = t / pace
+            let n = covers.count
+            let spacing: CGFloat = 118
+            let maxAngle: Double = 58
+
+            ZStack {
+                ForEach(0..<n, id: \.self) { i in
+                    let d = Self.wrap(Double(i) - pos, n: Double(n))
+                    let ad = abs(d)
+                    // Cover Flow: rotateY toward center, fan on X
+                    let angle = -sin(min(.pi / 2, max(-.pi / 2, d * 0.95))) * maxAngle
+                    let x = CGFloat(sin(d * 0.85)) * spacing * 1.35
+                    let zBoost = exp(-ad * ad * 0.55)          // center pops forward
+                    let scale = 0.78 + 0.22 * zBoost
+                    let op = max(0.18, 0.25 + 0.75 * zBoost)
+                    let y = CGFloat(8 * (1 - zBoost)) + CGFloat(sin(t * 1.05 + Double(i) * 0.4)) * 2 * CGFloat(zBoost)
+
+                    Image(covers[i]).resizable().scaledToFill()
+                        .frame(width: 188, height: 188)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(.white.opacity(0.15 + 0.45 * zBoost), lineWidth: 1)
+                        }
+                        .shadow(color: .black.opacity(0.15 + 0.35 * zBoost), radius: 8 + 16 * zBoost, y: 8 + 10 * zBoost)
+                        .scaleEffect(scale * (0.92 + 0.08 * progress))
+                        .rotation3DEffect(
+                            .degrees(angle),
+                            axis: (x: 0, y: 1, z: 0),
+                            anchor: d >= 0 ? .leading : .trailing,
+                            anchorZ: 0,
+                            perspective: 0.65
+                        )
+                        .offset(x: x, y: y)
+                        .opacity(op * Double(progress))
+                        .zIndex(zBoost * 100)
+                }
+            }
+            .frame(height: 300)
+            .opacity(Double(progress))
+        }
+    }
+    private static func wrap(_ v: Double, n: Double) -> Double {
+        var d = v
+        while d > n / 2 { d -= n }
+        while d <= -n / 2 { d += n }
+        return d
+    }
+}
+
+// MARK: Page 5 — island expand/contract + progress tick
+
+private struct IslandAnim: View {
+    var progress: CGFloat
+    var active: Bool
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !active)) { tl in
+            let t = active ? tl.date.timeIntervalSinceReferenceDate : 0
+            // expand for 1.6s, hold, contract — loop ~5s
+            let cycle = t.truncatingRemainder(dividingBy: 5.2)
+            let expand: CGFloat = {
+                if cycle < 1.4 { return CGFloat(easeOut(cycle / 1.4)) }
+                if cycle < 3.4 { return 1 }
+                if cycle < 4.6 { return CGFloat(1 - easeOut((cycle - 3.4) / 1.2)) }
+                return 0
+            }()
+            let prog = (0.22 + t * 0.04).truncatingRemainder(dividingBy: 0.85)
+            let wave = 0.5 + 0.5 * sin(t * 6)
+
+            VStack(spacing: 28) {
+                // Dynamic Island mock
+                ZStack {
+                    Capsule().fill(Color.black)
+                    HStack(spacing: 10) {
+                        Image("cvG").resizable().scaledToFill()
+                            .frame(width: 28 + 16 * expand, height: 28 + 16 * expand)
+                            .clipShape(RoundedRectangle(cornerRadius: 8 + 4 * expand, style: .continuous))
+                        if expand > 0.15 {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("月光人").font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                                Text("Ólafur Arnalds").font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .opacity(Double(expand))
+                            .offset(x: (1 - expand) * -8)
+                        }
+                        Spacer(minLength: 0)
+                        // waveform bars
+                        HStack(spacing: 3) {
+                            ForEach(0..<5, id: \.self) { i in
+                                Capsule().fill(Theme.lime)
+                                    .frame(width: 3, height: 6 + CGFloat(8 + 6 * sin(t * 5 + Double(i))) * (0.4 + 0.6 * expand))
+                            }
+                        }
+                        .opacity(0.7 + 0.3 * wave)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10 + 6 * expand)
+                }
+                .frame(width: 160 + 120 * expand, height: 44 + 40 * expand)
+                .shadow(color: .black.opacity(0.45), radius: 18, y: 10)
+                .animation(nil, value: expand) // driven by timeline
+
+                // Lock-screen player
+                ZStack {
+                    Image("cvG").resizable().scaledToFill().blur(radius: 28).brightness(-0.25)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("锁屏 · 9:41").font(.system(size: 12)).opacity(0.7)
+                        Text("月光人").font(.system(size: 16, weight: .semibold))
+                        HStack(spacing: 8) {
+                            Text(fmt(72 + t)).font(.system(size: 11)).monospacedDigit()
+                            GeometryReader { g in
+                                Capsule().fill(.white.opacity(0.3)).overlay(alignment: .leading) {
+                                    Capsule().fill(.white).frame(width: g.size.width * CGFloat(prog))
+                                }
+                            }.frame(height: 3)
+                            Text("4:16").font(.system(size: 11)).monospacedDigit()
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(18)
+                }
+                .frame(height: 130)
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .padding(.horizontal, 46)
+                .scaleEffect(0.97 + 0.03 * expand)
+                .opacity(0.85 + 0.15 * Double(expand))
+            }
+            .opacity(Double(progress))
+        }
+    }
+    private func easeOut(_ x: Double) -> Double {
+        let u = min(1, max(0, x)); return 1 - pow(1 - u, 3)
+    }
+    private func fmt(_ t: Double) -> String {
+        let s = Int(t) % 256; return "\(s / 60):" + String(format: "%02d", s % 60)
     }
 }
 
@@ -608,8 +886,25 @@ struct SourceConnectView: View {
 
                 Button {
                     busy = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-                        draft = store.connectDemo(draft)
+                    Task { @MainActor in
+                        if kind == .navidrome {
+                            var h = draft.host.isEmpty ? LibraryStore.defaultHost : draft.host
+                            h = h.replacingOccurrences(of: ":443", with: "")
+                            let u = draft.username.isEmpty ? LibraryStore.defaultUser : draft.username
+                            let pw = draft.secret.isEmpty
+                                ? (Keychain.get(service: "yimeng.navidrome", account: u) ?? "")
+                                : draft.secret
+                            await LibraryStore.shared.connect(host: h, username: u, password: pw)
+                            draft.host = h
+                            draft.username = u
+                            draft.secret = pw
+                            draft.connected = LibraryStore.shared.connected
+                            draft.statusNote = LibraryStore.shared.status
+                            store.upsert(draft)
+                        } else {
+                            try? await Task.sleep(for: .milliseconds(400))
+                            draft = store.connectDemo(draft)
+                        }
                         busy = false
                     }
                 } label: {
@@ -629,6 +924,14 @@ struct SourceConnectView: View {
         .onAppear {
             var c = store.config(for: kind)
             if c.host.isEmpty { c.host = kind.hostPlaceholder }
+            if kind == .navidrome {
+                if c.host.isEmpty || c.host.contains("home.lan") { c.host = LibraryStore.defaultHost }
+                c.host = c.host.replacingOccurrences(of: ":443", with: "")
+                if c.username.isEmpty { c.username = LibraryStore.defaultUser }
+                if c.secret.isEmpty, let pw = Keychain.get(service: "yimeng.navidrome", account: c.username) {
+                    c.secret = pw
+                }
+            }
             draft = c
         }
     }

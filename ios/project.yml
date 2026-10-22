@@ -21,10 +21,11 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: 译梦
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_UIBackgroundModes: "audio"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGNING_ALLOWED: NO
-        MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.3.4"
+        CURRENT_PROJECT_VERSION: "7"
   YimengWidgets:
     type: app-extension
     platform: iOS
@@ -37,8 +38,8 @@ targets:
       path: YimengWidgets/Info.plist
       properties:
         CFBundleDisplayName: 译梦
-        CFBundleShortVersionString: "0.3.0"
-        CFBundleVersion: "3"
+        CFBundleShortVersionString: "0.3.3"
+        CFBundleVersion: "6"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -50,5 +51,5 @@ targets:
         CODE_SIGNING_ALLOWED: NO
         SKIP_INSTALL: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
-        MARKETING_VERSION: "0.3.0"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.3.4"
+        CURRENT_PROJECT_VERSION: "7"

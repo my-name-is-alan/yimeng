@@ -18,17 +18,22 @@
 		5D4319F763707E67840F42FE /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03744E138A2E6A2C16E3F4C2 /* MockData.swift */; };
 		5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */ = {isa = PBXBuildFile; fileRef = 221E80FC912CC7CB64F2505A /* MusicSources.swift */; };
 		5F7DC5897731B0F4227472A9 /* Common.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DCA6146350902AD251CEEB2 /* Common.swift */; };
+		6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */; };
 		6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0962E95E6B55BCB808D64B49 /* Palette.swift */; };
 		72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */; };
+		776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */; };
 		AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */ = {isa = PBXBuildFile; fileRef = EB4BFC00539C1ECCBF947294 /* Glass.metal */; };
 		B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */; };
 		C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA1C686614CB8D6930D4D49 /* Theme.swift */; };
 		D5339D65B2F278E0D24B78FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6672A08DBE481114D1F34B50 /* Assets.xcassets */; };
+		D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 197A06AAC57F015AE8C264DD /* LibraryStore.swift */; };
 		D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E250285D45C295C91932A00 /* HomeView.swift */; };
 		DCE0689AC11FAB46F17DBF51 /* AlbumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98436E751CC570C4F8472C05 /* AlbumView.swift */; };
+		DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */; };
 		DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBA03BEDFD45C12B08BA05B9 /* YimengActivityAttributes.swift */; };
 		E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B459A03FE9FB71837E459E /* Motion.swift */; };
 		F56243364D38BE09D937684A /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3855754257202630A564173A /* App.swift */; };
+		F962E90B44855B5B757C1431 /* NavidromeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */; };
 		FC7356BF1C281FDDAB7DD2E3 /* YimengWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08E1C7C7E078182DCBB5B668 /* YimengWidgets.swift */; };
 		FD6FCBD54D57219F06DE8229 /* DreamData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673E45F12B4A88C9F60BEDEF /* DreamData.swift */; };
 /* End PBXBuildFile section */
@@ -65,7 +70,10 @@
 		0E250285D45C295C91932A00 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		10344A37F4E7381B0AA3FBD7 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		184013605DC0F6EEC27F5170 /* YimengWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = YimengWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		197A06AAC57F015AE8C264DD /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerStore.swift; sourceTree = "<group>"; };
 		221E80FC912CC7CB64F2505A /* MusicSources.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSources.swift; sourceTree = "<group>"; };
+		2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverImage.swift; sourceTree = "<group>"; };
 		3855754257202630A564173A /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
 		3DA1C686614CB8D6930D4D49 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		3DCA6146350902AD251CEEB2 /* Common.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Common.swift; sourceTree = "<group>"; };
@@ -74,6 +82,8 @@
 		5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		6672A08DBE481114D1F34B50 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		673E45F12B4A88C9F60BEDEF /* DreamData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DreamData.swift; sourceTree = "<group>"; };
+		71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavidromeClient.swift; sourceTree = "<group>"; };
 		8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingInfo.swift; sourceTree = "<group>"; };
 		98436E751CC570C4F8472C05 /* AlbumView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumView.swift; sourceTree = "<group>"; };
 		A5B459A03FE9FB71837E459E /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
@@ -120,19 +130,24 @@
 				6672A08DBE481114D1F34B50 /* Assets.xcassets */,
 				4A6EE3E681B0FF7DD6E1978F /* CollectionView.swift */,
 				3DCA6146350902AD251CEEB2 /* Common.swift */,
+				2266A61D8C5A8D8BDFED4644 /* CoverImage.swift */,
 				033899009C62F1F8197A0B44 /* Doodle.swift */,
 				673E45F12B4A88C9F60BEDEF /* DreamData.swift */,
 				B8E0E76B00DA967820F46BDB /* DreamField.swift */,
 				EB4BFC00539C1ECCBF947294 /* Glass.metal */,
 				10344A37F4E7381B0AA3FBD7 /* Glass.swift */,
 				0E250285D45C295C91932A00 /* HomeView.swift */,
+				71F4E196E3B1EDEC318BA6E0 /* Keychain.swift */,
+				197A06AAC57F015AE8C264DD /* LibraryStore.swift */,
 				03744E138A2E6A2C16E3F4C2 /* MockData.swift */,
 				A5B459A03FE9FB71837E459E /* Motion.swift */,
 				221E80FC912CC7CB64F2505A /* MusicSources.swift */,
+				85BE2510BF49E83F22E18D0D /* NavidromeClient.swift */,
 				8B5C058D9A65CE685B0E9BFC /* NowPlayingInfo.swift */,
 				4A62B87B9BE5AE7ACD153C36 /* NowPlayingView.swift */,
 				5F65DB990D5EA097C5C3AD02 /* OnboardingFlow.swift */,
 				0962E95E6B55BCB808D64B49 /* Palette.swift */,
+				1F62A6ECB4814036EF1E69B3 /* PlayerStore.swift */,
 				3DA1C686614CB8D6930D4D49 /* Theme.swift */,
 			);
 			path = Yimeng;
@@ -247,19 +262,24 @@
 				F56243364D38BE09D937684A /* App.swift in Sources */,
 				B613350F98028EB5BB21A619 /* CollectionView.swift in Sources */,
 				5F7DC5897731B0F4227472A9 /* Common.swift in Sources */,
+				776561F233EE29ECC3335D8E /* CoverImage.swift in Sources */,
 				22655C4DC3CACD528FF651F0 /* Doodle.swift in Sources */,
 				FD6FCBD54D57219F06DE8229 /* DreamData.swift in Sources */,
 				2754C9FACD5158D2D4189B8C /* DreamField.swift in Sources */,
 				AE7B55A7DFE0628C16D3F8A2 /* Glass.metal in Sources */,
 				562E8815E35C3538997E3EA0 /* Glass.swift in Sources */,
 				D9F078F4CA0BE0E3DC1799F9 /* HomeView.swift in Sources */,
+				DD0A994F7743AAE1E6F67EEF /* Keychain.swift in Sources */,
+				D74440CC96ECEBD9DC6F47FD /* LibraryStore.swift in Sources */,
 				5D4319F763707E67840F42FE /* MockData.swift in Sources */,
 				E1F3C6C0B27D4FBA52967832 /* Motion.swift in Sources */,
 				5D84C8989F62D2B25449680C /* MusicSources.swift in Sources */,
+				F962E90B44855B5B757C1431 /* NavidromeClient.swift in Sources */,
 				0C467222F0AF212833502E34 /* NowPlayingInfo.swift in Sources */,
 				3A033324C9A4C3520592270F /* NowPlayingView.swift in Sources */,
 				72BD1B5ECCA737E607FEBE24 /* OnboardingFlow.swift in Sources */,
 				6E5D5FF9D08E64409E2BBBB4 /* Palette.swift in Sources */,
+				6BD77EE1C0E1493C8DD497F6 /* PlayerStore.swift in Sources */,
 				C027AA05C8EB43F6CB1A0E24 /* Theme.swift in Sources */,
 				DE4902D92B4F9720EE3AA9C4 /* YimengActivityAttributes.swift in Sources */,
 			);
@@ -354,16 +374,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
@@ -376,7 +397,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGNING_ALLOWED = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = YimengWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -384,7 +405,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -398,7 +419,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "";
 				CODE_SIGNING_ALLOWED = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = YimengWidgets/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -406,7 +427,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app.widgets;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -421,16 +442,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 7;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "译梦";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
+				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.3.4;
 				PRODUCT_BUNDLE_IDENTIFIER = art.yimeng.app;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;

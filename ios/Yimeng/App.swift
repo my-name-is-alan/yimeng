@@ -3,51 +3,96 @@ import SwiftUI
 enum Tab: String, CaseIterable { case home = "首页", collection = "典藏", search = "搜索", me = "我的"
     var icon: String { switch self { case .home: "house.fill"; case .collection: "square.stack.3d.up.fill"; case .search: "magnifyingglass"; case .me: "person.crop.circle" } }
 }
-enum Route: Hashable { case album(Album), artist }
+enum Route: Hashable { case album(Album), ndAlbum(NDAlbum), artist }
 
+@MainActor
 final class AppState: ObservableObject {
     @Published var tab: Tab = .home
     @Published var path: [Route] = []
     @Published var nowPlaying = false
     @Published var lyricsMode = false
-    @Published var track: DreamTrack = DreamMock.rose { didSet { syncSystem() } }
-    @Published var isPlaying = true { didSet { syncSystem() } }
+    @Published var track: DreamTrack = DreamMock.rose { didSet { if !PlayerStore.shared.hasRealPlayback { syncSystem() } } }
+    @Published var isPlaying = false {
+        didSet {
+            guard !syncingFromPlayer else { return }
+            if !PlayerStore.shared.hasRealPlayback { syncSystem() }
+        }
+    }
     @Published var ambience: Ambience = .doodle
     @Published var intensity: Double = 0.7
     @Published var beatSync = true
-    private var trackStart = Date().addingTimeInterval(-72)
+    @Published var remoteCoverURL: URL?
+    private var trackStart = Date()
     let demo: String?
+    /// Suppress recursive isPlaying sync from PlayerStore.
+    private var syncingFromPlayer = false
+
+    func setPlaying(_ on: Bool) {
+        if PlayerStore.shared.hasRealPlayback {
+            if PlayerStore.shared.isPlaying != on { PlayerStore.shared.toggle() }
+            syncingFromPlayer = true
+            isPlaying = PlayerStore.shared.isPlaying
+            syncingFromPlayer = false
+        } else {
+            isPlaying = on
+        }
+    }
 
     func skip(_ d: Int) {
+        if PlayerStore.shared.hasRealPlayback {
+            PlayerStore.shared.skip(d)
+            return
+        }
         let all = DreamMock.all
         let i = all.firstIndex(of: track) ?? 0
         withAnimation(.ui) { track = all[(i + d + all.count) % all.count] }
         trackStart = Date()
     }
     func syncSystem() {
+        guard !PlayerStore.shared.hasRealPlayback else { return }
         PlaybackSystem.shared.update(track, elapsed: Date().timeIntervalSince(trackStart).truncatingRemainder(dividingBy: track.duration), playing: isPlaying)
     }
+
+    /// Called by PlayerStore when an ND stream starts / advances.
+    func applyNDSong(_ s: NDSong, coverURL: URL?, playing: Bool) {
+        syncingFromPlayer = true
+        defer { syncingFromPlayer = false }
+        remoteCoverURL = coverURL ?? LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 600)
+        let dur = TimeInterval(s.duration ?? 0)
+        track = DreamTrack(
+            id: s.id,
+            title: s.title,
+            artist: s.artist,
+            cover: "cvA",
+            base: Color(hex: 0x1a1028),
+            blobs: [Color(hex: 0x7a1cff), Color(hex: 0xff5fa8), Color(hex: 0x33d17a), Color(hex: 0xffd36b)],
+            bpm: 100,
+            energy: 0.45,
+            genre: "navidrome",
+            duration: max(dur, 1)
+        )
+        isPlaying = playing
+        trackStart = Date()
+    }
+
     init() {
-        // Launch arguments: -screen home|album|artist|nowplaying|lyrics|library   -demo zoom|player
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> String? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
         demo = arg("-demo")
-        // -screen home|album|artist|np-*|lyrics|collection|search|me|launch|onboarding|sources
-        // -demo zoom|player|enter|ambience|island   -fresh resets first-run
         switch arg("-screen") {
         case "album": path = [.album(Mock.nightfall)]
         case "artist": path = [.artist]
-        case "nowplaying", "np-cloud": nowPlaying = true; track = DreamMock.cloud
-        case "np-zig": nowPlaying = true; track = DreamMock.zig
-        case "np-ink": nowPlaying = true; track = DreamMock.ink
-        case "lyrics": nowPlaying = true; lyricsMode = true; track = DreamMock.orange
+        case "nowplaying", "np-cloud": nowPlaying = true; track = DreamMock.cloud; isPlaying = true
+        case "np-zig": nowPlaying = true; track = DreamMock.zig; isPlaying = true
+        case "np-ink": nowPlaying = true; track = DreamMock.ink; isPlaying = true
+        case "lyrics": nowPlaying = true; lyricsMode = true; track = DreamMock.orange; isPlaying = true
         case "library", "search": tab = .search
         case "collection": tab = .collection
         case "me": tab = .me
-        // launch|onboarding|sources handled by RootGate
         default: break
         }
-        if demo == "island" { nowPlaying = true; track = DreamMock.zig }
+        if demo == "island" { nowPlaying = true; track = DreamMock.zig; isPlaying = true }
+        AppStateBridge.current = self
     }
 }
 
@@ -86,17 +131,20 @@ struct Shell: View {
                     NavigationStack(path: $state.path) {
                         HomeView()
                             .toolbar(.hidden, for: .navigationBar)
-                            .navigationDestination(for: Route.self) { r in
-                                Group {
-                                    switch r {
-                                    case .album(let a): AlbumView(album: a).zoomDestination(a.id, ns)
-                                    case .artist: ArtistView().zoomDestination("artist", ns)
-                                    }
-                                }.toolbar(.hidden, for: .navigationBar)
-                            }
+                            .navigationDestination(for: Route.self) { r in routeView(r) }
                     }
-                case .collection: CollectionView()
-                case .search: LibrarySearchView()
+                case .collection:
+                    NavigationStack(path: $state.path) {
+                        CollectionView()
+                            .toolbar(.hidden, for: .navigationBar)
+                            .navigationDestination(for: Route.self) { r in routeView(r) }
+                    }
+                case .search:
+                    NavigationStack(path: $state.path) {
+                        LibrarySearchView()
+                            .toolbar(.hidden, for: .navigationBar)
+                            .navigationDestination(for: Route.self) { r in routeView(r) }
+                    }
                 case .me: SettingsView()
                 }
             }
@@ -118,12 +166,35 @@ struct Shell: View {
             PlaybackSystem.shared.onCommand = { [weak s = state] c in
                 DispatchQueue.main.async {
                     guard let s else { return }
-                    switch c { case "next": s.skip(1); case "prev": s.skip(-1); case "play": s.isPlaying = true; case "pause": s.isPlaying = false; default: s.isPlaying.toggle() }
+                    switch c { case "next": s.skip(1); case "prev": s.skip(-1); case "play": s.setPlaying(true); case "pause": s.setPlaying(false); default: s.setPlaying(!s.isPlaying) }
                 }
             }
             state.syncSystem()
+            Task { @MainActor in
+                await LibraryStore.shared.bootstrap()
+                let args = ProcessInfo.processInfo.arguments
+                let openND = args.contains("-openFirstND") || UserDefaults.standard.bool(forKey: "ym.debugOpenFirstND")
+                let playND = args.contains("-playFirstND") || UserDefaults.standard.bool(forKey: "ym.debugPlayFirstND")
+                if openND, let a = LibraryStore.shared.albums.first {
+                    state.path.append(.ndAlbum(a))
+                    if playND {
+                        // NDAlbumView will auto-play when ym.debugPlayFirstND / -playFirstND set
+                    }
+                }
+                UserDefaults.standard.removeObject(forKey: "ym.debugOpenFirstND")
+            }
         }
         .task { BackdropCache.warm(Mock.banners.map(\.image) + [Mock.nightfall.cover] + Mock.recent.map(\.cover) + Mock.newIn.map(\.cover)); await runDemo() }
+    }
+
+    @ViewBuilder func routeView(_ r: Route) -> some View {
+        Group {
+            switch r {
+            case .album(let a): AlbumView(album: a).zoomDestination(a.id, ns)
+            case .ndAlbum(let a): NDAlbumView(album: a).zoomDestination("nd-\(a.id)", ns)
+            case .artist: ArtistView().zoomDestination("artist", ns)
+            }
+        }.toolbar(.hidden, for: .navigationBar)
     }
 
     func runDemo() async {
@@ -184,17 +255,18 @@ struct MiniPlayer: View {
     @EnvironmentObject var state: AppState
     @Environment(\.colorScheme) var scheme
     @Environment(\.heroNS) var ns
+    @ObservedObject private var player = PlayerStore.shared
     var body: some View {
         let t = state.track
-        let pal = Palette.of(t.cover)
+        let playing = player.hasRealPlayback ? player.isPlaying : state.isPlaying
         HStack(spacing: 12) {
             cover
             VStack(alignment: .leading, spacing: 1) {
-                Text(t.title).font(.system(size: 14, weight: .semibold))
-                Text(t.artist).font(.system(size: 12)).opacity(0.7)
+                Text(t.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(t.artist).font(.system(size: 12)).opacity(0.7).lineLimit(1)
             }
             Spacer()
-            Button { state.isPlaying.toggle() } label: { Image(systemName: state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 20)) }.buttonStyle(.plain)
+            Button { state.setPlaying(!playing) } label: { Image(systemName: playing ? "pause.fill" : "play.fill").font(.system(size: 20)) }.buttonStyle(.plain)
             Button { state.skip(1) } label: { Image(systemName: "forward.fill").font(.system(size: 18)) }.buttonStyle(.plain)
         }
         .foregroundStyle(Theme.fg(scheme))
@@ -203,15 +275,30 @@ struct MiniPlayer: View {
         .background {
             ZStack {
                 GlassCapsule()
-                // Adaptive scrim tinted from the playing cover's palette → guaranteed contrast over any content beneath.
-                Capsule().fill(pal.color.mix(with: Theme.base(scheme), by: 0.55).opacity(scheme == .dark ? 0.55 : 0.6))
+                Capsule().fill(Theme.base(scheme).opacity(scheme == .dark ? 0.55 : 0.6))
             }
         }
         .contentShape(Capsule())
     }
     @ViewBuilder var cover: some View {
-        let img = Image(state.track.cover).resizable().scaledToFill().frame(width: 40, height: 40).clipShape(Circle())
-        if let ns { img.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { img }
+        Group {
+            if let url = state.remoteCoverURL ?? player.coverURL {
+                CoverImage(url: url)
+            } else {
+                Image(state.track.cover).resizable().scaledToFill()
+            }
+        }
+        .frame(width: 40, height: 40).clipShape(Circle())
+        .modifier(OptionalMatched(ns: ns, id: "npcover"))
+    }
+}
+
+private struct OptionalMatched: ViewModifier {
+    let ns: Namespace.ID?
+    let id: String
+    @ViewBuilder func body(content: Content) -> some View {
+        if let ns { content.matchedGeometryEffect(id: id, in: ns, properties: .frame, anchor: .center, isSource: true) }
+        else { content }
     }
 }
 
@@ -233,9 +320,11 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("我的").font(.system(size: 28, weight: .bold)).padding(.top, 16)
-                    Text(sources.connectedCount > 0
-                         ? "已连接 \(sources.connectedCount) 个来源"
-                         : "尚未连接音乐来源")
+                    Text(LibraryStore.shared.connected
+                         ? LibraryStore.shared.status
+                         : (sources.connectedCount > 0
+                            ? "已连接 \(sources.connectedCount) 个来源"
+                            : "尚未连接音乐来源"))
                         .foregroundStyle(Theme.secondary(scheme)).padding(.top, 8)
 
                     Button { showSources = true } label: {

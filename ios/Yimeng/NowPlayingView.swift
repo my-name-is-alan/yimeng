@@ -5,13 +5,21 @@ import SwiftUI
 struct NowPlayingView: View {
     @EnvironmentObject var state: AppState
     @Environment(\.heroNS) var ns
+    @ObservedObject private var player = PlayerStore.shared
     @State private var showAmbience = false
     @State private var start = Date().addingTimeInterval(-72)
     var track: DreamTrack { state.track }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { tl in
-            let elapsed = tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: track.duration)
+            let elapsed: TimeInterval = {
+                if player.hasRealPlayback {
+                    let total = player.duration > 0 ? player.duration : max(track.duration, 1)
+                    return min(player.elapsed, total)
+                }
+                return tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: max(track.duration, 1))
+            }()
+            let totalDur: TimeInterval = player.hasRealPlayback && player.duration > 0 ? player.duration : track.duration
             GeometryReader { g in
                 let slot = track.layout.slot(width: g.size.width)
                 ZStack(alignment: .topLeading) {
@@ -23,7 +31,7 @@ struct NowPlayingView: View {
                         DoodleLayer(track: track, slot: slot, ambience: state.ambience == .aurora ? .pure : state.ambience,
                                     intensity: state.intensity, beat: state.beatSync)
                         cover(slot)
-                        info(slot: slot, width: g.size.width, elapsed: elapsed).motionIn(0.16)
+                        info(slot: slot, width: g.size.width, elapsed: elapsed, total: totalDur).motionIn(0.16)
                     }
                     VStack(spacing: 0) {
                         topBar.motionIn(0.05, from: .top)
@@ -43,24 +51,31 @@ struct NowPlayingView: View {
     }
 
     @ViewBuilder func cover(_ slot: CoverSlot) -> some View {
-        let img = Image(track.cover).resizable().scaledToFill()
-            .frame(width: slot.rect.width, height: slot.rect.height)
-            .clipShape(RoundedRectangle(cornerRadius: min(slot.radius, slot.rect.width / 2), style: .continuous))
-            .shadow(color: .black.opacity(0.35), radius: 35, y: 30)
+        let shape = RoundedRectangle(cornerRadius: min(slot.radius, slot.rect.width / 2), style: .continuous)
+        let art = Group {
+            if let url = state.remoteCoverURL ?? player.coverURL {
+                CoverImage(url: url)
+            } else {
+                Image(track.cover).resizable().scaledToFill()
+            }
+        }
+        .frame(width: slot.rect.width, height: slot.rect.height)
+        .clipShape(shape)
+        .shadow(color: .black.opacity(0.35), radius: 35, y: 30)
         Group {
-            if let ns { img.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { img }
+            if let ns { art.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { art }
         }
         .offset(x: slot.rect.minX, y: slot.rect.minY)
         .motionIn(0.08, from: .scale)
     }
 
-    func info(slot: CoverSlot, width: CGFloat, elapsed: TimeInterval) -> some View {
+    func info(slot: CoverSlot, width: CGFloat, elapsed: TimeInterval, total: TimeInterval? = nil) -> some View {
         let k = width / 402
         return VStack(alignment: track.layout.centered ? .center : .leading, spacing: 2) {
             Text(track.title).font(.system(size: 22, weight: .bold))
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
             Text("\(track.genre) · \(track.bpm) BPM · FLAC 24/96").font(.system(size: 12)).opacity(0.55).padding(.top, 4)
-            TimeBar(elapsed: elapsed, total: track.duration).padding(.top, 22)
+            TimeBar(elapsed: elapsed, total: total ?? track.duration).padding(.top, 22)
         }
         .frame(width: width - 56, alignment: track.layout.centered ? .center : .leading)
         .multilineTextAlignment(track.layout.centered ? .center : .leading)
@@ -94,8 +109,8 @@ struct NowPlayingView: View {
             Spacer()
             Button { state.skip(-1) } label: { Image(systemName: "backward.fill").font(.system(size: 24)) }
             Spacer()
-            Button { state.isPlaying.toggle() } label: {
-                Image(systemName: state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 22)).foregroundStyle(Color(white: 0.07))
+            Button { state.setPlaying(!(player.hasRealPlayback ? player.isPlaying : state.isPlaying)) } label: {
+                Image(systemName: (player.hasRealPlayback ? player.isPlaying : state.isPlaying) ? "pause.fill" : "play.fill").font(.system(size: 22)).foregroundStyle(Color(white: 0.07))
                     .frame(width: 48, height: 48).background(Circle().fill(.white))
             }
             Spacer()

@@ -36,7 +36,7 @@ enum SourceKind: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .core: "https://core.yimeng.lan:8443"
         case .fnos: "https://fnos.home.lan:5666"
-        case .navidrome: "https://music.home.lan:4533"
+        case .navidrome: "https://music.mefun.org"
         case .emby: "https://emby.home.lan:8096"
         case .local: ""
         }
@@ -71,6 +71,10 @@ final class SourceStore: ObservableObject {
             configs = SourceKind.allCases.map {
                 var c = SourceConfig(kind: $0)
                 if $0 == .local { c.connected = true; c.statusNote = "已开启" }
+                if $0 == .navidrome {
+                    c.host = "https://music.mefun.org"
+                    c.username = "lvzy"
+                }
                 return c
             }
         }
