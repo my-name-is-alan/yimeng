@@ -397,3 +397,19 @@ dialog::backdrop { background: rgb(0 0 0 / .55); backdrop-filter: blur(6px); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
 .badge.src { background: rgb(90 160 255 / .16); color: #8DB8FF; margin-left: 6px; vertical-align: 1px; }
+
+/* ── online sources ── */
+.trow.unavail { opacity: .45; }
+.trow.unavail .ti { text-decoration: line-through; text-decoration-color: rgb(255 255 255 / .25); }
+.badge.pv { margin-left: 4px; }
+.ent-slot { margin-left: 6px; }
+.ent-slot:empty { display: none; }
+.plugin-row { gap: 12px; }
+.plugin-row .grow .s { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 14px; }
+.mode-card { display: grid; gap: 6px; justify-items: start; text-align: left; padding: 18px; border-radius: 16px; border: 1px solid var(--divider); background: var(--fill); color: var(--fg); cursor: pointer; }
+.mode-card svg { width: 26px; height: 26px; color: var(--lime); }
+.mode-card .t { font-weight: 800; font-size: 16px; }
+.mode-card .s { color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+.mode-card[aria-pressed=true] { border-color: var(--lime); box-shadow: 0 0 0 2px rgb(200 245 66 / .25) inset; }
+.online-group { padding-top: 6px; border-top: 1px solid var(--divider); }

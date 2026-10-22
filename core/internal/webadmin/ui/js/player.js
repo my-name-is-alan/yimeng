@@ -10,6 +10,7 @@ audio.preload = "auto";
 export const player = {
   queue: [], order: [], pos: -1, shuffle: false, repeat: "off", volume: 1, muted: false,
   lyrics: null, lyricsFor: null, listeners: new Set(), listened: 0, lastTick: 0, scrobbled: false,
+  ent: null, loadSeq: 0, skips: 0, // ent: /online/resolve result for online tracks
   get track() { return this.pos >= 0 ? this.queue[this.order[this.pos]] : null; },
   get playing() { return !audio.paused && !audio.ended; },
   get time() { return audio.currentTime * 1000; },
@@ -68,10 +69,29 @@ export const player = {
   jump(p) { if (p >= 0 && p < this.order.length) { this.scrobble(); this.pos = p; this.load(true); } },
   load(autoplay, at = 0) {
     const t = this.track; if (!t) return;
-    this.listened = 0; this.lastTick = 0; this.scrobbled = false;
-    audio.src = streamURL(t.id);
-    if (at) audio.currentTime = at / 1000;
-    if (autoplay) audio.play().catch((e) => { if (e.name !== "AbortError") toast("无法播放：" + e.message, "err"); });
+    this.listened = 0; this.lastTick = 0; this.scrobbled = false; this.ent = null;
+    const seq = ++this.loadSeq;
+    const start = () => {
+      audio.src = streamURL(t.id);
+      if (at) audio.currentTime = at / 1000;
+      if (autoplay) audio.play().catch((e) => { if (e.name !== "AbortError") toast("无法播放：" + e.message, "err"); });
+    };
+    if (isOnline(t.id)) {
+      // Ask Core what it will play (full / official preview / local or other-account fallback) before streaming.
+      audio.pause(); audio.removeAttribute("src");
+      get(`/online/resolve/${t.id}`).then((r) => {
+        if (seq !== this.loadSeq) return;
+        this.ent = r;
+        if (r.entitlement === "unavailable") {
+          toast(`无法播放「${t.title}」：${r.reason || "当前账号无权播放"}`, "err", 4000); this.emit("track");
+          if (autoplay && this.skips++ < 5 && this.order.length > 1) setTimeout(() => seq === this.loadSeq && this.next(), 800);
+          return;
+        }
+        this.skips = 0;
+        if (r.entitlement === "preview") toast(`「${t.title}」仅可试听 ${fmtDur(r.preview_start_ms || 0)}–${fmtDur(r.preview_end_ms || 0)}（平台限制）`, "ok", 3500);
+        start(); this.emit("track");
+      }).catch((e) => { if (seq === this.loadSeq) { toast(`无法播放「${t.title}」：${e.message}`, "err"); this.emit("track"); } });
+    } else start();
     this.loadLyrics(); this.media(); this.emit("track");
   },
   toggle() { if (!this.track) return; audio.paused ? audio.play().catch(() => {}) : audio.pause(); },
@@ -108,7 +128,7 @@ export const player = {
   media() {
     const t = this.track; if (!("mediaSession" in navigator) || !t) return;
     navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist_name, album: t.album_title || "",
-      artwork: t.album_id ? [{ src: coverURL(t.album_id, 512), sizes: "512x512" }] : [] });
+      artwork: artURL(t, 512) ? [{ src: artURL(t, 512), sizes: "512x512" }] : [] });
   },
   save() {
     try {
@@ -121,11 +141,24 @@ export const player = {
       const s = JSON.parse(localStorage.getItem(SKEY) || "null"); if (!s?.queue?.length) return;
       Object.assign(this, { queue: s.queue, order: s.order, pos: s.pos, shuffle: !!s.shuffle, repeat: s.repeat || "off", volume: s.volume ?? 1 });
       audio.volume = this.volume;
-      if (this.track) { audio.src = streamURL(this.track.id); if (s.at) audio.currentTime = s.at / 1000; this.loadLyrics(); this.media(); this.emit("track"); }
+      if (this.track && isOnline(this.track.id)) this.load(false, s.at || 0);
+      else if (this.track) { audio.src = streamURL(this.track.id); if (s.at) audio.currentTime = s.at / 1000; this.loadLyrics(); this.media(); this.emit("track"); }
     } catch {}
   },
 };
+const isOnline = (id) => typeof id === "string" && id.includes(":");
+// Cover for a queue item: online DTOs carry a CDN URL; library items use the album cover endpoint.
+export const artURL = (t, s = 120) => t?.cover_url ? (/music\.126\.net/.test(t.cover_url) ? `${t.cover_url.replace(/^http:/, "https:")}?param=${s}y${s}` : t.cover_url) : t?.album_id ? coverURL(t.album_id, s) : "";
+export function entBadge(ent) {
+  if (!ent) return null;
+  if (ent.entitlement === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的官方试听片段" }, `试听 ${fmtDur(ent.preview_start_ms || 0)}–${fmtDur(ent.preview_end_ms || 0)}`);
+  if (ent.entitlement === "unavailable") return h("span", { class: "badge err" }, "不可播放");
+  if (ent.fallback === "local") return h("span", { class: "badge ok", title: "已使用本地曲库中的同一首歌" }, "本地文件");
+  if (ent.fallback) return h("span", { class: "badge src", title: "已使用你登录的另一个平台账号播放" }, `经 ${ent.fallback}`);
+  return null;
+}
 export const slim = (t) => ({ id: t.id, title: t.title, artist_name: t.artist_name, album_id: t.album_id, album_title: t.album_title, duration_ms: t.duration_ms, format: t.format,
+  origin: t.origin, cover_url: t.cover_url, playable: t.playable, local_id: t.local_id,
   stream: t.stream ? { lossless: t.stream.lossless, sample_rate: t.stream.sample_rate, bit_depth: t.stream.bit_depth, bitrate_kbps: t.stream.bitrate_kbps } : undefined });
 
 audio.addEventListener("timeupdate", () => {
@@ -205,6 +238,7 @@ export function mountNowBar(nav) {
   const mini = h("div", { class: "mini-prog" }, h("i"));
   bar.replaceChildren(tint, info, h("div", { class: "nb-center" }, c.el, s.el), h("div", { class: "nb-right" }, lyrBtn, qBtn, muteBtn, vol), mini);
   let cur;
+  const entSlot = h("span", { class: "ent-slot" });
   player.on((k) => {
     const t = player.track;
     bar.hidden = !t;
@@ -212,11 +246,13 @@ export function mountNowBar(nav) {
     if (k === "time") { s.sync(); mini.firstChild.style.width = `${(player.time / (player.duration || 1)) * 100}%`; return; }
     if (cur !== t.id) {
       cur = t.id;
-      art.replaceChildren(cover(coverURL(t.album_id, 120), t.album_title || t.title));
-      tint.style.backgroundImage = t.album_id ? `url("${coverURL(t.album_id, 120)}")` : "none";
+      art.replaceChildren(cover(artURL(t, 120), t.album_title || t.title));
+      tint.style.backgroundImage = artURL(t, 120) ? `url("${artURL(t, 120)}")` : "none";
       title.replaceChildren(t.title, " "); const qb = qualityBadge(t); if (qb) title.append(qb);
+      title.append(entSlot);
       sub.textContent = [t.artist_name, t.album_title].filter(Boolean).join(" — ");
     }
+    entSlot.replaceChildren(entBadge(player.ent) || "");
     document.title = player.playing ? `▶ ${t.title} · ${t.artist_name} — 译梦` : "译梦 · 控制台";
     c.sync(); s.sync();
     muteBtn.replaceChildren(icon(player.muted || player.volume === 0 ? "mute" : "volume"));
@@ -250,7 +286,7 @@ export function openNP(nav, tab = "lyrics") {
   const setTab = (m) => { mode = m; [...tabs.children].forEach((b) => b.setAttribute("aria-pressed", b.dataset.m === m)); pane.replaceChildren(m === "lyrics" ? lyr : ql); m === "queue" ? renderQueue() : renderLyrics(true); };
   for (const [m, l] of [["lyrics", "歌词"], ["queue", "播放队列"]]) tabs.append(h("button", { "data-m": m, onclick: () => setTab(m) }, l));
   const close = () => { np.hidden = true; document.documentElement.style.overflow = ""; off(); removeEventListener("keydown", esc); npClose = null; np.replaceChildren(); };
-  const editLyr = h("button", { class: "btn sm", hidden: !isLocal(player.track), onclick: () => { if (!isLocal(player.track)) return toast(NOT_LOCAL_MSG, "err"); const id = player.track.id; close(); nav(`#/lyrics/${id}`); } }, icon("edit"), "校对歌词");
+  const editLyr = h("button", { class: "btn sm", style: { visibility: isLocal(player.track) ? "visible" : "hidden" }, onclick: () => { if (!isLocal(player.track)) return toast(NOT_LOCAL_MSG, "err"); const id = player.track.id; close(); nav(`#/lyrics/${id}`); } }, icon("edit"), "校对歌词");
   np.replaceChildren(bloom,
     h("div", { class: "np-top" }, h("button", { class: "btn icon ghost", "aria-label": "收起", onclick: () => close() }, icon("down")), h("div", { class: "spacer" }), tabs, h("div", { class: "spacer" }), editLyr),
     h("div", { class: "np-body" }, h("div", { class: "np-left" }, art, h("div", { class: "np-info" }, ti, su), s.el, c.el), pane));
@@ -269,7 +305,7 @@ export function openNP(nav, tab = "lyrics") {
   }
   function syncLyrics(instant) {
     const L = player.lyrics; if (!L?.synced || !lines.length) return;
-    const t = player.time + 150; let i = -1;
+    const t = player.time + (player.ent?.preview_start_ms || 0) + 150; let i = -1; // previews start mid-song
     for (let k = 0; k < L.lines.length; k++) { if (L.lines[k].time_ms <= t) i = k; else break; }
     if (i === lastIdx) return; lastIdx = i;
     lines.forEach((p, k) => { p.classList.toggle("on", k === i); p.classList.toggle("past", k < i); });
@@ -280,7 +316,7 @@ export function openNP(nav, tab = "lyrics") {
     ql.replaceChildren(...player.order.map((qi, p) => {
       const q = player.queue[qi];
       return h("div", { class: `qi ${p === player.pos ? "cur" : ""}`, onclick: () => player.jump(p) },
-        cover(coverURL(q.album_id, 80), q.album_title || q.title),
+        cover(artURL(q, 80), q.album_title || q.title),
         h("div", { style: { minWidth: 0, flex: 1 } }, h("div", { class: "ellipsis", style: { fontWeight: 600 } }, q.title), h("div", { class: "ellipsis", style: { opacity: .6, fontSize: "13px" } }, q.artist_name)),
         h("span", { style: { opacity: .6, fontSize: "12px" } }, fmtDur(q.duration_ms)),
         p !== player.pos ? h("button", { class: "btn icon sm ghost", "aria-label": "移出队列", onclick: (e) => { e.stopPropagation(); player.removeAt(p); } }, icon("close")) : null);
@@ -292,11 +328,12 @@ export function openNP(nav, tab = "lyrics") {
     if (k === "time") { s.sync(); syncLyrics(); return; }
     if (curId !== t.id) {
       curId = t.id;
-      bloom.style.backgroundImage = t.album_id ? `url("${coverURL(t.album_id, 300)}")` : "none";
-      art.replaceChildren(cover(coverURL(t.album_id, 900), t.album_title || t.title));
+      bloom.style.backgroundImage = artURL(t, 300) ? `url("${artURL(t, 300)}")` : "none";
+      art.replaceChildren(cover(artURL(t, 900), t.album_title || t.title));
       ti.textContent = t.title;
-      su.replaceChildren(t.artist_name || "", t.album_title ? " — " : "", t.album_id ? h("a", { href: `#/album/${t.album_id}`, onclick: () => close() }, t.album_title) : "");
+      su.replaceChildren(t.artist_name || "", t.album_title ? " — " : "", t.album_id ? h("a", { href: isOnline(t.album_id) ? `#/online/${t.album_id.replace(":", "/album/")}` : `#/album/${t.album_id}`, onclick: () => close() }, t.album_title) : "");
     }
+    if (k === "track") { ti.replaceChildren(t.title, " ", entBadge(player.ent) || ""); }
     if (k === "lyrics" || k === "track") { if (mode === "lyrics") renderLyrics(true); }
     if (mode === "queue" && (k === "queue" || k === "track")) renderQueue();
     c.sync(); s.sync();

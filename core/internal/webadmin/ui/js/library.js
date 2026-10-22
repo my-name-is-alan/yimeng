@@ -3,7 +3,8 @@ import { get, post, put, patch, del, qs, coverURL, api } from "./api.js";
 import { h, icon, cover, fmtDur, fmtLong, fmtNum, fmtAgo, empty, toast, errToast, confirmDlg, promptDlg, dialog, menu, debounce, isLocal, sourceBadge } from "./ui.js";
 import { player } from "./player.js";
 import { albumCard, artistCard, trackList, albumTracks, editAlbum, editArtist, pager, addToPlaylist } from "./components.js";
-import { isAdmin, nav } from "./state.js";
+import { isAdmin, nav, state } from "./state.js";
+import { onlineHome, searchGroups, scopedPlaylists, localHidden, loadMode, modeWizard, noPlugins } from "./online.js";
 
 const head = (title, sub, ...actions) => h("div", { class: "page-head" }, h("div", { style: { flex: 1, minWidth: 0 } }, h("h1", null, title), sub ? h("div", { class: "sub" }, sub) : null), ...actions);
 const skelGrid = (n = 12) => h("div", { class: "album-grid" }, Array.from({ length: n }, () => h("div", null, h("div", { class: "skel", style: { aspectRatio: 1 } }), h("div", { class: "skel", style: { height: "14px", marginTop: "10px", width: "70%" } }))));
@@ -12,6 +13,14 @@ export async function home(main) {
   const hour = new Date().getHours();
   const greet = hour < 6 ? "夜深了" : hour < 11 ? "早上好" : hour < 14 ? "中午好" : hour < 18 ? "下午好" : "晚上好";
   main.replaceChildren(head(greet, "今天想听点什么？"), skelGrid(6));
+  const mode = await loadMode();
+  if (!mode.configured && isAdmin()) modeWizard(() => home(main));
+  const online = (mode.online_enabled?.length ? onlineHome() : Promise.resolve([])).catch(() => []);
+  if (localHidden()) {
+    const secs = await online;
+    main.replaceChildren(head(greet, "在线音源 · 按账号权限播放"), ...(secs.length ? secs : [noPlugins()]));
+    return;
+  }
   const [recent, plays, otd, stats] = await Promise.all([
     get(`/albums${qs({ sort: "added", order: "desc", limit: 12 })}`),
     get(`/history/top${qs({ type: "album", period: "30d", limit: 12 })}`).catch(() => ({ items: [] })),
@@ -34,6 +43,7 @@ export async function home(main) {
   if (otdItems.length) parts.push(shelf("那年今日", otdItems.slice(0, 12).filter((a) => a.title).map((a) => albumCard(a))));
   if (stats?.top_artists?.length) parts.push(h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "常听艺人")),
     h("div", { class: "chips" }, stats.top_artists.map((a) => h("a", { class: "chip", href: `#/artist/${a.id}`, style: { display: "inline-flex", alignItems: "center" } }, `${a.name} · ${a.count}`)))));
+  parts.push(...(await online));
   main.replaceChildren(...parts);
 }
 
@@ -146,14 +156,18 @@ export async function search(main, params) {
   const out = h("div");
   main.replaceChildren(head("搜索"), input, out);
   input.focus();
+  if (!state.mode) await loadMode();
   async function run(v) {
     if (!v.trim()) return out.replaceChildren(empty("输入关键字开始搜索。支持「zhoujielun」「zjl」这样的拼音检索。", "search"));
     try {
-      const r = await get(`/search${qs({ q: v, limit: 30 })}`);
+      const withOnline = state.mode?.online_enabled?.length > 0;
+      const r = await get(`/search${qs({ q: v, limit: 30, online: withOnline ? 1 : undefined })}`);
       const parts = [];
       if (r.artists?.length) parts.push(h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "艺人")), h("div", { class: "artist-grid" }, r.artists.slice(0, 12).map(artistCard))));
       if (r.albums?.length) parts.push(h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "专辑")), h("div", { class: "album-grid" }, r.albums.slice(0, 12).map((a) => albumCard(a)))));
       if (r.tracks?.length) parts.push(h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "歌曲")), trackList(r.tracks, { showCover: true, numbered: false })));
+      if (parts.length && r.online?.length) parts.unshift(h("div", { class: "eyebrow", style: { marginTop: "18px" } }, "本地曲库"));
+      parts.push(...searchGroups(r.online));
       out.replaceChildren(...(parts.length ? parts : [empty(`没有找到「${v}」相关内容`, "search")]));
     } catch (e) { out.replaceChildren(empty(e.message)); }
   }
@@ -196,13 +210,23 @@ export function smartEditor(initial, onSave) {
     } }, "保存")] });
 }
 
-export async function playlists(main) {
+const SCOPES = [["local", "本地歌单"], ["mine", "我的云歌单"], ["recommend", "推荐"], ["discover", "发现"]];
+export async function playlists(main, params) {
+  const scope = params?.get("scope") || (localHidden() ? "mine" : "local");
+  const tabs = h("div", { class: "seg", role: "group", "aria-label": "歌单范围", style: { marginBottom: "18px" } },
+    SCOPES.map(([v, l]) => h("button", { "aria-pressed": String(v === scope), onclick: () => nav(`#/playlists?scope=${v}`) }, l)));
+  if (scope !== "local") {
+    main.replaceChildren(head("歌单", "来自已启用的在线音源"), tabs, skelGrid(6));
+    main.replaceChildren(head("歌单", "来自已启用的在线音源"), tabs, ...(await scopedPlaylists(scope)));
+    return;
+  }
   const p = await get("/playlists");
   const reload = () => playlists(main);
   main.replaceChildren(head("歌单", `${p.items.length} 个歌单`,
     h("button", { class: "btn", onclick: () => smartEditor(null, async (b) => { const r = await post("/playlists", b); nav(`#/playlist/${r.id}`); }) }, icon("sparkle"), "智能歌单"),
     h("button", { class: "btn", onclick: () => { const f = h("input", { type: "file", accept: ".m3u,.m3u8,audio/x-mpegurl", onchange: async () => { const file = f.files[0]; if (!file) return; try { const r = await post(`/playlists/import${qs({ name: file.name.replace(/\.m3u8?$/i, "") })}`, file); toast(`已导入 ${r.matched ?? ""} 首`); reload(); } catch (e) { errToast(e); } } }); f.click(); } }, icon("upload"), "导入 M3U"),
     h("button", { class: "btn primary", onclick: async () => { const name = await promptDlg("新建歌单", "歌单名称"); if (!name) return; try { const r = await post("/playlists", { name }); nav(`#/playlist/${r.id}`); } catch (e) { errToast(e); } } }, icon("plus"), "新建歌单")),
+    tabs,
     p.items.length ? h("div", { class: "album-grid" }, p.items.map((pl) => h("a", { class: "album-card", href: `#/playlist/${pl.id}` },
       h("div", { class: "cover", style: { background: pl.smart ? "linear-gradient(135deg, #C8F542, #2d3d00)" : "linear-gradient(135deg, #3a3a48, #15151a)" } },
         h("div", { class: "ph", style: { color: pl.smart ? "#0A0A0C" : "rgb(255 255 255 / .5)" } }, icon(pl.smart ? "sparkle" : "list"))),
@@ -238,10 +262,14 @@ export async function playlist(main, id) {
 }
 
 export async function favorites(main) {
-  const [tr, al] = await Promise.all([get(`/tracks${qs({ favorite: true, limit: 500 })}`), get(`/albums${qs({ favorite: true, limit: 200 })}`)]);
+  const [tr, al, cloud] = await Promise.all([get(`/tracks${qs({ favorite: true, limit: 500 })}`), get(`/albums${qs({ favorite: true, limit: 200 })}`),
+    get("/online/favorites").catch(() => ({ items: [] }))]);
   main.replaceChildren(head("收藏", `${tr.total} 首歌曲 · ${al.total} 张专辑`, tr.items.length ? h("button", { class: "btn primary", onclick: () => player.playList(tr.items, 0, { shuffle: true }) }, icon("shuffle"), "随机播放") : null),
     al.items.length ? h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "专辑")), h("div", { class: "album-grid" }, al.items.map((a) => albumCard(a)))) : null,
-    h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "歌曲")), tr.items.length ? trackList(tr.items, { showCover: true, numbered: false }) : empty("点击曲目旁的 ♡ 收藏喜欢的歌", "heart")));
+    h("section", { class: "section" }, h("div", { class: "section-head" }, h("h2", null, "歌曲")), tr.items.length ? trackList(tr.items, { showCover: true, numbered: false }) : empty("点击曲目旁的 ♡ 收藏喜欢的歌", "heart")),
+    ...(cloud.items || []).filter((g) => g.playlist?.tracks?.length).map((g) => h("section", { class: "section" },
+      h("div", { class: "section-head" }, h("h2", null, `${g.playlist.name}`), h("span", { class: "badge src" }, "云端收藏 · 只读")),
+      trackList(g.playlist.tracks.map((t) => ({ ...t, album_id: t.album?.id || "", album_title: t.album?.name || "" })), { showCover: true, numbered: false }))));
 }
 
 export async function historyPage(main) {

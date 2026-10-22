@@ -4,6 +4,19 @@ import { h, icon, cover, fmtDur, menu, toast, errToast, dialog, conf, confirmDlg
 import { player, qualityBadge } from "./player.js";
 import { isAdmin, nav } from "./state.js";
 
+// Online ids are "<origin>:<native>"; their pages live under #/online/….
+const ext = (id) => typeof id === "string" && id.includes(":");
+const extHref = (kind, id) => { const i = id.indexOf(":"); return `#/online/${id.slice(0, i)}/${kind}/${encodeURIComponent(id.slice(i + 1))}`; };
+export const albumHref = (id) => ext(id) ? extHref("album", id) : `#/album/${id}`;
+export const artistHref = (id) => ext(id) ? extHref("artist", id) : `#/artist/${id}`;
+const netImg = (u, s) => /music\.126\.net/.test(u) ? `${u.replace(/^http:/, "https:")}?param=${s}y${s}` : u;
+export const trackArt = (t, size = 80) => t.cover_url ? netImg(t.cover_url, size) : t.album_id ? coverURL(t.album_id, size) : "";
+export function playBadge(t) {
+  if (t.playable === "preview") return h("span", { class: "badge warn pv", title: "当前账号仅能播放平台提供的试听片段" }, "试听");
+  if (t.playable === "unavailable") return h("span", { class: "badge err", title: "当前账号无权播放（付费/下架/地区限制）" }, "不可播");
+  return null;
+}
+
 export function albumCard(al, { onPlay } = {}) {
   const play = h("button", { class: "play-circle hover-play", "aria-label": `播放 ${al.title}`, onclick: async (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -38,14 +51,15 @@ export function trackList(tracks, opts = {}) {
       try { t.favorite ? await del(`/favorites/track/${t.id}`) : await put(`/favorites/track/${t.id}`); t.favorite = !t.favorite; fav.classList.toggle("fav-on", t.favorite); toast(t.favorite ? "已收藏" : "已取消收藏"); } catch (err) { errToast(err); }
     } }, icon("heart"));
     const more = h("button", { class: "btn icon sm ghost", "aria-label": "更多操作", onclick: (e) => { e.stopPropagation(); trackMenu(more, t, tracks, opts); } }, icon("more"));
-    const row = h("div", { class: `trow ${showCover ? "with-cover" : ""}`, role: "listitem", tabindex: 0, "data-id": t.id,
+    const row = h("div", { class: `trow ${showCover ? "with-cover" : ""} ${t.playable === "unavailable" ? "unavail" : ""}`, role: "listitem", tabindex: 0, "data-id": t.id,
       ondblclick: () => player.playList(tracks, i), onkeydown: (e) => { if (e.key === "Enter") player.playList(tracks, i); },
       oncontextmenu: (e) => { e.preventDefault(); trackMenu(more, t, tracks, opts); } },
-      no, showCover ? cover(t.album_id ? coverURL(t.album_id, 80) : "", t.album_title || t.title, "opt") : null,
+      no, showCover ? cover(trackArt(t, 80), t.album_title || t.title, "opt") : null,
       h("div", { style: { minWidth: 0 } },
-        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null, sourceBadge(t)),
+        h("div", { class: "ti ellipsis" }, t.title, " ", t.stream?.lossless ? h("span", { class: "badge hq" }, "无损") : null, sourceBadge(t), " ", playBadge(t),
+          t.local_id ? h("span", { class: "badge ok", title: "本地曲库已有此曲，播放时优先使用本地文件" }, "本地") : null),
         h("div", { class: "ar ellipsis" }, t.artist_name || "未知艺人")),
-      h("a", { class: "al ellipsis", href: t.album_id ? `#/album/${t.album_id}` : undefined, onclick: (e) => e.stopPropagation() }, t.album_title || ""),
+      h("a", { class: "al ellipsis", href: t.album_id ? albumHref(t.album_id) : undefined, onclick: (e) => e.stopPropagation() }, t.album_title || ""),
       h("span", { class: "du" }, fmtDur(t.duration_ms)),
       h("div", { class: "acts" }, h("button", { class: "btn icon sm ghost", "aria-label": "播放", onclick: (e) => { e.stopPropagation(); player.playList(tracks, i); } }, icon("play")), fav, more));
     row.addEventListener("click", (e) => { if (matchMedia("(max-width: 700px)").matches && !e.target.closest("button,a")) player.playList(tracks, i); });
@@ -74,15 +88,15 @@ export function trackMenu(anchor, t, list, opts = {}) {
     { label: "立即播放", icon: "play", run: () => player.playList([t]) },
     { label: "下一首播放", icon: "next", run: () => player.playNext(t) },
     { label: "加入播放队列", icon: "queue", run: () => player.enqueue(t) },
-    { label: "从这首开始电台", icon: "sparkle", run: () => radio(t) },
+    isLocal(t) ? { label: "从这首开始电台", icon: "sparkle", run: () => radio(t) } : null,
     { label: "添加到歌单…", icon: "list", run: () => addToPlaylist([t.id]) },
     "-",
-    t.album_id ? { label: "前往专辑", icon: "album", run: () => nav(`#/album/${t.album_id}`) } : null,
-    ...(t.artists || []).slice(0, 2).map((a) => ({ label: `前往艺人 · ${a.name}`, icon: "artist", run: () => nav(`#/artist/${a.id}`) })),
+    t.album_id ? { label: "前往专辑", icon: "album", run: () => nav(albumHref(t.album_id)) } : null,
+    ...(t.artists || []).filter((a) => a.id).slice(0, 2).map((a) => ({ label: `前往艺人 · ${a.name}`, icon: "artist", run: () => nav(artistHref(a.id)) })),
     admin && isLocal(t) ? "-" : null,
     admin && isLocal(t) ? { label: "编辑标签 / MusicBrainz 匹配", icon: "edit", run: () => editTrack(t, opts.onChange) } : null,
     admin && isLocal(t) ? { label: "歌词匹配与校对", icon: "lyrics", run: () => nav(`#/lyrics/${t.id}`) } : null,
-    { label: "下载原始文件", icon: "download", run: () => { location.href = downloadURL(t.id); } },
+    isLocal(t) ? { label: "下载原始文件", icon: "download", run: () => { location.href = downloadURL(t.id); } } : null,
     opts.playlist && !opts.playlist.smart ? "-" : null,
     opts.playlist && !opts.playlist.smart ? { label: "从歌单移除", icon: "trash", danger: true, run: () => opts.onRemove?.(t, list.indexOf(t)) } : null,
   ]);

@@ -67,18 +67,18 @@ type neSong struct {
 }
 
 type nePlaylist struct {
-	ID              int64  `json:"id"`
-	Name            string `json:"name"`
-	CoverImgURL     string `json:"coverImgUrl"`
-	PicURL          string `json:"picUrl"`
-	Description     string `json:"description"`
-	TrackCount      int    `json:"trackCount"`
-	PlayCount       int64  `json:"playCount"`
-	Playcount       int64  `json:"playcount"`
-	Copywriter      string `json:"copywriter"`
-	UpdateFrequency string `json:"updateFrequency"`
-	SpecialType     int    `json:"specialType"`
-	Subscribed      bool   `json:"subscribed"`
+	ID              int64   `json:"id"`
+	Name            string  `json:"name"`
+	CoverImgURL     string  `json:"coverImgUrl"`
+	PicURL          string  `json:"picUrl"`
+	Description     string  `json:"description"`
+	TrackCount      flexInt `json:"trackCount"`
+	PlayCount       flexInt `json:"playCount"`
+	Playcount       flexInt `json:"playcount"`
+	Copywriter      string  `json:"copywriter"`
+	UpdateFrequency string  `json:"updateFrequency"`
+	SpecialType     int     `json:"specialType"`
+	Subscribed      bool    `json:"subscribed"`
 	Creator         *struct {
 		UserID   int64  `json:"userId"`
 		Nickname string `json:"nickname"`
@@ -223,12 +223,12 @@ func mapPlaylist(p nePlaylist, kind string) online.Playlist {
 	if cover == "" {
 		cover = p.PicURL
 	}
-	plays := p.PlayCount
+	plays := int64(p.PlayCount)
 	if plays == 0 {
-		plays = p.Playcount
+		plays = int64(p.Playcount)
 	}
 	out := online.Playlist{ID: fid(p.ID), Origin: origin, Name: p.Name, CoverURL: cover, Description: p.Description,
-		TrackCount: p.TrackCount, PlayCount: plays, Kind: kind, Subtitle: p.Copywriter}
+		TrackCount: int(p.TrackCount), PlayCount: plays, Kind: kind, Subtitle: p.Copywriter}
 	if p.UpdateFrequency != "" {
 		out.Subtitle = p.UpdateFrequency
 	}

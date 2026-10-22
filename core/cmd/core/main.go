@@ -30,6 +30,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics/providers"
 	"github.com/my-name-is-alan/yimeng/core/internal/metadata"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
+	"github.com/my-name-is-alan/yimeng/core/internal/online/kugou"
 	"github.com/my-name-is-alan/yimeng/core/internal/online/netease"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback/sources"
@@ -215,8 +216,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	plugins := online.NewRegistry(database, vlt, log, nil)
-	if err := plugins.Register(netease.New(netease.Options{})); err != nil {
-		return err
+	for _, f := range []online.Factory{netease.New(netease.Options{}), kugou.New()} {
+		if err := plugins.Register(f); err != nil {
+			return err
+		}
 	}
 	if err := plugins.Load(ctx); err != nil {
 		return err

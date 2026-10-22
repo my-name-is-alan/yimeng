@@ -7,6 +7,7 @@ import * as lib from "./library.js";
 import * as adm from "./admin.js";
 import { lyricsPage } from "./lyrics.js";
 import { metadataPage } from "./metadata.js";
+import * as onl from "./online.js";
 
 adm.applyTheme();
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", adm.applyTheme);
@@ -14,13 +15,15 @@ const app = $("#app"), main = $("#main");
 const navigate = (hash) => { location.hash = hash; };
 
 const NAV = [
-  ["曲库", [["#/", "首页", "home"], ["#/albums", "专辑", "album"], ["#/artists", "艺人", "artist"], ["#/tracks", "歌曲", "track"], ["#/playlists", "歌单", "list"], ["#/favorites", "收藏", "heart"], ["#/history", "播放历史", "history"]]],
+  ["曲库", [["#/", "首页", "home"], ["#/albums", "专辑", "album", "local"], ["#/artists", "艺人", "artist", "local"], ["#/tracks", "歌曲", "track", "local"], ["#/playlists", "歌单", "list"], ["#/charts", "排行榜", "pulse"], ["#/favorites", "收藏", "heart"], ["#/history", "播放历史", "history"]]],
   ["管理", [["#/dashboard", "仪表盘", "dash"], ["#/metadata", "元数据", "edit"], ["#/lyrics", "歌词匹配", "lyrics"], ["#/devices", "设备", "device"], ["#/settings", "设置", "settings"], ["#/logs", "日志", "logs"]]],
 ];
 const TABS = [["#/", "首页", "home"], ["#/albums", "曲库", "album"], ["#/search", "搜索", "search", true], ["#/playlists", "歌单", "list"], ["#/dashboard", "管理", "dash"]];
 
 function shell() {
-  $("#nav").replaceChildren(...NAV.flatMap(([sec, items]) => [h("div", { class: "nav-sec" }, sec), ...items.map(([href, label, ic]) => h("a", { class: "nav-item", href }, icon(ic), label))]));
+  // Local-only sections are hidden in online-only mode or while the local library is empty.
+  const hideLocal = onl.localHidden();
+  $("#nav").replaceChildren(...NAV.flatMap(([sec, items]) => [h("div", { class: "nav-sec" }, sec), ...items.filter((x) => !(hideLocal && x[3] === "local")).map(([href, label, ic]) => h("a", { class: "nav-item", href }, icon(ic), label))]));
   $("#tabbar").replaceChildren(...TABS.map(([href, label, ic, raised]) => h("a", { href, class: raised ? "raised" : "" }, raised ? h("span", { class: "orb" }, icon(ic)) : icon(ic), raised ? null : label)));
   const wsDot = h("span", { class: "dot" });
   const syncWs = () => { wsDot.className = `dot ${wsState.connected ? "ok" : "err"}`; wsDot.title = wsState.connected ? "实时连接正常" : "实时连接断开，重连中"; };
@@ -80,11 +83,15 @@ const ROUTES = [
   [/^\/dashboard$/, (m, p, c) => adm.dashboard(main, c)],
   [/^\/albums$/, (m, p) => lib.albums(main, p)],
   [/^\/album\/([\w-]+)$/, (m) => lib.album(main, m[1])],
+  [/^\/album\/([\w-]+):(.+)$/, (m) => onl.detail(main, m[1], "album", m[2])],
+  [/^\/artist\/([\w-]+):(.+)$/, (m) => onl.detail(main, m[1], "artist", m[2])],
   [/^\/artists$/, (m, p) => lib.artists(main, p)],
   [/^\/artist\/([\w-]+)$/, (m) => lib.artist(main, m[1])],
   [/^\/tracks$/, (m, p) => lib.tracks(main, p)],
   [/^\/search$/, (m, p) => lib.search(main, p)],
-  [/^\/playlists$/, () => lib.playlists(main)],
+  [/^\/playlists$/, (m, p) => lib.playlists(main, p)],
+  [/^\/charts$/, (m, p) => onl.charts(main, p)],
+  [/^\/online\/([\w-]+)\/(album|artist|playlist)\/([^/]+)$/, (m) => onl.detail(main, m[1], m[2], decodeURIComponent(m[3]))],
   [/^\/playlist\/([\w-]+)$/, (m) => lib.playlist(main, m[1])],
   [/^\/favorites$/, () => lib.favorites(main)],
   [/^\/history$/, () => lib.historyPage(main)],
@@ -133,7 +140,9 @@ async function boot() {
   try { state.me = await get("/devices/me"); }
   catch (e) { if (e.status === 401) { store.token = ""; return loginView("令牌已失效，请重新配对"); } main.replaceChildren(empty(`无法连接 Core：${e.message}`, "cloud", h("button", { class: "btn", onclick: boot }, "重试"))); return; }
   app.dataset.state = "ready";
+  await onl.loadMode();
   shell();
+  onEvent("plugin.updated", async () => { await onl.loadMode(); shell(); });
   if (!booted) { booted = true; mountNowBar(navigate); player.restore(); }
   connectWS();
   onEvent("library.cover", () => {}); // reserved for future live refresh

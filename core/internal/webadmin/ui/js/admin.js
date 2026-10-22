@@ -2,6 +2,7 @@
 import { get, post, put, patch, del, qs, api, onEvent, wsState, store } from "./api.js";
 import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog } from "./ui.js";
 import { state, isAdmin } from "./state.js";
+import { pluginsSection, localHidden } from "./online.js";
 
 const head = (title, sub, ...actions) => h("div", { class: "page-head" }, h("div", { style: { flex: 1, minWidth: 0 } }, h("h1", null, title), sub ? h("div", { class: "sub" }, sub) : null), ...actions);
 const card = (title, ic, ...body) => h("div", { class: "card" }, h("h3", null, ic ? icon(ic) : null, title), ...body);
@@ -102,7 +103,7 @@ export function logLine(e) {
 export async function logs(main, { cleanup }) {
   let level = "info", after = 0, paused = false, filterText = "";
   const box = h("div", { class: "logs", style: { maxHeight: "calc(100dvh - 260px)" } });
-  const seg = h("div", { class: "seg" }, ["debug", "info", "warn", "error"].map((l) => h("button", { "aria-pressed": l === level, onclick: (e) => { level = l; [...seg.children].forEach((b) => b.setAttribute("aria-pressed", b === e.currentTarget)); after = 0; box.replaceChildren(); load(); } }, l.toUpperCase())));
+  const seg = h("div", { class: "seg" }, ["debug", "info", "warn", "error"].map((l) => h("button", { "aria-pressed": String(l === level), onclick: (e) => { level = l; [...seg.children].forEach((b) => b.setAttribute("aria-pressed", b === e.currentTarget)); after = 0; box.replaceChildren(); load(); } }, l.toUpperCase())));
   const filter = h("input", { class: "input", type: "search", placeholder: "过滤关键字", oninput: () => { filterText = filter.value.toLowerCase(); [...box.children].forEach((c) => c.hidden = filterText && !c.textContent.toLowerCase().includes(filterText)); } });
   const pauseBtn = h("button", { class: "btn", onclick: () => { paused = !paused; pauseBtn.replaceChildren(icon(paused ? "play" : "pause"), paused ? "继续" : "暂停"); } }, icon("pause"), "暂停");
   main.replaceChildren(head("日志", "内存中最近 1000 条记录（敏感字段已脱敏），每 2 秒刷新"), adminGate() || "", h("div", { class: "toolbar" }, seg, filter, pauseBtn,
@@ -244,7 +245,7 @@ export async function settings(main) {
   // sources (Vault)
   const SRC = { netease: ["网易云音乐", "#e60026", "网"], qq: ["QQ 音乐", "#31c27c", "Q"], apple: ["Apple Music", "#fa2d48", ""] };
   const HEALTH = { ok: ["正常", "ok"], needs_reauth: ["未登录", ""], degraded: ["降级", "warn"], down: ["不可用", "err"] };
-  const srcSec = sec("账号与音源 (Vault)", "第三方账号凭据只保存在 Core 的加密 Vault 中，从不下发到客户端或网页。当前版本的流媒体音源为占位实现。",
+  const srcSec = sec("其他音源 (占位)", "Apple Music 需在 iOS / macOS 客户端授权；该音源当前为占位实现。",
     ...(sources.items || []).map((s) => {
       const [name, color, letter] = SRC[s.id] || [s.id, "#555", s.id[0]];
       const [hl, hc] = HEALTH[s.health] || [s.health, ""];
@@ -258,12 +259,18 @@ export async function settings(main) {
 
   // appearance
   const theme = localStorage.getItem("yimeng.theme") || "dark";
-  const themeSeg = h("div", { class: "seg" }, [["dark", "深色"], ["light", "浅色"], ["auto", "跟随系统"]].map(([v, l]) => h("button", { "aria-pressed": v === theme, onclick: (e) => {
+  const themeSeg = h("div", { class: "seg" }, [["dark", "深色"], ["light", "浅色"], ["auto", "跟随系统"]].map(([v, l]) => h("button", { "aria-pressed": String(v === theme), onclick: (e) => {
     localStorage.setItem("yimeng.theme", v); applyTheme(); [...themeSeg.children].forEach((b) => b.setAttribute("aria-pressed", b === e.currentTarget));
   } }, l)));
   const lookSec = sec("外观", "与 iOS 端一致的深色主题为默认。", h("div", { class: "row" }, h("span", { class: "muted" }, "主题"), themeSeg));
 
-  main.replaceChildren(head("设置"), adminGate() || "", rootsSec, scanSec, provSec, splitSec, tcSec, bkSec, srcSec, lookSec);
+  const modeSeg = h("div", { class: "seg" }, [["local", "本地曲库"], ["online", "在线音源"], ["both", "两者"]].map(([v, l]) => h("button", { "aria-pressed": String(v === (state.mode?.mode || "")), disabled: !admin, onclick: async () => {
+    try { state.mode = await put("/settings/mode", { mode: v }); toast("已切换使用方式"); location.reload(); } catch (e) { errToast(e); }
+  } }, l)));
+  const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
+  const plugSec = pluginsSection(sec, reload);
+  const local = !localHidden();
+  main.replaceChildren(head("设置"), adminGate() || "", modeSec, plugSec, ...(local ? [rootsSec, scanSec] : []), provSec, ...(local ? [splitSec] : []), tcSec, bkSec, srcSec, lookSec);
 }
 export function applyTheme() {
   const t = localStorage.getItem("yimeng.theme") || "dark";

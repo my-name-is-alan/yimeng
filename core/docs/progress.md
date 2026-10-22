@@ -96,4 +96,4 @@ Design: `docs/online-sources.md`. Decisions: D30–D34. Credits: `NOTICE`.
   - Offline tests. Live smoke: `cmd/netease-smoke` (anonymous search, charts and lyrics verified live; VIP songs resolve as 30 s preview).
 - Web UI: 音源插件 settings, online home, platform-grouped search, charts, playlist scopes, online album/artist/playlist pages with clone, 试听 badge in the player, first-run mode wizard.
 - Not verified with a real logged-in account: all login flows, daily recommend, user playlists, VIP full URLs.
-- Not done: QQ and Kugou plugins, multi-account support, cloud write-back.
+- Kugou: skeleton plugin (manifest only). Not done: QQ plugin, Kugou functionality, multi-account support, cloud write-back.

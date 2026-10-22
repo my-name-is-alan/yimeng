@@ -180,6 +180,6 @@ Protocol knowledge comes from MIT sources (see `NOTICE`), re-implemented in Go.
 ## 10. Known gaps
 
 - One account per platform.
-- QQ and Kugou plugins are not implemented yet (manifest skeletons planned).
+- QQ is not implemented yet. Kugou is a registered skeleton (manifest only, shown as 开发中, no capabilities).
 - Logged-in flows (QR, cookie, phone, email, daily recommend, user playlists, VIP `full` URLs) are covered by fixtures only. They have not been exercised against a real account.
 - No cloud write-back (liking on the platform).
