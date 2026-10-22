@@ -15,3 +15,8 @@ DerivedData/
 .secrets/
 xcuserdata/
 build/
+sim-v*/
+sim-shots/
+*.mp4
+*.mov
+*.gif
