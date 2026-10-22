@@ -42,6 +42,7 @@ var upstreamHC = &http.Client{
 }
 
 func (d Deps) mountOnline(mux *http.ServeMux) {
+	d.mountRecognize(mux)
 	if d.Online == nil {
 		return
 	}

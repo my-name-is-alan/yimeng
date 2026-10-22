@@ -577,3 +577,14 @@ web pages; caching per account (images are not user data; isolation is unaffecte
 - **Online listings:** identical track DTOs remembered within 10 minutes are not rewritten. Hot pages such as home, search and album become read-only. Previously each view rewrote every track row and its status.
 - **Playback:** the web player resolves the next online track's upstream URL (as a server-side lease) 1.5 s after a track starts, so skip and auto-advance avoid the platform round-trip.
 - **API contract:** `TestEveryRouteDocumented` fails when a registered route is missing from `api/openapi.yaml`. Path parameters are compared positionally; `/api/v1/x` and `/api/x` count as the same path. `/rest` (Subsonic) and the web shell are excluded.
+
+## D62 — Song recognition (POST /api/v1/recognize)
+
+- **Fingerprint:** clean-room reimplementation of NetEase `shazam_v2` (Chrome extension
+  `afp.wasm` used only offline for analysis and test vectors; never shipped or executed).
+  STFT 8 kHz / Hann 2048 / hop 160; peaks packed, zlib-compressed, AES-128-ECB with key
+  `4B97221F27F02907`. Version string `hyai_1.2.0_client_1.0.0`; mismatch → 503.
+- **Transport:** Core forwards the fingerprint via the server-wide NetEase login
+  (`/eapi/music/audio/match`). Platform login stays server-wide (D57).
+- **Safety:** multipart `audio` sniffed by magic bytes; ≤15 s / ≤2 MiB; 10 req/min per
+  account; ffmpeg via argv only with timeout; audio never written to the library DB.

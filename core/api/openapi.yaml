@@ -2495,6 +2495,53 @@ paths:
       tags: [admin]
       summary: Runtime info for the dashboard (version, uptime, Go/SQLite versions, memory, goroutines) (admin)
       responses: { "200": { description: Runtime info, content: { application/json: { schema: { type: object, additionalProperties: true } } } }, "403": { $ref: "#/components/responses/Forbidden" } }
+  /api/v1/recognize:
+    post:
+      tags: [recognize]
+      summary: Identify a song from a short audio clip (网易云听歌识曲)
+      description: |
+        Multipart field `audio` (m4a/AAC preferred; also mp3/wav), optional `duration_ms`.
+        Limits: ≤15 s and ≤2 MiB (413 too_long). Rate limit 10/min per account (429).
+        Audio is never stored (decoded in-memory via ffmpeg, then discarded).
+        Requires the server-wide NetEase account to be logged in (409 not_logged_in).
+        Fingerprint is a clean-room reimplementation of NetEase shazam_v2 (D62); if the
+        format NetEase expects changes, Core returns 503 fingerprint_unsupported.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: { type: string, format: binary }
+                duration_ms: { type: number }
+      responses:
+        "200":
+          description: "{matches:[{title,artist,album,cover,origin,track_id,offset_ms}]}"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        artist: { type: string }
+                        album: { type: string }
+                        cover: { $ref: "#/components/schemas/CoverRef" }
+                        origin: { type: string }
+                        track_id: { type: string }
+                        offset_ms: { type: integer }
+        "400": { description: invalid_body }
+        "404": { description: no_match }
+        "409": { description: not_logged_in }
+        "413": { description: too_long }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { description: fingerprint_unsupported }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
