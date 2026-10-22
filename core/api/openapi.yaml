@@ -1,13 +1,17 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
     `POST /api/pair/request`. Media routes (`/api/stream/*`, `*/cover`) also
     accept `?access_token=` because `<audio>`/`<img>` cannot set headers.
     Errors use `{ "error": "<kind>", "message": "..." }`.
+    Optional TLS (`YIMENG_TLS_CERT`/`YIMENG_TLS_KEY`), trusted proxies
+    (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
+    (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
+    with `Retry-After` when exceeded. `/healthz` is not rate-limited.
 servers:
   - url: http://nas.local:8741
 security:
@@ -1207,7 +1211,7 @@ components:
     Forbidden: { description: Admin device required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
     RateLimited:
-      description: Too many attempts
+      description: Too many attempts (pairing) or HTTP rate limit exceeded
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:

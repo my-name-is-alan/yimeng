@@ -233,6 +233,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 		scanner.Watch(ctx, library.WatchOptions{Mode: cfg.WatchMode, Debounce: cfg.WatchDebounce, RescanInterval: cfg.RescanInterval})
 	}()
 
+	tp, err := gateway.ParseTrustedProxies(cfg.Server.TrustedProxies)
+	if err != nil {
+		return fmt.Errorf("trusted_proxies: %w", err)
+	}
+	rl := gateway.NewRateLimits(cfg.Server.RateLimit, cfg.Server.RateBurst, cfg.Server.GlobalRate)
+
 	srv := &http.Server{
 		Addr: cfg.Bind,
 		Handler: gateway.NewRouter(gateway.Deps{
@@ -250,6 +256,8 @@ func run(cfg config.Config, log *slog.Logger) error {
 			Covers:          &covers.Cache{Dir: filepath.Join(cfg.CacheDir, "thumbs")},
 			LyricsFetcher:   lyricsFetcher,
 			Providers:       reg,
+			TrustedProxies:  tp,
+			RateLimits:      rl,
 			RestoreMaxBytes: cfg.Backup.RestoreMaxBytes,
 			SchemaVersion:   db.Latest(migrations.FS),
 			Version:         version,
@@ -264,7 +272,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 					"backup": true, "lyrics": true, "history": true, "playlists": true,
 					"loudness": cfg.Library.LoudnessAnalysis, "transcode": tc != nil,
 					"subsonic": cfg.Subsonic, "mdns": cfg.MDNS,
-					"providers": len(reg.IDs()) > 0 || len(lyricChain) > 0,
+					"providers":  len(reg.IDs()) > 0 || len(lyricChain) > 0,
+					"tls":        cfg.Server.TLSCert != "",
+					"rate_limit": cfg.Server.RateLimit > 0 || cfg.Server.GlobalRate > 0,
 				},
 			},
 		}),
@@ -272,8 +282,16 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("yimeng core listening", "version", version, "bind", cfg.Bind, "roots", cfg.LibraryRoots)
-		errc <- srv.ListenAndServe()
+		attrs := []any{"version", version, "bind", cfg.Bind, "roots", cfg.LibraryRoots}
+		if cfg.Server.TLSCert != "" {
+			attrs = append(attrs, "tls", true)
+		}
+		log.Info("yimeng core listening", attrs...)
+		if cfg.Server.TLSCert != "" {
+			errc <- srv.ListenAndServeTLS(cfg.Server.TLSCert, cfg.Server.TLSKey)
+		} else {
+			errc <- srv.ListenAndServe()
+		}
 	}()
 	select {
 	case err := <-errc:

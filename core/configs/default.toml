@@ -39,3 +39,11 @@ providers = ["lrclib"]
 enabled = false            # opt-in: fetch MBIDs, credits and Cover Art Archive covers (≤1 req/s)
 contact = ""               # REQUIRED when enabled: your email or URL (sent in the User-Agent)
 # base_url = "https://musicbrainz.org"
+
+[http]
+# tls_cert = "/path/to/cert.pem"
+# tls_key  = "/path/to/key.pem"
+# trusted_proxies = ["10.0.0.0/8", "127.0.0.1"]  # honour X-Forwarded-For from these
+# rate_limit = 50          # req/s per client (token or IP); 0 = off
+# rate_burst = 200
+# global_rate_limit = 0    # req/s whole server; 0 = off

@@ -119,3 +119,11 @@ alternative considered. Newest items at the bottom.
 - NetEase / QQ Music: SPI stubs only — no documented public API without scraping
   or private mobile endpoints. Do not enable by default; warn if listed.
 - `GET /api/metadata/providers` lists registry MetadataProviders (not lyrics stubs).
+
+## D13 HTTPS, trusted proxies, rate limits
+- TLS is optional via cert/key paths; both required together. No automatic ACME
+  (NAS often terminates TLS at a reverse proxy).
+- X-Forwarded-For / X-Real-IP are honoured only when the direct peer is in
+  `trusted_proxies` CIDRs. Empty list = never trust (safe default on LAN).
+- Token-bucket rate limits: per-client (Bearer prefix else IP) and optional
+  global. `/healthz` exempt. 429 + Retry-After. Default 50/s burst 200.

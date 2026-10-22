@@ -64,14 +64,16 @@ type Deps struct {
 	SchemaVersion   int // newest schema this binary understands
 	Version         string
 	// LyricsFetcher is an optional remote lyrics provider chain.
-	LyricsFetcher library.LyricsFetcher
-	UserData      *userdata.Store
-	Playlists     PlaylistUseCases
-	System        *system.Collector
-	Presence      *Presence
-	Admin         AdminLibrary
-	Covers        *covers.Cache
-	Providers     *metadata.Registry // optional; listed by GET /api/metadata/providers
+	LyricsFetcher  library.LyricsFetcher
+	UserData       *userdata.Store
+	Playlists      PlaylistUseCases
+	System         *system.Collector
+	Presence       *Presence
+	Admin          AdminLibrary
+	Covers         *covers.Cache
+	Providers      *metadata.Registry // optional; listed by GET /api/metadata/providers
+	TrustedProxies *TrustedProxies
+	RateLimits     *RateLimits
 }
 
 type contextT = context.Context
@@ -171,7 +173,10 @@ func NewRouter(d Deps) http.Handler {
 		mux.HandleFunc("POST /api/system/restore", d.adminOnly(d.restoreBackup))
 	}
 
-	return accessLog(d.Log, securityHeaders(d.requireAuth(mux)))
+	h := securityHeaders(d.requireAuth(mux))
+	h = rateLimit(d.RateLimits, h)
+	h = realIP(d.TrustedProxies, h)
+	return accessLog(d.Log, h)
 }
 
 type ctxKey struct{}
@@ -236,7 +241,8 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// clientIP uses the socket peer only; X-Forwarded-For is not trusted.
+// clientIP returns the peer host. When TrustedProxies rewrote RemoteAddr via
+// realIP, this is the original client.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
