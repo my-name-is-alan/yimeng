@@ -513,7 +513,7 @@ paths:
   /api/search:
     get:
       tags: [catalog]
-      summary: Search artists, albums and tracks (substring match)
+      summary: Search artists, albums and tracks (substring match). ?online=1 adds platform groups; ?stream=1 (or Accept text/event-stream) streams SSE events local, online (one per platform as it finishes), done
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, maxLength: 200 } }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
@@ -1999,6 +1999,74 @@ paths:
       parameters:
         - { name: type, in: query, schema: { type: string, enum: [created, collected] } }
       responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
+  # ---- P1: sessions, 一起听 rooms (D48) ----
+  /api/sessions:
+    get:
+      tags: [players]
+      summary: The caller's sessions (devices of the same user) with presence and playback state
+      responses: { "200": { description: "{items:[{device, current, online, state|null}]}" } }
+  /api/sessions/handoff:
+    post:
+      tags: [players]
+      summary: Move playback (queue, track, position) between the caller's sessions; from defaults to the caller
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [to], properties: { from: { type: string }, to: { type: string } } }
+      responses: { "200": { description: Destination player state }, "404": { description: Session not found } }
+  /api/rooms:
+    get:
+      tags: [rooms]
+      summary: 一起听 rooms the caller is in (in-memory, ephemeral)
+      responses: { "200": { description: "{items:[Room]}" } }
+    post:
+      tags: [rooms]
+      summary: Create a room; the caller is host. Returns {id, code (6 chars), name, host, state, members, server_time, web_url}
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string } } } } } }
+      responses: { "201": { description: Room } }
+  /api/rooms/{id}:
+    parameters: [{ name: id, in: path, required: true, description: room id or 6-char code, schema: { type: string } }]
+    get: { tags: [rooms], summary: Room, responses: { "200": { description: Room }, "404": { description: room_not_found } } }
+  /api/rooms/{id}/join:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [rooms], summary: Join by id or code (max 50 members), responses: { "200": { description: Room } } }
+  /api/rooms/{id}/leave:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    post: { tags: [rooms], summary: Leave; a leaving host hands host to the oldest member, responses: { "204": { description: Left } } }
+  /api/rooms/{id}/state:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    put:
+      tags: [rooms]
+      summary: Host only - set {track_id, position_ms, playing}; broadcast as room.state with server_time
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { track_id: { type: string }, position_ms: { type: integer }, playing: { type: boolean } } }
+      responses: { "200": { description: Room }, "403": { description: not_host } }
+  /api/rooms/{id}/danmaku:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get: { tags: [rooms], summary: Last 200 弹幕, responses: { "200": { description: "{items:[{id, device_id, name, text, track_id, t_ms, color, at}]}" } } }
+    post:
+      tags: [rooms]
+      summary: Send 弹幕 (1-100 chars, max 5 per 10 s per device); t_ms defaults to the room position
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string }, t_ms: { type: integer }, color: { type: string, description: "#rrggbb" } } }
+      responses: { "201": { description: Danmaku }, "429": { description: rate_limited } }
+  /api/rooms/{id}/events:
+    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [rooms]
+      summary: SSE for members - room.snapshot, room.state, room.danmaku, room.member_joined, room.member_left, room.host_changed. ?access_token= allowed.
+      responses: { "200": { description: text/event-stream } }
+  /room/{code}:
+    parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [rooms]
+      summary: Public web page for a room (uses the web UI's stored token)
+      security: []
+      responses: { "200": { description: text/html } }
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }

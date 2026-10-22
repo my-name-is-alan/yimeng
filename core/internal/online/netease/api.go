@@ -146,8 +146,21 @@ func (a *api) weapiRaw(ctx context.Context, uri string, data map[string]any) ([]
 	data["csrf_token"] = a.c.Cookie("__csrf")
 	text, _ := json.Marshal(data)
 	params, key := weapiEncrypt(text)
-	cookie := a.c.CookieHeader(map[string]string{"os": "pc", "appver": "3.1.17.204416", "__remember_me": "true"})
+	cookie := a.c.CookieHeader(pcCookie(a))
 	return a.post(ctx, a.opts.Domain+"/weapi/"+strings.TrimPrefix(uri, "/api/"), url.Values{"params": {params}, "encSecKey": {key}}, cookie, uaWeb, a.opts.Domain)
+}
+
+// pcCookie is the desktop-client identity sent with weapi requests (os=pc,
+// stable device cookies). Login endpoints are risk-checked against it.
+func pcCookie(a *api) map[string]string {
+	if a.c.Cookie("WNMCID") == "" {
+		a.c.SetCookie("WNMCID", strings.ToLower(randHex(3))+"."+strconv.FormatInt(time.Now().UnixMilli(), 10)+".01.0")
+	}
+	if a.c.Cookie("_ntes_nnid") == "" {
+		a.c.SetCookie("_ntes_nnid", a.c.Cookie("_ntes_nuid")+","+strconv.FormatInt(time.Now().UnixMilli(), 10))
+	}
+	return map[string]string{"os": "pc", "appver": "3.1.17.204416", "osver": "Microsoft-Windows-10-Professional-build-19045-64bit",
+		"channel": "netease", "__remember_me": "true", "ntes_kaola_ad": "1", "WEVNSM": "1.0.0"}
 }
 
 // eapi posts to <eapi domain>/eapi/<uri without "/api/">.
@@ -160,6 +173,12 @@ func (a *api) eapi(ctx context.Context, uri string, data map[string]any, v any) 
 }
 
 func (a *api) eapiRaw(ctx context.Context, uri string, data map[string]any) ([]byte, error) {
+	return a.eapiRawAs(ctx, uri, data, false)
+}
+
+// eapiRawAs with pc=true identifies as the desktop client (os=pc); QR login
+// is risk-checked against the client that created the key.
+func (a *api) eapiRawAs(ctx context.Context, uri string, data map[string]any, pc bool) ([]byte, error) {
 	a.ensureDevice()
 	if data == nil {
 		data = map[string]any{}
@@ -169,6 +188,11 @@ func (a *api) eapiRaw(ctx context.Context, uri string, data map[string]any) ([]b
 		"versioncode": "140", "mobilename": "", "buildver": strconv.FormatInt(time.Now().Unix(), 10),
 		"resolution": "1920x1080", "__csrf": a.c.Cookie("__csrf"), "channel": "distribution",
 		"requestId": fmt.Sprintf("%d_%04d", time.Now().UnixMilli(), time.Now().Nanosecond()%1000),
+	}
+	if pc {
+		header["os"], header["appver"], header["channel"] = "pc", "3.1.17.204416", "netease"
+		header["osver"] = "Microsoft-Windows-10-Professional-build-19045-64bit"
+		header["NMTID"] = a.c.Cookie("NMTID")
 	}
 	if v := a.c.Cookie("MUSIC_U"); v != "" {
 		header["MUSIC_U"] = v

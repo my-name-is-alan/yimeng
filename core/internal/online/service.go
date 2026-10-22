@@ -349,7 +349,7 @@ func (s *Service) Lyrics(ctx context.Context, id string) (Lyrics, error) {
 	if err != nil {
 		return Lyrics{}, err
 	}
-	l, err := cached(ctx, s.Cache, Key(o, "lyrics", n), TTLLyrics, func(ctx context.Context) (Lyrics, error) { return c.Lyrics(ctx, n) })
+	l, err := cached(ctx, s.Cache, Key(o, "lyrics2", n), TTLLyrics, func(ctx context.Context) (Lyrics, error) { return c.Lyrics(ctx, n) })
 	s.after(ctx, o, err)
 	return l, err
 }

@@ -40,7 +40,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		Description: "搜索、歌词、排行榜、每日推荐、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
 			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM},
-		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword},
+		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword, online.LoginSMS},
 		QRChannels:   []online.QRChannel{{ID: "app", Label: "网易云 App 扫码", App: "网易云音乐 App", Hint: "请使用 网易云音乐 App 扫码（不是微信/QQ）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
 		DefaultRate:  60,
@@ -55,7 +55,11 @@ func (p *Plugin) StartQR(ctx context.Context) (online.QRChallenge, error) {
 	var r struct {
 		Unikey string `json:"unikey"`
 	}
-	if err := p.eapi(ctx, "/api/login/qrcode/unikey", map[string]any{"type": 3}, &r); err != nil {
+	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/unikey", map[string]any{"type": 3}, true)
+	if err == nil {
+		err = decode(body, &r)
+	}
+	if err != nil {
 		return online.QRChallenge{}, err
 	}
 	if r.Unikey == "" {
@@ -66,7 +70,7 @@ func (p *Plugin) StartQR(ctx context.Context) (online.QRChallenge, error) {
 }
 
 func (p *Plugin) PollQR(ctx context.Context, key string) (online.QRPoll, error) {
-	body, err := p.eapiRaw(ctx, "/api/login/qrcode/client/login", map[string]any{"key": key, "type": 3})
+	body, err := p.eapiRawAs(ctx, "/api/login/qrcode/client/login", map[string]any{"key": key, "type": 3}, true)
 	if err != nil {
 		return online.QRPoll{}, err
 	}
@@ -164,6 +168,97 @@ func (p *Plugin) LoginPassword(ctx context.Context, user, pass string) (online.A
 		return online.Account{}, classify(r.Code, msg)
 	}
 	return p.Account(ctx)
+}
+
+// splitPhone accepts "13312345678", "+8613312345678" or "+86 133…".
+func splitPhone(in string) (cc, phone string, err error) {
+	in = strings.NewReplacer(" ", "", "-", "").Replace(strings.TrimSpace(in))
+	if !digits.MatchString(in) {
+		return "", "", fmt.Errorf("%w: 手机号格式不正确", online.ErrNeedsLogin)
+	}
+	cc, phone = "86", strings.TrimPrefix(in, "+")
+	if strings.HasPrefix(in, "+") && len(phone) > 11 {
+		cc, phone = phone[:len(phone)-11], phone[len(phone)-11:]
+	}
+	return cc, phone, nil
+}
+
+// SendSMS asks NetEase to text a login code (weapi /sms/captcha/sent, PC identity).
+func (p *Plugin) SendSMS(ctx context.Context, phone string) error {
+	cc, ph, err := splitPhone(phone)
+	if err != nil {
+		return err
+	}
+	body, err := p.weapiRaw(ctx, "/api/sms/captcha/sent", map[string]any{"ctcode": cc, "secrete": "music_middleuser_pclogin", "cellphone": ph})
+	if err != nil {
+		return err
+	}
+	var r struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Msg     string `json:"msg"`
+	}
+	if err := jsonUnmarshal(body, &r); err != nil {
+		return err
+	}
+	if r.Code == 200 {
+		return nil
+	}
+	msg := firstNonEmpty(r.Message, r.Msg)
+	switch r.Code {
+	case 8821, 8810, -462:
+		return fmt.Errorf("%w: 平台风控（%d）%s", online.ErrRiskControl, r.Code, msg)
+	case 400, 503, 405:
+		return fmt.Errorf("%w: 发送失败（%d）%s", online.ErrRiskControl, r.Code, msg)
+	}
+	return classify(r.Code, fmt.Sprintf("%d %s", r.Code, msg))
+}
+
+// LoginSMS logs in with phone + SMS code (weapi /w/login/cellphone).
+func (p *Plugin) LoginSMS(ctx context.Context, phone, code string) (online.Account, error) {
+	cc, ph, err := splitPhone(phone)
+	if err != nil {
+		return online.Account{}, err
+	}
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return online.Account{}, fmt.Errorf("%w: 需要验证码", online.ErrNeedsLogin)
+	}
+	body, err := p.weapiRaw(ctx, "/api/w/login/cellphone", map[string]any{"phone": ph, "countrycode": cc, "captcha": code,
+		"remember": "true", "type": "1", "https": "true", "secureCaptcha": ""})
+	if err != nil {
+		return online.Account{}, err
+	}
+	var r struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Msg     string `json:"msg"`
+	}
+	if err := jsonUnmarshal(body, &r); err != nil {
+		return online.Account{}, err
+	}
+	switch r.Code {
+	case 200:
+	case 503, 400, 501, 502:
+		return online.Account{}, fmt.Errorf("%w: 验证码错误或已过期（%d）", online.ErrNeedsLogin, r.Code)
+	case 8821, 8810, -462:
+		return online.Account{}, fmt.Errorf("%w: 平台风控（%d）", online.ErrRiskControl, r.Code)
+	default:
+		return online.Account{}, classify(r.Code, fmt.Sprintf("%d %s", r.Code, firstNonEmpty(r.Message, r.Msg)))
+	}
+	if p.c.Cookie("MUSIC_U") == "" {
+		return online.Account{}, fmt.Errorf("%w: login ok but no session cookie", online.ErrUpstream)
+	}
+	return p.Account(ctx)
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func (p *Plugin) Account(ctx context.Context) (online.Account, error) {

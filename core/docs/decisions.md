@@ -356,3 +356,12 @@ Aligned with the designer's mock (`ios/Tools/core-mock/core_mock.py`). All route
 - **colors/blurhash:** from the cover.
 - **tags:** from genre tags.
 - **bpm:** only when a source provides it, else null.
+
+## D48 — Sessions, handoff and 一起听 rooms
+- **Sessions:** `/sessions` lists the caller's devices. `/sessions/handoff` reuses the player transfer.
+- **Rooms:** kept in memory and ephemeral. A 6-char code and a host-authoritative state are broadcast with `server_time`.
+- **弹幕:** 1–100 chars, max 5 per 10 s per device; the last 200 are kept.
+- **Room events:** SSE at `/rooms/{id}/events`.
+- **Web page:** `/room/{code}`.
+- **Search streaming:** `/search?stream=1` streams local results first, then each platform as it finishes.
+- **NetEase login:** SMS login added (captcha/sent + w/login/cellphone with the PC identity). QR uses the PC client identity.

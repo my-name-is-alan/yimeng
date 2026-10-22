@@ -69,7 +69,11 @@ func (d Deps) writeList(w http.ResponseWriter, r *http.Request, page any, limit,
 	} else {
 		m["next_cursor"] = json.RawMessage("null")
 	}
-	m["updated_at"], _ = json.Marshal(d.libraryUpdatedAt(r.Context()))
+	if t := d.libraryUpdatedAt(r.Context()); t.IsZero() {
+		m["updated_at"] = json.RawMessage("null")
+	} else {
+		m["updated_at"], _ = json.Marshal(t)
+	}
 	out, _ := json.Marshal(m)
 	writeETagged(w, r, out)
 }

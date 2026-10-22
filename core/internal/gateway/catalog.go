@@ -203,6 +203,10 @@ func (d Deps) search(w http.ResponseWriter, r *http.Request) {
 		p.Limit = 20
 	}
 	p.Offset, p.Sort, p.Desc, p.ArtistID, p.AlbumID = 0, "", false, "", ""
+	if wantsSearchStream(r) {
+		d.searchStream(w, r, p)
+		return
+	}
 	d.writeOne(w, "search", func() (any, error) {
 		ctx := r.Context()
 		ar, err := d.Library.ListArtists(ctx, p)

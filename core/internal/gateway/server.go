@@ -57,6 +57,8 @@ type LibraryUseCases interface {
 }
 
 type Deps struct {
+	// Rooms holds 一起听 rooms (nil = package default).
+	Rooms    *Rooms
 	Library  LibraryUseCases
 	Playback *playback.Orchestrator
 	Hub      *events.Hub
@@ -185,6 +187,18 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/tracks/{id}/download", d.download)
 
 	mux.HandleFunc("GET /api/players", d.listPlayers)
+	mux.HandleFunc("GET /api/sessions", d.listSessions)
+	mux.HandleFunc("GET /api/rooms", d.listRooms)
+	mux.HandleFunc("POST /api/rooms", d.createRoom)
+	mux.HandleFunc("GET /api/rooms/{id}", d.getRoom)
+	mux.HandleFunc("POST /api/rooms/{id}/join", d.joinRoom)
+	mux.HandleFunc("POST /api/rooms/{id}/leave", d.leaveRoom)
+	mux.HandleFunc("PUT /api/rooms/{id}/state", d.putRoomState)
+	mux.HandleFunc("GET /api/rooms/{id}/danmaku", d.listDanmaku)
+	mux.HandleFunc("POST /api/rooms/{id}/danmaku", d.postDanmaku)
+	mux.HandleFunc("GET /api/rooms/{id}/events", d.roomEvents)
+	mux.HandleFunc("GET /room/{code}", d.roomPage)
+	mux.HandleFunc("POST /api/sessions/handoff", d.handoff)
 	mux.HandleFunc("GET /api/players/{id}", d.playerState)
 	mux.HandleFunc("GET /api/players/{id}/queue", d.playerQueue)
 	for _, a := range []string{"play", "pause", "stop", "next", "prev", "seek", "repeat", "shuffle", "queue", "transfer", "sleep"} {
@@ -308,7 +322,7 @@ func allowsQueryToken(r *http.Request) bool {
 		return false
 	}
 	p := r.URL.Path
-	return p == "/ws" || p == "/api/events" || strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/covers/") || strings.HasSuffix(p, "/download") ||
+	return p == "/ws" || p == "/api/events" || (strings.HasPrefix(p, "/api/rooms/") && strings.HasSuffix(p, "/events")) || strings.HasPrefix(p, "/api/stream/") || strings.HasPrefix(p, "/api/covers/") || strings.HasSuffix(p, "/download") ||
 		(strings.HasSuffix(p, "/cover") && (strings.HasPrefix(p, "/api/albums/") || strings.HasPrefix(p, "/api/tracks/"))) ||
 		(strings.HasSuffix(p, "/image") && strings.HasPrefix(p, "/api/artists/"))
 }
