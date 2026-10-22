@@ -11,41 +11,58 @@ struct NowPlayingView: View {
     @State private var start = Date().addingTimeInterval(-72)
     var track: DreamTrack { state.track }
 
+    private func times(_ date: Date) -> (TimeInterval, TimeInterval) {
+        let total: TimeInterval = player.hasRealPlayback && player.duration > 0 ? player.duration : track.duration
+        if player.hasRealPlayback { return (min(player.elapsed, max(total, 1)), total) }
+        return (date.timeIntervalSince(start).truncatingRemainder(dividingBy: max(track.duration, 1)), total)
+    }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.25)) { tl in
-            let elapsed: TimeInterval = {
-                if player.hasRealPlayback {
-                    let total = player.duration > 0 ? player.duration : max(track.duration, 1)
-                    return min(player.elapsed, total)
-                }
-                return tl.date.timeIntervalSince(start).truncatingRemainder(dividingBy: max(track.duration, 1))
-            }()
-            let totalDur: TimeInterval = player.hasRealPlayback && player.duration > 0 ? player.duration : track.duration
-            GeometryReader { g in
-                let slot = track.layout.slot(width: g.size.width)
-                ZStack(alignment: .topLeading) {
-                    DreamField(track: track)
-                    if state.lyricsMode {
-                        LyricsView(track: track, time: elapsed.truncatingRemainder(dividingBy: 40)).transition(.opacity)
-                    } else {
-                        if state.ambience == .aurora { AuroraBands(track: track, time: tl.date.timeIntervalSinceReferenceDate).ignoresSafeArea() }
+        // Only time-driven pieces live in TimelineViews; chrome (top bar, volume, controls, menus) is outside so it
+        // never re-renders on a clock tick and never picks up beat/backdrop modulation.
+        GeometryReader { g in
+            let slot = track.layout.slot(width: g.size.width)
+            ZStack(alignment: .topLeading) {
+                DreamField(track: track)
+                if state.lyricsMode {
+                    TimelineView(.periodic(from: .now, by: 0.25)) { tl in
+                        LyricsView(track: track, time: times(tl.date).0.truncatingRemainder(dividingBy: 40))
+                    }.transition(.opacity)
+                } else {
+                    // Background layers: the only things allowed to breathe with the beat.
+                    ZStack(alignment: .topLeading) {
+                        if state.ambience == .aurora {
+                            TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
+                                AuroraBands(track: track, time: tl.date.timeIntervalSinceReferenceDate)
+                            }.ignoresSafeArea()
+                        }
                         DoodleLayer(track: track, slot: slot, ambience: state.ambience == .aurora ? .pure : state.ambience,
                                     intensity: state.intensity, beat: state.beatSync)
-                        cover(slot)
-                        info(slot: slot, width: g.size.width, elapsed: elapsed, total: totalDur).motionIn(0.16)
                     }
-                    VStack(spacing: 0) {
+                    .id(state.ambience)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    .allowsHitTesting(false)
+                    cover(slot)
+                    TimelineView(.periodic(from: .now, by: 0.25)) { tl in
+                        let (e, t) = times(tl.date)
+                        info(slot: slot, width: g.size.width, elapsed: e, total: t)
+                    }.motionIn(0.16)
+                }
+                VStack(spacing: 0) {
                         topBar.motionIn(0.05, from: .top)
                         Spacer()
                         if player.hasRealPlayback && !state.lyricsMode {
                             VolumeRow().padding(.horizontal, Theme.margin + 8).padding(.bottom, 10).motionIn(0.26)
                         }
-                        controls.motionIn(0.3)
-                    }
+                    controls.motionIn(0.3)
                 }
-                .foregroundStyle(.white)
             }
+            .foregroundStyle(.white)
+            .animation(.spring(response: 0.55, dampingFraction: 0.85), value: state.ambience)
         }
+        #if DEBUG
+        .task { if ProcessInfo.processInfo.arguments.contains("-np-sheet") { try? await Task.sleep(for: .seconds(4)); showAmbience = true } }
+        #endif
         .sheet(isPresented: $showAmbience) {
             AmbienceSheet().environmentObject(state)
                 .presentationDetents([.height(330)])
@@ -76,7 +93,7 @@ struct NowPlayingView: View {
     func info(slot: CoverSlot, width: CGFloat, elapsed: TimeInterval, total: TimeInterval? = nil) -> some View {
         let k = width / 402
         return VStack(alignment: track.layout.centered ? .center : .leading, spacing: 2) {
-            Text(track.title).font(.system(size: 22, weight: .bold))
+            Text(track.title).font(.system(size: 22, weight: .bold)).lineLimit(1)
             Text(track.artist).font(.system(size: 16)).opacity(0.75)
             if let s = player.song {
                 QualityBadge(song: s).padding(.top, 8)
@@ -145,7 +162,8 @@ struct NowPlayingView: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 22).frame(height: 64)
-        .background(GlassCapsule())
+        // Solid, quiet capsule: no glass lensing of the (beat-pulsing) doodles behind it.
+        .background(Capsule().fill(Color.black.opacity(0.32)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)))
         .environment(\.colorScheme, .dark)
         .padding(.horizontal, Theme.margin).padding(.bottom, 8)
     }
@@ -179,14 +197,15 @@ struct AmbienceSheet: View {
             }
             HStack(spacing: 12) {
                 ForEach(Ambience.allCases) { a in
-                    Button { withAnimation(.snappy) { state.ambience = a } } label: {
+                    Button { withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { state.ambience = a } } label: {
                         VStack(spacing: 6) {
                             AmbienceTile(track: state.track, ambience: a)
                                 .frame(width: 72, height: 100)
                                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(state.ambience == a ? 0.9 : 0), lineWidth: 2))
-                            Text(a.rawValue).font(.system(size: 12, weight: .medium))
+                            Text(a.rawValue).font(.system(size: 12, weight: state.ambience == a ? .semibold : .medium))
                         }
+                        .contentShape(Rectangle())   // tile is non-hit-testable; without this only the text was tappable
                     }.buttonStyle(.plain).frame(maxWidth: .infinity)
                 }
             }
@@ -221,6 +240,8 @@ struct AmbienceTile: View {
                 .frame(width: 402, height: 874, alignment: .topLeading)
                 .scaleEffect(scale, anchor: .topLeading)
             }
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+            .clipped()
         }
         .allowsHitTesting(false)
     }

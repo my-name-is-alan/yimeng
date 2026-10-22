@@ -145,33 +145,106 @@ struct SignalPathSheet: View {
 
 // MARK: - Volume
 
-/// System volume (MPVolumeView) restyled as a thin track with a tiny dot thumb.
-struct SystemVolumeSlider: UIViewRepresentable {
+/// Volume model. Device: system volume via the (hidden) MPVolumeView slider, synced from hardware buttons by
+/// KVO on AVAudioSession.outputVolume. Simulator (no system volume): drives the player's own gain so it audibly works.
+@MainActor
+final class VolumeController: ObservableObject {
+    static let shared = VolumeController()
+    @Published private(set) var value: Float
+    weak var systemSlider: UISlider?
+    private var obs: NSKeyValueObservation?
+    #if targetEnvironment(simulator)
+    static let usesSystem = false
+    #else
+    static let usesSystem = true
+    #endif
+
+    private init() {
+        let s = AVAudioSession.sharedInstance()
+        value = Self.usesSystem ? s.outputVolume : PlayerStore.shared.userGain
+        if Self.usesSystem {
+            obs = s.observe(\.outputVolume, options: [.new]) { [weak self] _, ch in
+                guard let v = ch.newValue else { return }
+                Task { @MainActor in self?.value = v }
+            }
+        }
+    }
+
+    func set(_ v: Float) {
+        let v = max(0, min(1, v))
+        value = v
+        if Self.usesSystem, let sl = systemSlider {
+            sl.value = v
+            sl.sendActions(for: .valueChanged)
+        } else {
+            PlayerStore.shared.userGain = v
+        }
+    }
+}
+
+/// Off-screen MPVolumeView: gives us the system volume slider (and suppresses the volume HUD while visible).
+struct HiddenSystemVolume: UIViewRepresentable {
     func makeUIView(context: Context) -> MPVolumeView {
-        let v = MPVolumeView(frame: .zero)
-        v.setVolumeThumbImage(Self.dot(10), for: .normal)
-        v.setMinimumVolumeSliderImage(Self.bar(.white), for: .normal)
-        v.setMaximumVolumeSliderImage(Self.bar(UIColor.white.withAlphaComponent(0.25)), for: .normal)
+        let v = MPVolumeView(frame: CGRect(x: -200, y: -200, width: 100, height: 30))
+        v.alpha = 0.011
+        v.isUserInteractionEnabled = false
+        DispatchQueue.main.async {
+            VolumeController.shared.systemSlider = v.subviews.compactMap { $0 as? UISlider }.first
+        }
         return v
     }
     func updateUIView(_ v: MPVolumeView, context: Context) {}
-    static func dot(_ d: CGFloat) -> UIImage {
-        UIGraphicsImageRenderer(size: CGSize(width: d, height: d)).image { _ in
-            UIColor.white.setFill(); UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: d, height: d)).fill()
+}
+
+/// Thin custom slider: 3 pt track, small dot thumb that grows while dragging.
+struct VolumeSlider: View {
+    @ObservedObject private var vol = VolumeController.shared
+    @State private var dragging = false
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, x = CGFloat(vol.value) * w
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.25)).frame(height: dragging ? 5 : 3)
+                Capsule().fill(Color.white).frame(width: max(0, x), height: dragging ? 5 : 3)
+                Circle().fill(.white).frame(width: dragging ? 14 : 10, height: dragging ? 14 : 10)
+                    .offset(x: min(max(0, x - (dragging ? 7 : 5)), w - (dragging ? 14 : 10)))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    if !dragging { withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { dragging = true } }
+                    vol.set(Float(v.location.x / max(w, 1)))
+                }
+                .onEnded { _ in withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { dragging = false } })
         }
+        .frame(height: 24)
+        .background(HiddenSystemVolume().frame(width: 1, height: 1))
+        .accessibilityElement()
+        .accessibilityLabel("音量")
+        .accessibilityValue("\(Int(vol.value * 100))%")
+        .accessibilityAdjustableAction { d in vol.set(vol.value + (d == .increment ? 0.0625 : -0.0625)) }
     }
-    static func bar(_ c: UIColor) -> UIImage {
-        UIGraphicsImageRenderer(size: CGSize(width: 8, height: 3)).image { _ in
-            c.setFill(); UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: 8, height: 3), cornerRadius: 1.5).fill()
-        }.resizableImage(withCapInsets: UIEdgeInsets(top: 0, left: 3, bottom: 0, right: 3))
+}
+
+/// AirPlay / route button: our own SF Symbol, with a near-invisible AVRoutePickerView on top to open the system picker.
+struct RouteButton: View {
+    @ObservedObject private var route = AudioRoute.shared
+    var body: some View {
+        let symbol = route.portType.contains("Bluetooth") ? "airpodspro" : route.portType.contains("AirPlay") ? "airplayaudio" : "airplayaudio"
+        Image(systemName: symbol)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(route.portType.contains("AirPlay") || route.portType.contains("Bluetooth") ? Theme.lime : .white.opacity(0.75))
+            .frame(width: 28, height: 28)
+            .overlay(RoutePicker().opacity(0.02))
+            .contentShape(Rectangle())
     }
 }
 
 struct RoutePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let v = AVRoutePickerView()
-        v.tintColor = .white
-        v.activeTintColor = UIColor(Theme.lime)
+        v.tintColor = .white; v.activeTintColor = .white
         v.prioritizesVideoDevices = false
         return v
     }
@@ -183,10 +256,10 @@ struct VolumeRow: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 10) {
-                Image(systemName: "speaker.fill").font(.system(size: 11)).opacity(0.6)
-                SystemVolumeSlider().frame(height: 24)
-                Image(systemName: "speaker.wave.3.fill").font(.system(size: 11)).opacity(0.6)
-                RoutePicker().frame(width: 28, height: 28)
+                Image(systemName: "speaker.fill").font(.system(size: 11)).opacity(0.6).frame(width: 14)
+                VolumeSlider()
+                Image(systemName: "speaker.wave.3.fill").font(.system(size: 11)).opacity(0.6).frame(width: 18)
+                RouteButton()
             }
             HStack(spacing: 4) {
                 Image(systemName: route.portType.contains("Bluetooth") ? "airpodspro" : route.portType.contains("AirPlay") ? "airplayaudio" : "iphone")

@@ -1,5 +1,6 @@
 #if DEBUG
 import UIKit
+import SwiftUI
 
 /// `-snap <name> -snapDelay <s>`: render the key window to Documents/<name>.png (simctl io is unreliable headless).
 enum DebugSnap {
@@ -8,6 +9,24 @@ enum DebugSnap {
         func arg(_ k: String) -> String? { a.firstIndex(of: k).flatMap { $0 + 1 < a.count ? a[$0 + 1] : nil } }
         if a.contains("-sheet-sound") { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { SheetCenter.shared.sound = true } }
         if a.contains("-fx-test") { fxTest() }
+        if a.contains("-np-live") {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(6))
+                let songs = LibraryCache.shared.songs
+                guard !songs.isEmpty else { return }
+                PlayerStore.shared.play(songs: songs, startAt: 0)
+                AppStateBridge.current?.nowPlaying = true
+                if let v = arg("-np-vol").flatMap(Float.init) {
+                    try? await Task.sleep(for: .seconds(2))
+                    VolumeController.shared.set(v)
+                    NetLog.logger.info("NPTEST vol set \(v) → controller \(VolumeController.shared.value) userGain \(PlayerStore.shared.userGain) system=\(VolumeController.usesSystem)")
+                }
+                if let n = arg("-np-amb"), let amb = Ambience(rawValue: n) {
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { AppStateBridge.current?.ambience = amb }
+                }
+            }
+        }
         guard let name = arg("-snap") else { return }
         let delay = Double(arg("-snapDelay") ?? "") ?? 12
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

@@ -139,7 +139,12 @@ final class PlayerStore: ObservableObject {
     func cycleRepeat() { repeatMode = repeatMode == .all ? .one : repeatMode == .one ? .off : .all }
 
     /// ReplayGain → AVPlayer.volume (≤ 1; system volume stays untouched, no DSP so passthrough is kept).
-    func targetVolume(for s: NDSong?) -> Float {
+    /// Simulator-only user volume (device uses system volume). Multiplies the ReplayGain target.
+    var userGain: Float = Float(UserDefaults.standard.object(forKey: "ym.userGain") as? Double ?? 1) {
+        didSet { UserDefaults.standard.set(Double(userGain), forKey: "ym.userGain"); applyGain() }
+    }
+    func targetVolume(for s: NDSong?) -> Float { rgVolume(for: s) * (VolumeController.usesSystem ? 1 : userGain) }
+    private func rgVolume(for s: NDSong?) -> Float {
         guard let s, AudioPrefs.replayGain > 0, let rg = s.replayGain else { return 1 }
         let album = AudioPrefs.replayGain == 2
         guard let g = (album ? rg.albumGain : rg.trackGain) ?? rg.trackGain else { return 1 }
