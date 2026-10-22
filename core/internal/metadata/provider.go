@@ -100,6 +100,9 @@ type TrackMatch struct {
 	DurationMs                               int64
 	ISRC, MBRecordingID, MBReleaseID         string
 	Credits                                  []Credit
+	ReleaseDate                              string
+	CoverURL                                 string // album art (provider CDN), optional
+	Popularity                               int    // 0..100 provider-specific, 0 = unknown
 }
 
 type AlbumInfo struct {
@@ -113,6 +116,10 @@ type AlbumInfo struct {
 	Genres      []string
 	MBReleaseID string
 	Description string
+	UPC         string
+	CoverURL    string
+	Popularity  int
+	TrackCount  int
 }
 
 type ArtistInfo struct {
@@ -126,6 +133,9 @@ type ArtistInfo struct {
 	Bio        string
 	ImageURLs  []string
 	MBArtistID string
+	Genres     []string
+	Popularity int
+	Followers  int
 }
 
 type CoverCandidate struct {

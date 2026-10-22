@@ -1,0 +1,85 @@
+{
+ "album_type": "album",
+ "total_tracks": 11,
+ "is_playable": true,
+ "id": "0E5yojmnEdbs68b1wM6Kla",
+ "images": [
+  {
+   "url": "https://i.scdn.co/image/ab67616d0000b2737b2dd792101b91625f3f1b97",
+   "height": 640,
+   "width": 640
+  },
+  {
+   "url": "https://i.scdn.co/image/ab67616d00001e027b2dd792101b91625f3f1b97",
+   "height": 300,
+   "width": 300
+  },
+  {
+   "url": "https://i.scdn.co/image/ab67616d000048517b2dd792101b91625f3f1b97",
+   "height": 64,
+   "width": 64
+  }
+ ],
+ "name": "葉惠美",
+ "release_date": "2003-07-29",
+ "release_date_precision": "day",
+ "type": "album",
+ "artists": [
+  {
+   "id": "2elBjNSdBE2Y3f0j1mjrql",
+   "name": "Jay Chou",
+   "type": "artist"
+  }
+ ],
+ "tracks": {
+  "limit": 50,
+  "next": null,
+  "offset": 0,
+  "previous": null,
+  "total": 11,
+  "items": [
+   {
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ],
+    "disc_number": 1,
+    "duration_ms": 342000,
+    "explicit": false,
+    "id": "5JTTfdqXlksUgNSjRFRPMh",
+    "is_playable": true,
+    "name": "以父之名",
+    "track_number": 1,
+    "type": "track",
+    "is_local": false
+   },
+   {
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ],
+    "disc_number": 1,
+    "duration_ms": 218000,
+    "explicit": false,
+    "id": "49oSDrRbQi1UEeqDwrUahj",
+    "is_playable": true,
+    "name": "懦夫",
+    "track_number": 2,
+    "type": "track",
+    "is_local": false
+   }
+  ]
+ },
+ "external_ids": {
+  "upc": "00602458936353"
+ },
+ "genres": [],
+ "label": "Universal Music Taiwan (JVR)",
+ "popularity": 65
+}

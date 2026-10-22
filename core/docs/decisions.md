@@ -269,3 +269,12 @@ alternative considered. Newest items at the bottom.
 ## D34 Online-only mode
 - `settings['app.mode']` ∈ `local | online | both` is set by the first-run wizard.
   The web UI hides local-only sections in online mode or when the library is empty.
+
+## D35 Device identity and secret settings in the Vault
+- Jar keys prefixed `device.` (e.g. Kugou dfid/mid, QQ guid) and `secret.` (API client credentials from `secret` config fields) are persisted to the Vault even without a login, survive logout and never count as a session. `secret.*` values are never returned by the API, never stored in `plugin_settings` and never sent as cookies.
+
+## D36 Spotify is a metadata provider, not a music source
+- Only the client-credentials grant is used, for match suggestions in the local metadata editor (search, ISRC, covers, genres, dates, popularity, artist images). No user OAuth, playlist import, catalog sections or playback. Its plugin entry has no capabilities and is excluded from source lists. Applying a suggestion is a local override (D29 rules unchanged).
+
+## D37 Previews show only 试听
+- The UI labels preview tracks with the 试听 badge only; the preview window (start/end) stays in the API for lyrics offsets and seeking, but is not displayed.

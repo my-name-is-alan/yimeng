@@ -177,9 +177,37 @@ Protocol knowledge comes from MIT sources (see `NOTICE`), re-implemented in Go.
 - Tests are offline (`netease_test.go`): fixed crypto vectors cross-checked with OpenSSL, plus an httptest fake that decrypts eapi to route by URI.
 - Live check (manual, read-only): `YIMENG_LIVE_SMOKE=1 go run ./cmd/netease-smoke "陈奕迅 十年"`. Optionally set `YIMENG_NETEASE_COOKIE` (never printed).
 
+## 9a. Kugou plugin (`internal/online/kugou`)
+
+Protocol knowledge from MIT sources (see `NOTICE`) and our own live probes; AGPL projects were read for protocol knowledge only.
+
+- **Device identity:** `register_dev` (AES with a random 6-char key, base64 body, RSA PKCS#1 key wrap) yields `dfid`; `mid = decimal(md5(guid))`. Stored as `device.*` jar keys, which the Registry persists to the Vault even while anonymous and keeps on logout (they never count as a login). Re-registered weekly; falls back to dfid `-`.
+- **Signing:** Android `md5(salt + sorted k=v + body + salt)`; web signature for `login-user.kugou.com` QR. Default params dfid/mid/uuid/appid 1005/clientver 20489/clienttime (+ token/userid when logged in). Backend chosen with `x-router` on `gateway.kugou.com`.
+- **Login:** QR (status 1 waiting, 2 scanned, 4 ok, 0 expired), cookie (`token`+`userid` or `KuGoo=KugooID&t`), SMS (`send_mobile_code` + `login_by_verifycode`, via `POST /api/plugins/kugou/login/sms`), refresh (`login_by_token`), account (`get_my_info` + `get_union_vip`).
+- **Catalog:** search (song/album/author/special), detail via privilege lite, album (page size 50), artist, playlist (`pl-`), rank (`rank-`), lyrics (`lyrics.kugou.com` search → download `fmt=lrc`; KRC is never used), charts, everyday recommend, recommended/discover playlists, user playlists.
+- **Stream:** `/v5/url` with `key = md5(hash+salt+mid+userid)`; full URL at the requested quality, then 128k; a clip URL (`/yp/p_0_…`) is never reported as full. Otherwise `IsFreePart=1` gives the official preview clip with its `hash_offset` window; otherwise unavailable.
+- Tests: `kugou/plugin_test.go` with trimmed live fixtures. Smoke: `go run ./cmd/kugou-smoke`.
+
+## 9b. QQ Music plugin (`internal/online/qq`)
+
+- **Transport:** `u.y.qq.com/cgi-bin/musicu.fcg` batched requests. Most modules use the web comm (`ct:24, platform:yqq.json`); the vkey module requires ct 24. Search (`music.search.SearchCgiService.DoSearchForQQMusicDesktop`) needs the desktop comm (`ct:"19", cv:"1859"`) without remoteplace/grp, and each batched sub-response is decoded separately.
+- **Login (our own implementation):** `xlogin` (pt_login_sig) → `ptqrshow` (PNG + qrsig, sent to the UI as a data URL) → poll `ptqrlogin` with `ptqrtoken = hash33(qrsig)` (66 waiting, 67 scanned, 65 expired, 0 ok) → follow `check_sig` → `p_skey` → `graph.qq.com/oauth2.0/authorize` (g_tk from p_skey, client_id 100497308) → code → `QQConnectLogin.LoginServer.QQLogin` → `musicid/musickey`. The intermediate QQ cookies live in a throwaway jar; only uin/qm_keyst/refresh keys plus the device guid reach the Vault. Cookie login (`uin` + `qm_keyst`), refresh (`music.login.LoginServer.Login`), account (`GetLoginUserInfo` + VIP query). Password login is not supported.
+- **Catalog:** search (song/album/singer/playlist), track detail, album, artist, diss playlists (`pl-`), toplists (`top-`), lyrics (`GetPlayLyricInfo`, plain LRC), charts, recommend (radio 99 when logged in, else new songs), hot recommend playlists, playlist plaza by tag, user playlists (dirId 201 = liked).
+- **Stream:** vkey ladder F000 (FLAC) / M800 (320k) / M500 (128k) / C400 (AAC) capped by the quality setting; an empty `purl` means denied. Paid songs fall back to the official trial file `RS02…mp3` with `try_begin/try_end`; otherwise unavailable. No decryption of any format.
+- Tests: `qq/qq_test.go` with trimmed live fixtures (hash33/gtk vectors included). Smoke: `go run ./cmd/qq-smoke`.
+
+## 9c. Spotify (metadata provider only)
+
+- **Scope:** client-credentials Web API reads for the metadata editor's 在线匹配: track/album/artist search, ISRC lookup (`isrc:` search), album art, genres (artist genres for the best track match; album genres when Spotify returns them), release dates, label/UPC, popularity, artist images. No user OAuth, no playlist/library import, no home/catalog sections, no playback or StreamSource.
+- **Wiring:** `internal/adapters/spotify` implements `metadata.MetadataProvider`; the editor's matcher is `metadata.Multi{MusicBrainz, Spotify}`. Spotify is skipped (ErrUnavailable, no network) until it is enabled and both credentials are set. Applying a candidate is a local override; covers go through `POST /api/albums/{id}/cover/from-match`, which only downloads from Spotify's image CDN (`*.scdn.co`, `*.spotifycdn.com`) and stores the image like an uploaded cover.
+- **Settings:** `internal/online/spotify` is a metadata-only plugin entry (no capabilities, excluded from `EnabledIDs`, so it never appears as a music source). Its `client_id` / `client_secret` are `secret` config fields: the Registry moves them into the Vault (`secret.*` jar keys), never into `plugin_settings`, never returns them (status only says `secrets: {key: true}`) and never sends them as cookies. The access token lives only in memory.
+- **Local bootstrap:** when `YIMENG_SPOTIFY_CLIENT_ID/SECRET` are in the environment and the Vault has no value yet, Core seeds them once (logs only the field name). `YIMENG_SPOTIFY_API_BASE_URL` / `_AUTH_BASE_URL` override the endpoints.
+- Tests: `adapters/spotify/spotify_test.go` (fake API with trimmed live fixtures: token caching, 401 refresh, ISRC, bad credentials not echoed, CDN allowlist, Multi skipping) and `online/spotify/plugin_test.go` (secrets never in status/plugin_settings, Vault round-trip, clear, disabled = no secret). Smoke: `go run ./cmd/spotify-smoke` with the env vars set (prints neither credentials nor token).
+
 ## 10. Known gaps
 
 - One account per platform.
-- QQ is not implemented yet. Kugou is a registered skeleton (manifest only, shown as 开发中, no capabilities).
-- Logged-in flows (QR, cookie, phone, email, daily recommend, user playlists, VIP `full` URLs) are covered by fixtures only. They have not been exercised against a real account.
+- Logged-in flows are covered by fixtures only and have not been exercised against a real account: NetEase (QR, cookie, phone, email, daily recommend, user playlists, VIP `full` URLs); Kugou (QR confirm, SMS, refresh, account, user playlists, VIP full URLs); QQ (QR confirm → QQ Connect → musicu login, refresh, account, user playlists, radio recommend). SMS was never sent live.
+- QQ password login is not supported; QQ/Kugou `hires` qualities are not offered.
+- Spotify feeds only the on-demand match UI; the background MusicBrainz enricher does not use it. Artist images are returned by the API but there is no local artist-image editor to apply them yet.
 - No cloud write-back (liking on the platform).

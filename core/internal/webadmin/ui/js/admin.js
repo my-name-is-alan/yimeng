@@ -190,7 +190,7 @@ export async function settings(main) {
     ro("环境变量", h("span", { class: "mono dim" }, "YIMENG_WATCH · YIMENG_RESCAN_INTERVAL · YIMENG_SCAN_ON_START · YIMENG_LOUDNESS_ANALYSIS"))]));
 
   // providers
-  const provSec = sec("元数据与歌词来源", "MusicBrainz 自动补全默认关闭（需要联系方式 User-Agent）。手动匹配（编辑器中的「MusicBrainz 匹配」与「歌词匹配」）按需调用，不会后台联网。", kv([
+  const provSec = sec("元数据与歌词来源", "MusicBrainz 自动补全默认关闭（需要联系方式 User-Agent）。手动匹配（编辑器中的「在线匹配」：MusicBrainz + 已配置的 Spotify，及「歌词匹配」）按需调用，不会后台联网。", kv([
     ro("MusicBrainz 自动补全", h("span", null, bool(rt.musicbrainz_enabled), rt.musicbrainz_enabled ? "" : h("span", { class: "dim mono" }, "  YIMENG_MB_ENABLED=true + YIMENG_MB_CONTACT=邮箱"))),
     ro("MB 联系方式", rt.musicbrainz_contact_set ? "已设置" : "未设置"),
     ro("歌词提供方", (rt.providers || []).length ? h("div", { class: "chips" }, rt.providers.map((p) => h("span", { class: "badge ok" }, p))) : h("span", { class: "dim mono" }, "未启用（YIMENG_PROVIDERS=lrclib）")),

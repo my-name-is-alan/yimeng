@@ -170,6 +170,11 @@ func (c *Client) TakeDirty() bool {
 // CookieHeader renders the jar (sorted for stable tests), merged with extra.
 func (c *Client) CookieHeader(extra map[string]string) string {
 	m := c.Cookies()
+	for k := range m {
+		if strings.HasPrefix(k, SecretPrefix) {
+			delete(m, k)
+		}
+	}
 	for k, v := range extra {
 		if _, ok := m[k]; !ok {
 			m[k] = v

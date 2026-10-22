@@ -353,6 +353,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/albums/{id}/cover/from-match:
+    post:
+      tags: [metadata]
+      summary: Replace a local album's cover with a match candidate's image (admin)
+      description: "Body {provider, url} from a /match candidate's cover_url. The provider downloads it (Spotify only accepts its image CDN) and it is stored like an uploaded cover (local edit; DELETE /api/albums/{id}/cover restores)."
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { provider: { type: string }, url: { type: string } } } } }
+      responses:
+        "200": { description: Album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { description: Provider error }
+
   /api/tracks:
     get:
       tags: [catalog]
@@ -1450,6 +1465,7 @@ paths:
     put:
       tags: [online]
       summary: Enable/disable and configure a plugin (admin). Body {enabled?, config?}; config validated against the manifest schema
+      description: 'Fields of type "secret" (e.g. Spotify client_id/client_secret) are moved into the Vault and never stored in plugin settings or returned; a non-empty string sets the value, "" keeps it, null clears it. Status reports only secrets {key: bool}.' 
       requestBody:
         required: true
         content: { application/json: { schema: { type: object } } }

@@ -94,7 +94,7 @@ export function trackMenu(anchor, t, list, opts = {}) {
     t.album_id ? { label: "前往专辑", icon: "album", run: () => nav(albumHref(t.album_id)) } : null,
     ...(t.artists || []).filter((a) => a.id).slice(0, 2).map((a) => ({ label: `前往艺人 · ${a.name}`, icon: "artist", run: () => nav(artistHref(a.id)) })),
     admin && isLocal(t) ? "-" : null,
-    admin && isLocal(t) ? { label: "编辑标签 / MusicBrainz 匹配", icon: "edit", run: () => editTrack(t, opts.onChange) } : null,
+    admin && isLocal(t) ? { label: "编辑标签 / 在线匹配", icon: "edit", run: () => editTrack(t, opts.onChange) } : null,
     admin && isLocal(t) ? { label: "歌词匹配与校对", icon: "lyrics", run: () => nav(`#/lyrics/${t.id}`) } : null,
     isLocal(t) ? { label: "下载原始文件", icon: "download", run: () => { location.href = downloadURL(t.id); } } : null,
     opts.playlist && !opts.playlist.smart ? "-" : null,
@@ -168,7 +168,7 @@ async function resetOverride(type, id) {
 function mbPane(kind, obj, form, fields) {
   const q1 = h("input", { class: "input", value: obj.title || "", placeholder: "标题" });
   const q2 = h("input", { class: "input", value: obj.artist_name || "", placeholder: "艺人" });
-  const res = h("div", { class: "stack" }, h("p", { class: "muted", style: { margin: 0 } }, "从 MusicBrainz 查找候选，按置信度排序；选中后对比差异，勾选要应用的字段写入 Core 数据库。"));
+  const res = h("div", { class: "stack" }, h("p", { class: "muted", style: { margin: 0 } }, "从 MusicBrainz 与 Spotify（已在「在线音源」中配置时）查找候选，按置信度排序；选中后对比差异，勾选要应用的字段写入本地覆盖（不修改音频文件）。"));
   const run = async () => {
     res.replaceChildren(h("div", { class: "skel", style: { height: "70px" } }), h("div", { class: "skel", style: { height: "70px" } }));
     try {
@@ -176,12 +176,13 @@ function mbPane(kind, obj, form, fields) {
       if (!r.items.length) return res.replaceChildren(h("p", { class: "muted" }, "没有找到候选。试试修改标题或艺人再搜。"));
       res.replaceChildren(...r.items.sort((a, b) => b.score - a.score).map((c) => {
         const b = h("button", { class: "cand", onclick: () => { [...res.children].forEach((x) => x.setAttribute("aria-selected", x === b)); showDiff(c); } },
-          h("div", { class: "row" }, h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), conf(c.score)),
-          h("div", { class: "muted", style: { fontSize: "13px" } }, [c.artist, c.album, c.year, c.label, c.duration_ms ? fmtDur(c.duration_ms) : ""].filter(Boolean).join(" · ")),
-          h("div", { class: "dim mono" }, c.mb_recording_id || c.mb_release_id || c.external_id));
+          h("div", { class: "row" }, c.cover_url ? h("img", { src: c.cover_url, alt: "", loading: "lazy", referrerpolicy: "no-referrer", style: { width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover" } }) : null,
+            h("b", { class: "ellipsis" }, c.title), h("span", { class: "spacer" }), h("span", { class: "badge" }, c.provider === "spotify" ? "Spotify" : "MusicBrainz"), conf(c.score)),
+          h("div", { class: "muted", style: { fontSize: "13px" } }, [c.artist, c.album, c.release_date || c.year, c.label, c.duration_ms ? fmtDur(c.duration_ms) : "", c.track_count ? `${c.track_count} 首` : ""].filter(Boolean).join(" · ")),
+          h("div", { class: "dim mono" }, [c.isrc && `ISRC ${c.isrc}`, c.upc && `UPC ${c.upc}`, c.popularity ? `热度 ${c.popularity}` : "", (c.genres || []).slice(0, 3).join(" / "), c.mb_recording_id || c.mb_release_id || (c.provider === "spotify" ? "" : c.external_id)].filter(Boolean).join(" · ")));
         return b;
       }));
-    } catch (e) { res.replaceChildren(h("p", { class: "muted" }, e.status === 503 ? "MusicBrainz 未配置。" : `查询失败：${e.message}`)); }
+    } catch (e) { res.replaceChildren(h("p", { class: "muted" }, e.status === 503 ? "元数据来源未配置。" : `查询失败：${e.message}`)); }
   };
   const diff = h("div");
   const map = kind === "track" ? { title: "title", artist_name: "artist", genre: "genre", year: "year", track_no: "track_no", disc_no: "disc_no" }
@@ -196,7 +197,10 @@ function mbPane(kind, obj, form, fields) {
       cb.dataset.k = k; cb.dataset.v = nv;
       rows.push(h("label", { class: `diff ${same ? "same" : ""}` }, cb, h("span", { class: "muted" }, label), h("span", { class: "old ellipsis" }, ov || "—"), "→", h("span", { class: "new ellipsis" }, nv)));
     }
-    diff.replaceChildren(h("h3", { style: { margin: "6px 0" } }, "应用到表单"), ...rows,
+    const coverBtn = kind === "album" && c.cover_url ? h("div", { class: "row", style: { gap: "10px", margin: "8px 0" } },
+      h("img", { src: c.cover_url, alt: "", referrerpolicy: "no-referrer", style: { width: "64px", height: "64px", borderRadius: "6px", objectFit: "cover" } }),
+      h("button", { class: "btn sm", onclick: async () => { try { await post(`/albums/${obj.id}/cover/from-match`, { provider: c.provider, url: c.cover_url }); bustCover(obj.id); toast("封面已替换（本地覆盖，可在「封面」页恢复）"); } catch (e) { errToast(e); } } }, icon("album"), "使用此封面")) : null;
+    diff.replaceChildren(h("h3", { style: { margin: "6px 0" } }, "应用到表单"), ...rows, coverBtn,
       h("div", { class: "row", style: { marginTop: "10px" } }, h("span", { class: "spacer" }),
         h("button", { class: "btn accent sm", onclick: () => {
           let n = 0;
@@ -220,7 +224,7 @@ export async function editTrack(t, onChange) {
   const panes = { edit: editPane, mb: mbPane("track", t, form, TRACK_FIELDS) };
   const body = h("div", null, editPane);
   form.onApplied = () => tabs.children[0].click();
-  const tabs = tabsBar([["edit", "标签"], ["mb", "MusicBrainz 匹配"]], (k) => body.replaceChildren(panes[k]));
+  const tabs = tabsBar([["edit", "标签"], ["mb", "在线匹配"]], (k) => body.replaceChildren(panes[k]));
   const d = dialog({ title: `编辑曲目 · ${t.title}`, wide: true, tabs, body,
     foot: [h("button", { class: "btn danger", onclick: async () => { if (await resetOverride("track", t.id)) { d.close(); onChange?.(); } } }, "还原为文件标签"), h("span", { class: "spacer" }),
       h("button", { class: "btn", onclick: () => d.close() }, "取消"),
@@ -249,7 +253,7 @@ export async function editAlbum(al, onChange) {
   const panes = { edit: editPane, cover: coverPane, mb: mbPane("album", al, form, ALBUM_FIELDS) };
   const body = h("div", null, editPane);
   form.onApplied = () => tabs.children[0].click();
-  const tabs = tabsBar([["edit", "信息"], ["cover", "封面"], ["mb", "MusicBrainz 匹配"]], (k) => body.replaceChildren(panes[k]));
+  const tabs = tabsBar([["edit", "信息"], ["cover", "封面"], ["mb", "在线匹配"]], (k) => body.replaceChildren(panes[k]));
   const d = dialog({ title: `编辑专辑 · ${al.title}`, wide: true, tabs, body,
     foot: [h("button", { class: "btn danger", onclick: async () => { if (await resetOverride("album", al.id)) { d.close(); onChange?.(); } } }, "还原"), h("span", { class: "spacer" }),
       h("button", { class: "btn", onclick: () => d.close() }, "取消"),

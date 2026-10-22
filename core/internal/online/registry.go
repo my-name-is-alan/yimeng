@@ -41,6 +41,10 @@ func commonFields(m Manifest) []ConfigField {
 	if rateDef == 0 {
 		rateDef = 60
 	}
+	if len(m.Qualities) == 0 { // metadata-only plugins have no playback settings
+		return []ConfigField{{Key: KeyRate, Label: "请求频率上限（次/分钟）", Type: "number", Default: float64(rateDef), Min: f64(5), Max: f64(600),
+			Help: "触发平台限流时会自动指数退避。"}}
+	}
 	return []ConfigField{
 		{Key: KeyQuality, Label: "音质偏好", Type: "select", Options: opts, Default: string(def),
 			Help: "播放时请求的最高音质；账号无权限时由平台降级（Core 不会绕过限制）。"},
@@ -156,6 +160,9 @@ func (r *Registry) load(ctx context.Context, id string) error {
 func fillDefaults(m Manifest, c Config) Config {
 	out := Config{}
 	for _, f := range m.Config {
+		if f.Type == "secret" {
+			continue // secrets live in the Vault, never in plugin_settings
+		}
 		if v, ok := c[f.Key]; ok {
 			out[f.Key] = v
 		} else if f.Default != nil {
@@ -178,6 +185,8 @@ func ValidateConfig(m Manifest, in map[string]any) (Config, error) {
 			return nil, fmt.Errorf("unknown config key %q", k)
 		}
 		switch f.Type {
+		case "secret":
+			return nil, fmt.Errorf("%s: secret values are not part of the stored config", k)
 		case "select":
 			s, ok := v.(string)
 			valid := false
@@ -228,6 +237,9 @@ type Status struct {
 	Account       *Account    `json:"account,omitempty"`
 	CooldownUntil *time.Time  `json:"cooldown_until,omitempty"`
 	LastError     string      `json:"last_error,omitempty"`
+	// Secrets reports which "secret" config fields have a value in the Vault
+	// (never the values themselves).
+	Secrets map[string]bool `json:"secrets,omitempty"`
 }
 
 func (r *Registry) get(id string) (*instance, error) {
@@ -245,6 +257,14 @@ func (r *Registry) status(in *instance) Status {
 	defer r.mu.Unlock()
 	st := Status{Manifest: in.manifest, Enabled: in.enabled, Config: in.config, LoggedIn: in.loggedIn,
 		LoginMethod: in.method, Account: in.account, LastError: in.lastErr}
+	for _, f := range in.manifest.Config {
+		if f.Type == "secret" {
+			if st.Secrets == nil {
+				st.Secrets = map[string]bool{}
+			}
+			st.Secrets[f.Key] = in.client.Cookie(SecretPrefix+f.Key) != ""
+		}
+	}
 	if t := in.client.CooldownUntil(); !t.IsZero() {
 		st.CooldownUntil = &t
 	}
@@ -313,6 +333,13 @@ func (r *Registry) Configure(ctx context.Context, id string, enabled *bool, cfg 
 	r.mu.Lock()
 	newCfg, newEnabled := in.config, in.enabled
 	r.mu.Unlock()
+	secretsChanged := false
+	if cfg != nil {
+		cfg, secretsChanged, err = r.takeSecrets(in, cfg)
+		if err != nil {
+			return Status{}, err
+		}
+	}
 	if cfg != nil {
 		merged := map[string]any{}
 		for k, v := range newCfg {
@@ -342,6 +369,10 @@ func (r *Registry) Configure(ctx context.Context, id string, enabled *bool, cfg 
 	r.mu.Lock()
 	in.plugin, in.config, in.enabled = p, newCfg, newEnabled
 	r.mu.Unlock()
+	if secretsChanged {
+		in.client.MarkDirty()
+		r.Persist(ctx, id)
+	}
 	return r.status(in), nil
 }
 
@@ -359,13 +390,15 @@ func (r *Registry) Enabled(id string) (Plugin, Config, error) {
 	return in.plugin, in.config, nil
 }
 
-// EnabledIDs lists enabled plugins (registration order).
+// EnabledIDs lists enabled music-source plugins (registration order).
+// Metadata-only plugins (no capabilities, e.g. Spotify) are excluded so they
+// never appear as search/home/browse sources.
 func (r *Registry) EnabledIDs() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []string
 	for _, id := range r.order {
-		if in := r.inst[id]; in.plugin != nil && in.enabled {
+		if in := r.inst[id]; in.plugin != nil && in.enabled && len(in.manifest.Capabilities) > 0 {
 			out = append(out, id)
 		}
 	}
@@ -400,6 +433,9 @@ func (r *Registry) Persist(ctx context.Context, id string) {
 		// Anonymous: only the device identity (DevicePrefix keys) is kept.
 		fields = deviceFields(fields)
 		if len(fields) == 0 {
+			if err := r.vault.Delete(ctx, vaultKey(id)); err != nil && !errors.Is(err, vault.ErrNotFound) {
+				r.log.Error("plugin vault delete", "plugin", id, "err", err)
+			}
 			return
 		}
 		method = ""
@@ -577,10 +613,86 @@ func (r *Registry) Logout(ctx context.Context, id string) error {
 // Vault even while anonymous and survive logout; they never count as login.
 const DevicePrefix = "device."
 
+// SecretPrefix marks jar entries holding "secret" config values (e.g. API
+// client credentials). Like device keys they persist while anonymous,
+// survive logout and never count as a login; they are never returned by the
+// API and never sent as cookies.
+const SecretPrefix = "secret."
+
+func persistent(k string) bool {
+	return strings.HasPrefix(k, DevicePrefix) || strings.HasPrefix(k, SecretPrefix)
+}
+
+// Secret returns a "secret" config value for server-side use. It is only
+// handed out while the plugin is enabled; it is never part of any API reply.
+func (r *Registry) Secret(id, key string) (string, bool) {
+	in, err := r.get(id)
+	if err != nil {
+		return "", false
+	}
+	r.mu.Lock()
+	enabled := in.enabled
+	r.mu.Unlock()
+	v := in.client.Cookie(SecretPrefix + key)
+	return v, enabled && v != ""
+}
+
+// SeedSecret stores a secret value when none is set yet (local bootstrap from
+// the environment). It reports whether anything was written.
+func (r *Registry) SeedSecret(ctx context.Context, id, key, value string) bool {
+	in, err := r.get(id)
+	if err != nil || strings.TrimSpace(value) == "" || in.client.Cookie(SecretPrefix+key) != "" {
+		return false
+	}
+	in.client.SetCookie(SecretPrefix+key, strings.TrimSpace(value))
+	r.Persist(ctx, id)
+	return true
+}
+
+// takeSecrets moves "secret" fields out of a config update into the jar.
+// A non-empty string sets the value, JSON null clears it, "" keeps it.
+func (r *Registry) takeSecrets(in *instance, cfg map[string]any) (map[string]any, bool, error) {
+	secret := map[string]bool{}
+	for _, f := range in.manifest.Config {
+		if f.Type == "secret" {
+			secret[f.Key] = true
+		}
+	}
+	rest := map[string]any{}
+	changed := false
+	for k, v := range cfg {
+		if !secret[k] {
+			rest[k] = v
+			continue
+		}
+		switch x := v.(type) {
+		case nil:
+			if in.client.Cookie(SecretPrefix+k) != "" {
+				jar := in.client.Cookies()
+				delete(jar, SecretPrefix+k)
+				in.client.ReplaceCookies(jar)
+				changed = true
+			}
+		case string:
+			x = strings.TrimSpace(x)
+			if len(x) > 500 {
+				return nil, false, fmt.Errorf("%s: too long", k)
+			}
+			if x != "" && x != in.client.Cookie(SecretPrefix+k) {
+				in.client.SetCookie(SecretPrefix+k, x)
+				changed = true
+			}
+		default:
+			return nil, false, fmt.Errorf("%s: must be a string", k)
+		}
+	}
+	return rest, changed, nil
+}
+
 func deviceFields(m map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range m {
-		if strings.HasPrefix(k, DevicePrefix) {
+		if persistent(k) {
 			out[k] = v
 		}
 	}
@@ -589,7 +701,7 @@ func deviceFields(m map[string]string) map[string]string {
 
 func hasSession(m map[string]string) bool {
 	for k := range m {
-		if !strings.HasPrefix(k, DevicePrefix) {
+		if !persistent(k) {
 			return true
 		}
 	}

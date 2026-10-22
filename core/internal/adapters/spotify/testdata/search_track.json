@@ -1,0 +1,179 @@
+{
+ "tracks": {
+  "limit": 10,
+  "next": null,
+  "offset": 0,
+  "previous": null,
+  "total": 0,
+  "items": [
+   {
+    "album": {
+     "album_type": "album",
+     "artists": [
+      {
+       "id": "2elBjNSdBE2Y3f0j1mjrql",
+       "name": "Jay Chou",
+       "type": "artist"
+      }
+     ],
+     "id": "0E5yojmnEdbs68b1wM6Kla",
+     "images": [
+      {
+       "height": 640,
+       "width": 640,
+       "url": "https://i.scdn.co/image/ab67616d0000b2737b2dd792101b91625f3f1b97"
+      },
+      {
+       "height": 300,
+       "width": 300,
+       "url": "https://i.scdn.co/image/ab67616d00001e027b2dd792101b91625f3f1b97"
+      },
+      {
+       "height": 64,
+       "width": 64,
+       "url": "https://i.scdn.co/image/ab67616d000048517b2dd792101b91625f3f1b97"
+      }
+     ],
+     "is_playable": true,
+     "name": "葉惠美",
+     "release_date": "2003-07-29",
+     "release_date_precision": "day",
+     "total_tracks": 11,
+     "type": "album"
+    },
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ],
+    "disc_number": 1,
+    "duration_ms": 269746,
+    "explicit": false,
+    "external_ids": {
+     "isrc": "TWK970300503"
+    },
+    "id": "5pIcwtJYNJx93l420oR2Vm",
+    "is_local": false,
+    "is_playable": true,
+    "name": "晴天",
+    "popularity": 68,
+    "track_number": 3,
+    "type": "track"
+   },
+   {
+    "album": {
+     "album_type": "album",
+     "artists": [
+      {
+       "id": "2elBjNSdBE2Y3f0j1mjrql",
+       "name": "Jay Chou",
+       "type": "artist"
+      }
+     ],
+     "id": "2lW05ZCTyVVpisWGRhAG3o",
+     "images": [
+      {
+       "height": 640,
+       "width": 640,
+       "url": "https://i.scdn.co/image/ab67616d0000b2731a6b6219cad0de2abd8514a2"
+      },
+      {
+       "height": 300,
+       "width": 300,
+       "url": "https://i.scdn.co/image/ab67616d00001e021a6b6219cad0de2abd8514a2"
+      },
+      {
+       "height": 64,
+       "width": 64,
+       "url": "https://i.scdn.co/image/ab67616d000048511a6b6219cad0de2abd8514a2"
+      }
+     ],
+     "is_playable": true,
+     "name": "2004無與倫比演唱會 (Live)",
+     "release_date": "2004-12-03",
+     "release_date_precision": "day",
+     "total_tracks": 25,
+     "type": "album"
+    },
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ],
+    "disc_number": 1,
+    "duration_ms": 299360,
+    "explicit": false,
+    "external_ids": {
+     "isrc": "TWK970400804"
+    },
+    "id": "7lvduqXuA2GmJQAh2wZhCP",
+    "is_local": false,
+    "is_playable": true,
+    "name": "晴天 - Live",
+    "popularity": 30,
+    "track_number": 4,
+    "type": "track"
+   },
+   {
+    "album": {
+     "album_type": "album",
+     "artists": [
+      {
+       "id": "2elBjNSdBE2Y3f0j1mjrql",
+       "name": "Jay Chou",
+       "type": "artist"
+      }
+     ],
+     "id": "7LjZLklNEA1qENUpfdBHGa",
+     "images": [
+      {
+       "height": 640,
+       "width": 640,
+       "url": "https://i.scdn.co/image/ab67616d0000b273ccbde411b492bd7edd351383"
+      },
+      {
+       "height": 300,
+       "width": 300,
+       "url": "https://i.scdn.co/image/ab67616d00001e02ccbde411b492bd7edd351383"
+      },
+      {
+       "height": 64,
+       "width": 64,
+       "url": "https://i.scdn.co/image/ab67616d00004851ccbde411b492bd7edd351383"
+      }
+     ],
+     "is_playable": true,
+     "name": "周杰倫地表最強世界巡迴演唱會",
+     "release_date": "2019-11-11",
+     "release_date_precision": "day",
+     "total_tracks": 25,
+     "type": "album"
+    },
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ],
+    "disc_number": 1,
+    "duration_ms": 249760,
+    "explicit": false,
+    "external_ids": {
+     "isrc": "TWK971901210"
+    },
+    "id": "5HPIArNwwVVSBTpxRGiA6k",
+    "is_local": false,
+    "is_playable": true,
+    "name": "晴天 - Live",
+    "popularity": 30,
+    "track_number": 10,
+    "type": "track"
+   }
+  ]
+ }
+}

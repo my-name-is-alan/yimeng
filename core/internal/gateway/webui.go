@@ -67,6 +67,7 @@ func (d Deps) mountWebAdminAPI(mux *http.ServeMux) {
 		mux.HandleFunc("PUT /api/tracks/{id}/lyrics", d.adminOnly(d.localOnly("track", d.putUserLyrics)))
 		mux.HandleFunc("DELETE /api/tracks/{id}/lyrics", d.adminOnly(d.localOnly("track", d.deleteUserLyrics)))
 		mux.HandleFunc("PUT /api/albums/{id}/cover", d.adminOnly(d.localOnly("album", d.putAlbumCover)))
+		mux.HandleFunc("POST /api/albums/{id}/cover/from-match", d.adminOnly(d.localOnly("album", d.albumCoverFromMatch)))
 		mux.HandleFunc("DELETE /api/albums/{id}/cover", d.adminOnly(d.localOnly("album", d.deleteAlbumCover)))
 	}
 	mux.HandleFunc("GET /api/tracks/{id}/lyrics/search", d.adminOnly(d.localOnly("track", d.searchLyrics)))
@@ -174,6 +175,47 @@ func (d Deps) putAlbumCover(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, al)
 }
 
+// albumCoverFromMatch replaces an album's cover with a match candidate's
+// image. The provider fetches it (its own host allowlist applies), and it is
+// stored exactly like an uploaded cover: a local edit in the cache dir.
+func (d Deps) albumCoverFromMatch(w http.ResponseWriter, r *http.Request) {
+	if !d.matcher(w) {
+		return
+	}
+	var b struct {
+		Provider string `json:"provider"`
+		URL      string `json:"url"`
+	}
+	if err := decodeBodyMax(r, &b, 4096); err != nil || b.Provider == "" || b.URL == "" {
+		writeErr(w, http.StatusBadRequest, "invalid_body", "provider and url are required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	rc, err := d.Matcher.FetchCover(ctx, metadata.CoverCandidate{Provider: metadata.ProviderID(b.Provider), URL: b.URL})
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "provider_error", "cover fetch failed: "+err.Error())
+		return
+	}
+	defer rc.Close()
+	img, err := io.ReadAll(io.LimitReader(rc, library.MaxCoverBytes+1))
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "provider_error", "cover fetch failed")
+		return
+	}
+	if err := d.UserEdits.SetAlbumCover(r.Context(), r.PathValue("id"), img); err != nil {
+		d.editErr(w, "cover", err)
+		return
+	}
+	d.Hub.Publish("library.cover", map[string]string{"album_id": r.PathValue("id")})
+	al, err := d.Library.GetAlbum(r.Context(), r.PathValue("id"))
+	if err != nil {
+		d.editErr(w, "album", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, al)
+}
+
 func (d Deps) deleteAlbumCover(w http.ResponseWriter, r *http.Request) {
 	if err := d.UserEdits.ClearAlbumCover(r.Context(), r.PathValue("id")); err != nil {
 		d.editErr(w, "cover", err)
@@ -184,28 +226,33 @@ func (d Deps) deleteAlbumCover(w http.ResponseWriter, r *http.Request) {
 
 // MatchCandidate is a provider suggestion with confidence (0..1) for the metadata editor.
 type MatchCandidate struct {
-	Provider      string  `json:"provider"`
-	ExternalID    string  `json:"external_id"`
-	Score         float64 `json:"score"`
-	Title         string  `json:"title"`
-	Artist        string  `json:"artist,omitempty"`
-	Album         string  `json:"album,omitempty"`
-	AlbumArtist   string  `json:"album_artist,omitempty"`
-	Genre         string  `json:"genre,omitempty"`
-	TrackNo       int     `json:"track_no,omitempty"`
-	DiscNo        int     `json:"disc_no,omitempty"`
-	Year          int     `json:"year,omitempty"`
-	DurationMs    int64   `json:"duration_ms,omitempty"`
-	ISRC          string  `json:"isrc,omitempty"`
-	MBRecordingID string  `json:"mb_recording_id,omitempty"`
-	MBReleaseID   string  `json:"mb_release_id,omitempty"`
-	Label         string  `json:"label,omitempty"`
-	ReleaseDate   string  `json:"release_date,omitempty"`
+	Provider      string   `json:"provider"`
+	ExternalID    string   `json:"external_id"`
+	Score         float64  `json:"score"`
+	Title         string   `json:"title"`
+	Artist        string   `json:"artist,omitempty"`
+	Album         string   `json:"album,omitempty"`
+	AlbumArtist   string   `json:"album_artist,omitempty"`
+	Genre         string   `json:"genre,omitempty"`
+	TrackNo       int      `json:"track_no,omitempty"`
+	DiscNo        int      `json:"disc_no,omitempty"`
+	Year          int      `json:"year,omitempty"`
+	DurationMs    int64    `json:"duration_ms,omitempty"`
+	ISRC          string   `json:"isrc,omitempty"`
+	MBRecordingID string   `json:"mb_recording_id,omitempty"`
+	MBReleaseID   string   `json:"mb_release_id,omitempty"`
+	Label         string   `json:"label,omitempty"`
+	ReleaseDate   string   `json:"release_date,omitempty"`
+	UPC           string   `json:"upc,omitempty"`
+	CoverURL      string   `json:"cover_url,omitempty"`
+	Popularity    int      `json:"popularity,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	TrackCount    int      `json:"track_count,omitempty"`
 }
 
 func (d Deps) matcher(w http.ResponseWriter) bool {
 	if d.Matcher == nil {
-		writeErr(w, http.StatusServiceUnavailable, "unavailable", "MusicBrainz lookup not configured")
+		writeErr(w, http.StatusServiceUnavailable, "unavailable", "metadata lookup not configured")
 		return false
 	}
 	return true
@@ -231,8 +278,8 @@ func (d Deps) matchTrack(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	ms, err := d.Matcher.LookupTrack(ctx, q)
 	if err != nil {
-		d.Log.Warn("musicbrainz match", "err", err)
-		writeErr(w, http.StatusBadGateway, "provider_error", "MusicBrainz unavailable: "+err.Error())
+		d.Log.Warn("metadata match", "err", err)
+		writeErr(w, http.StatusBadGateway, "provider_error", "metadata providers unavailable: "+err.Error())
 		return
 	}
 	out := []MatchCandidate{}
@@ -240,7 +287,8 @@ func (d Deps) matchTrack(w http.ResponseWriter, r *http.Request) {
 		out = append(out, MatchCandidate{Provider: string(m.Provider), ExternalID: m.ExternalID, Score: m.Score,
 			Title: m.Title, Artist: m.Artist, Album: m.Album, AlbumArtist: m.AlbumArtist, Genre: m.Genre,
 			TrackNo: m.TrackNo, DiscNo: m.DiscNo, Year: m.Year, DurationMs: m.DurationMs, ISRC: m.ISRC,
-			MBRecordingID: m.MBRecordingID, MBReleaseID: m.MBReleaseID})
+			MBRecordingID: m.MBRecordingID, MBReleaseID: m.MBReleaseID, ReleaseDate: m.ReleaseDate,
+			CoverURL: m.CoverURL, Popularity: m.Popularity})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
@@ -265,15 +313,16 @@ func (d Deps) matchAlbum(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	infos, err := d.Matcher.LookupAlbum(ctx, q)
 	if err != nil {
-		d.Log.Warn("musicbrainz album match", "err", err)
-		writeErr(w, http.StatusBadGateway, "provider_error", "MusicBrainz unavailable: "+err.Error())
+		d.Log.Warn("metadata album match", "err", err)
+		writeErr(w, http.StatusBadGateway, "provider_error", "metadata providers unavailable: "+err.Error())
 		return
 	}
 	out := []MatchCandidate{}
 	for _, in := range infos {
 		c := MatchCandidate{Provider: string(in.Provider), ExternalID: in.ExternalID, Title: in.Title,
 			AlbumArtist: in.AlbumArtist, Artist: in.AlbumArtist, Year: in.Year, MBReleaseID: in.MBReleaseID,
-			Label: in.Label, ReleaseDate: in.ReleaseDate}
+			Label: in.Label, ReleaseDate: in.ReleaseDate, UPC: in.UPC, CoverURL: in.CoverURL,
+			Popularity: in.Popularity, Genres: in.Genres, TrackCount: in.TrackCount}
 		if len(in.Genres) > 0 {
 			c.Genre = in.Genres[0]
 		}

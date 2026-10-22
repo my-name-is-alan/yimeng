@@ -62,7 +62,10 @@ function pluginRow(p, rerender) {
   const toggle = h("input", { type: "checkbox", class: "switch", checked: p.enabled, disabled: !admin, "aria-label": `启用 ${m.name}`, onchange: async () => {
     try { await put(`/plugins/${m.id}`, { enabled: toggle.checked }); toast(toggle.checked ? `已启用 ${m.name}` : `已停用 ${m.name}`); rerender(); } catch (e) { toggle.checked = !toggle.checked; errToast(e); }
   } });
-  const acct = p.logged_in
+  const meta = m.extra?.kind === "metadata";
+  const acct = meta
+    ? h("span", null, "元数据提供者 · ", Object.values(p.secrets || {}).every(Boolean) && Object.keys(p.secrets || {}).length ? h("span", { class: "badge ok" }, "凭据已配置") : h("span", { class: "badge warn" }, "未配置凭据"))
+    : p.logged_in
     ? h("span", { class: "row", style: { gap: "6px" } }, p.account?.avatar ? h("img", { src: p.account.avatar, alt: "", style: { width: "20px", height: "20px", borderRadius: "50%" } }) : null,
       p.account?.nickname || "已登录", p.account ? h("span", { class: `badge ${p.account.vip ? "ok" : ""}` }, p.account.vip ? (p.account.tier || "会员") : "非会员") : null)
     : h("span", { class: "muted" }, "未登录 · 可匿名浏览与试听");
@@ -76,10 +79,10 @@ function pluginRow(p, rerender) {
     btns.push(h("button", { class: "btn sm", onclick: () => pluginConfig(p, rerender) }, icon("settings"), "设置"));
   }
   return h("div", { class: "li plugin-row", "data-plugin": m.id },
-    h("div", { class: "src-logo", style: { background: { netease: "#e60026", qq: "#31c27c", kugou: "#2b8af7" }[m.id] || "#555" } }, { netease: "网", qq: "Q", kugou: "酷" }[m.id] || m.name[0]),
+    h("div", { class: "src-logo", style: { background: { netease: "#e60026", qq: "#31c27c", kugou: "#2b8af7", spotify: "#1db954" }[m.id] || "#555" } }, { netease: "网", qq: "Q", kugou: "酷", spotify: "S" }[m.id] || m.name[0]),
     h("div", { class: "grow" },
       h("div", { class: "t" }, m.name, " ", h("span", { class: `badge ${p.enabled ? "ok" : ""}` }, p.enabled ? "已启用" : "未启用"), m.skeleton ? h("span", { class: "badge warn" }, "开发中") : null, " ", cool),
-      h("div", { class: "s" }, p.enabled ? acct : (m.description || ""), p.enabled ? ` · 音质 ${qName(p.config?.quality)} · ${p.config?.rate_per_min ?? "–"} 次/分` : ""),
+      h("div", { class: "s" }, p.enabled ? acct : (m.description || ""), p.enabled && !meta ? ` · 音质 ${qName(p.config?.quality)} · ${p.config?.rate_per_min ?? "–"} 次/分` : ""),
       p.last_error ? h("div", { class: "s", style: { color: "var(--danger)" } }, p.last_error) : null),
     ...btns, h("label", { class: "row", title: "启用 / 停用" }, toggle));
 }
@@ -93,6 +96,7 @@ function pluginConfig(p, done) {
     if (f.type === "select") el = h("select", { class: "input" }, (f.options || []).map((o) => h("option", { value: o.value, selected: o.value === v }, o.label || o.value)));
     else if (f.type === "bool") el = h("input", { type: "checkbox", class: "switch", checked: !!v });
     else if (f.type === "number") el = h("input", { class: "input", type: "number", value: v ?? "", min: f.min, max: f.max });
+    else if (f.type === "secret") el = h("input", { class: "input", type: "password", autocomplete: "off", value: "", placeholder: p.secrets?.[f.key] ? "已保存在 Vault（留空不修改）" : "未设置" });
     else el = h("input", { class: "input", value: v ?? "" });
     inputs[f.key] = [f, el];
     return h("label", { class: "field" }, h("span", null, f.label), el, f.help ? h("small", { class: "muted" }, f.help) : null);
@@ -100,7 +104,7 @@ function pluginConfig(p, done) {
   const d = dialog({ title: `${m.name} · 设置`, body: [...fields, m.notice ? h("p", { class: "muted", style: { fontSize: "13px" } }, m.notice) : null],
     foot: [h("button", { class: "btn", onclick: () => d.close() }, "取消"), h("button", { class: "btn primary", onclick: async () => {
       const config = {};
-      for (const [k, [f, el]] of Object.entries(inputs)) config[k] = f.type === "bool" ? el.checked : f.type === "number" ? Number(el.value) : el.value;
+      for (const [k, [f, el]] of Object.entries(inputs)) if (f.type === "secret") { if (el.value.trim()) config[k] = el.value.trim(); } else config[k] = f.type === "bool" ? el.checked : f.type === "number" ? Number(el.value) : el.value;
       try { await put(`/plugins/${m.id}`, { config }); toast("已保存"); d.close(); done(); } catch (e) { errToast(e); }
     } }, "保存")] });
 }

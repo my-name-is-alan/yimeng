@@ -1,0 +1,35 @@
+{
+ "followers": {
+  "total": 8994184
+ },
+ "genres": [
+  "mandopop",
+  "c-pop",
+  "taiwanese pop",
+  "gufeng",
+  "malay pop",
+  "cantopop",
+  "chinese r&b"
+ ],
+ "id": "2elBjNSdBE2Y3f0j1mjrql",
+ "images": [
+  {
+   "url": "https://i.scdn.co/image/ab6761610000e5eb87fbbe9ed03fbb500595e720",
+   "height": 640,
+   "width": 640
+  },
+  {
+   "url": "https://i.scdn.co/image/ab6761610000517487fbbe9ed03fbb500595e720",
+   "height": 320,
+   "width": 320
+  },
+  {
+   "url": "https://i.scdn.co/image/ab6761610000f17887fbbe9ed03fbb500595e720",
+   "height": 160,
+   "width": 160
+  }
+ ],
+ "name": "Jay Chou",
+ "popularity": 75,
+ "type": "artist"
+}

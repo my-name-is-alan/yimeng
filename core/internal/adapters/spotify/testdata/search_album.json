@@ -1,0 +1,110 @@
+{
+ "albums": {
+  "limit": 10,
+  "next": null,
+  "offset": 0,
+  "previous": null,
+  "total": 100,
+  "items": [
+   {
+    "album_type": "album",
+    "total_tracks": 11,
+    "id": "0E5yojmnEdbs68b1wM6Kla",
+    "images": [
+     {
+      "height": 640,
+      "url": "https://i.scdn.co/image/ab67616d0000b2737b2dd792101b91625f3f1b97",
+      "width": 640
+     },
+     {
+      "height": 300,
+      "url": "https://i.scdn.co/image/ab67616d00001e027b2dd792101b91625f3f1b97",
+      "width": 300
+     },
+     {
+      "height": 64,
+      "url": "https://i.scdn.co/image/ab67616d000048517b2dd792101b91625f3f1b97",
+      "width": 64
+     }
+    ],
+    "name": "葉惠美",
+    "release_date": "2003-07-29",
+    "release_date_precision": "day",
+    "type": "album",
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ]
+   },
+   {
+    "album_type": "album",
+    "total_tracks": 21,
+    "id": "2arVFHigxCvvZBFfyoY2oQ",
+    "images": [
+     {
+      "height": 640,
+      "url": "https://i.scdn.co/image/ab67616d0000b2736b015fd5d540458f67e48cc2",
+      "width": 640
+     },
+     {
+      "height": 300,
+      "url": "https://i.scdn.co/image/ab67616d00001e026b015fd5d540458f67e48cc2",
+      "width": 300
+     },
+     {
+      "height": 64,
+      "url": "https://i.scdn.co/image/ab67616d000048516b015fd5d540458f67e48cc2",
+      "width": 64
+     }
+    ],
+    "name": "周杰倫2007世界巡迴演唱會",
+    "release_date": "2008-01-30",
+    "release_date_precision": "day",
+    "type": "album",
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ]
+   },
+   {
+    "album_type": "album",
+    "total_tracks": 10,
+    "id": "7sydOexyOcfIdE9Pt4WR1H",
+    "images": [
+     {
+      "height": 640,
+      "url": "https://i.scdn.co/image/ab67616d0000b273d8e5c2ba79fbc0b700662a1c",
+      "width": 640
+     },
+     {
+      "height": 300,
+      "url": "https://i.scdn.co/image/ab67616d00001e02d8e5c2ba79fbc0b700662a1c",
+      "width": 300
+     },
+     {
+      "height": 64,
+      "url": "https://i.scdn.co/image/ab67616d00004851d8e5c2ba79fbc0b700662a1c",
+      "width": 64
+     }
+    ],
+    "name": "周杰倫的床邊故事",
+    "release_date": "2016-06-24",
+    "release_date_precision": "day",
+    "type": "album",
+    "artists": [
+     {
+      "id": "2elBjNSdBE2Y3f0j1mjrql",
+      "name": "Jay Chou",
+      "type": "artist"
+     }
+    ]
+   }
+  ]
+ }
+}

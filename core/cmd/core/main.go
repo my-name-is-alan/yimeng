@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/my-name-is-alan/yimeng/core/internal/adapters/musicbrainz"
+	spotifyapi "github.com/my-name-is-alan/yimeng/core/internal/adapters/spotify"
 	"github.com/my-name-is-alan/yimeng/core/internal/app"
 	"github.com/my-name-is-alan/yimeng/core/internal/auth"
 	"github.com/my-name-is-alan/yimeng/core/internal/backup"
@@ -33,6 +34,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/online/kugou"
 	"github.com/my-name-is-alan/yimeng/core/internal/online/netease"
 	"github.com/my-name-is-alan/yimeng/core/internal/online/qq"
+	spotifyplugin "github.com/my-name-is-alan/yimeng/core/internal/online/spotify"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback"
 	"github.com/my-name-is-alan/yimeng/core/internal/playback/sources"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
@@ -172,10 +174,27 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	// On-demand (admin-initiated) lookups for the web metadata/lyrics editors; never run in the background.
 	lrclibSearch := &providers.LRCLIB{UA: ua}
-	var matcher metadata.MetadataProvider
+	// Matcher = MusicBrainz + Spotify (metadata-only, client credentials read
+	// from the Vault via the "spotify" plugin settings; skipped until set).
+	var pluginReg *online.Registry
+	spotifyMeta := spotifyapi.New(spotifyapi.Config{
+		APIBase: os.Getenv("YIMENG_SPOTIFY_API_BASE_URL"), AuthBase: os.Getenv("YIMENG_SPOTIFY_AUTH_BASE_URL"),
+		HTTP: &http.Client{Timeout: 15 * time.Second}, UserAgent: ua,
+		Creds: func() (string, string, bool) {
+			if pluginReg == nil {
+				return "", "", false
+			}
+			id, ok1 := pluginReg.Secret(spotifyplugin.ID, spotifyplugin.KeyClientID)
+			sec, ok2 := pluginReg.Secret(spotifyplugin.ID, spotifyplugin.KeySecret)
+			return id, sec, ok1 && ok2
+		},
+	})
+	matchers := metadata.Multi{}
 	if mbc, err := musicbrainz.New(musicbrainz.Config{BaseURL: cfg.MusicBrainz.BaseURL, UserAgent: ua}); err == nil {
-		matcher = mbc
+		matchers = append(matchers, mbc)
 	}
+	matchers = append(matchers, spotifyMeta)
+	var matcher metadata.MetadataProvider = matchers
 	var lyricsFetcher library.LyricsFetcher
 	if len(lyricChain) > 0 {
 		lyricsFetcher = lyricChain.AsFetcher()
@@ -217,13 +236,21 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	plugins := online.NewRegistry(database, vlt, log, nil)
-	for _, f := range []online.Factory{netease.New(netease.Options{}), kugou.New(kugou.Options{}), qq.New(qq.Options{})} {
+	for _, f := range []online.Factory{netease.New(netease.Options{}), kugou.New(kugou.Options{}), qq.New(qq.Options{}), spotifyplugin.New()} {
 		if err := plugins.Register(f); err != nil {
 			return err
 		}
 	}
 	if err := plugins.Load(ctx); err != nil {
 		return err
+	}
+	pluginReg = plugins
+	// Local bootstrap: seed Spotify client credentials from the environment
+	// into the Vault once (values are never logged).
+	for key, env := range map[string]string{spotifyplugin.KeyClientID: "YIMENG_SPOTIFY_CLIENT_ID", spotifyplugin.KeySecret: "YIMENG_SPOTIFY_CLIENT_SECRET"} {
+		if plugins.SeedSecret(ctx, spotifyplugin.ID, key, os.Getenv(env)) {
+			log.Info("spotify credential seeded into vault", "field", key)
+		}
 	}
 	onlineCache := online.NewCache(database)
 	onlineSvc := online.NewService(plugins, scanner, onlineCache, log)
