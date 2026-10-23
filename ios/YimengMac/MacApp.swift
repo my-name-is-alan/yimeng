@@ -1,0 +1,1237 @@
+import SwiftUI
+import AppKit
+
+@main
+struct YimengMacApp: App {
+    @StateObject private var state = AppState()
+    @AppStorage("ym.appearance") private var appearance = 2
+    init() {
+        guard ProcessInfo.processInfo.arguments.contains("-shotMac") else { return }
+        // Offscreen path: WindowGroup .task is unreliable for CLI launches.
+        DispatchQueue.main.async {
+            let s = AppState()
+            Task { @MainActor in
+                await MacShot.run(state: s)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 18) {
+            fputs("[ym] shotMac watchdog\n", stderr)
+            exit(0)
+        }
+    }
+    var body: some Scene {
+        WindowGroup {
+            MacRoot(state: state)
+                .preferredColorScheme(appearance == 1 ? .light : appearance == 2 ? .dark : nil)
+                .frame(minWidth: 1100, minHeight: 700)
+        }
+        .windowStyle(.automatic)
+        .defaultSize(width: 1360, height: 860)
+        .commands { MacCommands(state: state) }
+    }
+}
+
+struct MacCommands: Commands {
+    @ObservedObject var state: AppState
+    @ObservedObject private var player = PlayerStore.shared
+    var body: some Commands {
+        CommandMenu("播放") {
+            Button(player.isPlaying || state.isPlaying ? "暂停" : "播放") {
+                state.setPlaying(!(player.hasRealPlayback ? player.isPlaying : state.isPlaying))
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            Button("上一首") { state.skip(-1) }.keyboardShortcut("[", modifiers: [.command])
+            Button("下一首") { state.skip(1) }.keyboardShortcut("]", modifiers: [.command])
+            Divider()
+            Button("正在播放") { withAnimation(.ui) { state.nowPlaying = true } }
+                .keyboardShortcut("p", modifiers: [.command])
+            Button("搜索…") { state.tab = .search; state.nowPlaying = false }
+                .keyboardShortcut("f", modifiers: [.command])
+            Divider()
+            Button("放大歌词") { ymBumpLyricScale(+0.1) }
+                .keyboardShortcut("=", modifiers: [.command])
+            Button("缩小歌词") { ymBumpLyricScale(-0.1) }
+                .keyboardShortcut("-", modifiers: [.command])
+        }
+        CommandGroup(replacing: .appInfo) {
+            Button("关于译梦") {
+                NSApp.orderFrontStandardAboutPanel(options: [
+                    .applicationName: "译梦",
+                    .credits: NSAttributedString(string: "梦中的涂鸦 · 梦境环")
+                ])
+            }
+        }
+    }
+}
+
+private func ymBumpLyricScale(_ d: Double) {
+    let key = "ym.lyricScale"
+    let cur = UserDefaults.standard.object(forKey: key) as? Double ?? 1
+    UserDefaults.standard.set(min(1.6, max(0.7, cur + d)), forKey: key)
+}
+
+/// Desktop-native chrome: narrow sidebar + one wide content stage + floating mini player.
+/// Not an iPad three-column split.
+struct MacRoot: View {
+    @ObservedObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var library = LibraryStore.shared
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 0) {
+                MacSidebar(state: state)
+                    .frame(width: 220)
+                    .background(Theme.base(scheme))
+
+                Rectangle()
+                    .fill(Theme.fg(scheme).opacity(0.08))
+                    .frame(width: 1)
+                    .ignoresSafeArea()
+
+                ZStack(alignment: .bottom) {
+                    MacContent(state: state)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(
+                            GeometryReader { g in
+                                Color.clear.preference(key: MacContentWidthKey.self, value: g.size.width)
+                            }
+                        )
+
+                    if !state.nowPlaying {
+                        MacMiniBar(state: state)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 14)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .background(Theme.base(scheme))
+            }
+            .opacity(state.nowPlaying ? 0.34 : 1)
+
+            if state.nowPlaying {
+                MacNowPlaying(state: state)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .zIndex(2)
+            }
+        }
+        .background(Theme.base(scheme).ignoresSafeArea())
+        .onPreferenceChange(MacContentWidthKey.self) { w in
+            guard w > 0 else { return }
+            YMLayout.pad = true
+            YMLayout.width = w
+        }
+        .modifier(GlobalSheets())
+        .task { await bootstrap() }
+        .onChange(of: player.song?.id) { _, _ in updateTitle() }
+        .onChange(of: player.isPlaying) { _, _ in updateTitle() }
+        .onChange(of: state.nowPlaying) { _, on in
+            if on { updateTitle() }
+        }
+    }
+
+    private func updateTitle() {
+        if state.nowPlaying, let s = player.song {
+            NSApp.mainWindow?.title = "\(s.title) — \(s.artist)"
+        } else if let s = player.song {
+            NSApp.mainWindow?.title = "译梦 · \(s.title)"
+        } else if library.connected {
+            NSApp.mainWindow?.title = "译梦 · \(library.coreServerName.isEmpty ? "已连接" : library.coreServerName)"
+        } else {
+            NSApp.mainWindow?.title = "译梦"
+        }
+    }
+
+    private func bootstrap() async {
+        YMLayout.pad = true
+        if YMLayout.width < 700 { YMLayout.width = 1000 }
+        // Offscreen MacShot remounts MacRoot — don't reset status to「连接中…」.
+        if LibraryStore.shared.connected {
+            updateTitle()
+            return
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let url = home.appendingPathComponent(".ym-core-account.env")
+        var user = "yimeng-test"; var pass = ""
+        if let t = try? String(contentsOf: url, encoding: .utf8) {
+            for line in t.split(whereSeparator: \.isNewline) {
+                let p = line.split(separator: "=", maxSplits: 1)
+                guard p.count == 2 else { continue }
+                let k = String(p[0]).trimmingCharacters(in: .whitespaces)
+                let v = String(p[1]).trimmingCharacters(in: .whitespaces)
+                if k == "YM_CORE_USER" || k == "USER" { user = v }
+                if k == "YM_CORE_PASS" || k == "PASS" || k == "PASSWORD" { pass = v }
+            }
+        }
+        guard !pass.isEmpty else {
+            NSLog("[ym] mac bootstrap: missing credentials file")
+            return
+        }
+        if SourceStore.shared.active != .core {
+            await SourceStore.shared.activate(.core)
+        }
+        await LibraryStore.shared.connectCore(host: "http://localhost:8741", username: user, password: pass)
+        await HomeStore.shared.refresh()
+        await StarStore.shared.load()
+        updateTitle()
+    }
+}
+
+private struct MacContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let n = nextValue(); if n > 0 { value = n }
+    }
+}
+
+struct MacSidebar: View {
+    @ObservedObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
+    @ObservedObject private var acct = CoreAccountStore.shared
+    @ObservedObject private var library = LibraryStore.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                ZStack {
+                    MonogramAvatar(name: displayName, size: 36)
+                    Crayon(shape: WobblyCircle(), color: Theme.fg(scheme).opacity(0.35), width: 1.2)
+                        .frame(width: 42, height: 42)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Text(library.connected ? "在梦里听歌" : "未连接")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondary(scheme))
+                }
+            }
+            .padding(.leading, 4).padding(.trailing, 4)
+            .padding(.bottom, 14).padding(.top, 12)
+
+            ForEach(Tab.allCases, id: \.self) { t in
+                let on = state.tab == t && !state.nowPlaying
+                Button {
+                    withAnimation(.snappy) {
+                        state.nowPlaying = false
+                        if state.tab == t { state.path = [] }
+                        state.tab = t
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            if on {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Theme.fill(scheme))
+                                    .frame(width: 34, height: 34)
+                            }
+                            YMIcon(glyph: t.glyph, size: 18, weight: on ? 2.0 : 1.6, active: on)
+                            if t == .me, acct.unread > 0 {
+                                Text(acct.unread > 99 ? "99+" : "\(acct.unread)")
+                                    .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                                    .padding(.horizontal, 4).padding(.vertical, 1)
+                                    .background(Capsule().fill(Color.red))
+                                    .offset(x: 14, y: -12)
+                            }
+                        }.frame(width: 36, height: 36)
+                        Text(t.rawValue).font(.system(size: 15, weight: on ? .semibold : .medium))
+                            .foregroundStyle(on ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.72))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 8).frame(height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(on ? Theme.fill(scheme) : .clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 4) {
+                Button {
+                    withAnimation(.snappy) { state.tab = .me; state.nowPlaying = false; state.path = [] }
+                } label: {
+                    YMIcon(glyph: .settings, size: 16, weight: 1.6)
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Theme.fg(scheme).opacity(0.45))
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.fill(scheme).opacity(0.001)))
+                }
+                .buttonStyle(.plain)
+                .help("设置")
+                Spacer()
+            }
+            .padding(.top, 8)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Theme.fg(scheme).opacity(0.06)).frame(height: 0.5)
+            }
+            .padding(.bottom, 8)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .foregroundStyle(Theme.fg(scheme))
+    }
+
+    private var displayName: String {
+        if let n = CoreProfileStore.shared.displayName, !n.isEmpty { return n }
+        if !library.user.isEmpty { return library.user }
+        return "译梦"
+    }
+}
+
+struct MacContent: View {
+    @ObservedObject var state: AppState
+    var body: some View {
+        NavigationStack(path: $state.path) {
+            Group {
+                if state.macSoundStage {
+                    SoundSettingsView()
+                } else if state.macQueueStage {
+                    QueueSheet()
+                        .environment(\.colorScheme, .dark)
+                } else if state.macOfflineStage {
+                    OfflineSettingsView()
+                } else {
+                    switch state.tab {
+                    case .home: HomeView().environmentObject(state)
+                    case .library: LibraryView().environmentObject(state)
+                    case .collection: CollectionView().environmentObject(state)
+                    case .search: LibrarySearchView().environmentObject(state)
+                    case .me: SettingsView().environmentObject(state)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .navigationDestination(for: Route.self) { r in routeView(r) }
+        }
+        // Room for the floating mini bar (home-v1 ~72pt + insets).
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: 96)
+        }
+    }
+
+    @ViewBuilder
+    private func routeView(_ r: Route) -> some View {
+        switch r {
+        case .album(let a): AlbumView(album: a).environmentObject(state)
+        case .ndAlbum(let a): NDAlbumView(album: a).environmentObject(state)
+        case .ndArtist(let a): ArtistDetailView(artist: a).environmentObject(state)
+        case .ndPlaylist(let p): PlaylistDetailView(playlist: p).environmentObject(state)
+        case .artist: ArtistView().environmentObject(state)
+        case .genre(let g): GenreView(genre: g).environmentObject(state)
+        case .genres: GenreListView().environmentObject(state)
+        case .charts: ChartsView().environmentObject(state)
+        case .yueqian: YueqianPage()
+        case .trackList(let s): TrackListPage(spec: s).environmentObject(state)
+        }
+    }
+}
+
+/// Floating glass mini player — home-v1: full content width, cover bleed, 3 columns. Not a third column.
+struct MacMiniBar: View {
+    @ObservedObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
+    @ObservedObject private var vol = VolumeController.shared
+    @ObservedObject private var diff = RemoteDiffusion.shared
+
+    private var coverURL: URL? { state.remoteCoverURL ?? player.coverURL }
+    private var tint: Color {
+        _ = diff.rev
+        return diff.entry(coverURL)?.color ?? state.track.blobs.first ?? Color(hex: 0x7a1cff)
+    }
+    private var playing: Bool { player.hasRealPlayback ? player.isPlaying : state.isPlaying }
+    private var title: String { player.song?.title ?? state.track.title }
+    private var artist: String { player.song?.artist ?? state.track.artist }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            left.frame(maxWidth: .infinity, alignment: .leading)
+            center.frame(maxWidth: .infinity)
+            right.frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 18)
+        .frame(height: 72)
+        .background { barChrome }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.45), radius: 20, y: 10)
+        .foregroundStyle(.white)
+        .onAppear { RemoteDiffusion.shared.load(coverURL) }
+        .onChange(of: coverURL) { _, u in RemoteDiffusion.shared.load(u) }
+    }
+
+    private var left: some View {
+        HStack(spacing: 12) {
+            Button { withAnimation(.ui) { state.nowPlaying = true } } label: {
+                HStack(spacing: 12) {
+                    cover
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(artist)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: 200, alignment: .leading)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if let song = player.song {
+                Button {
+                    stars.toggle(song)
+                } label: {
+                    YMIcon(
+                        glyph: stars.isStarred(song: song.id) ? .heartFill : .heart,
+                        size: 16, weight: 1.7,
+                        filled: stars.isStarred(song: song.id),
+                        color: stars.isStarred(song: song.id) ? Color(hex: 0xff5fa8) : .white.opacity(0.7)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Button { withAnimation(.ui) { state.nowPlaying = true } } label: {
+                YMIcon(glyph: .more, size: 15, weight: 1.6).opacity(0.65)
+            }.buttonStyle(.plain)
+        }
+    }
+
+    private var center: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 16) {
+                Button { PlayerStore.shared.cyclePlayMode() } label: {
+                    YMIcon(glyph: modeGlyph, size: 14, weight: 1.6).opacity(0.75)
+                }.buttonStyle(.plain)
+                Button { state.skip(-1) } label: {
+                    YMIcon(glyph: .previous, size: 16, weight: 1.8, filled: true)
+                }.buttonStyle(.plain)
+                Button { state.setPlaying(!playing) } label: {
+                    YMIcon(glyph: playing ? .pause : .play, size: 16, weight: 1.9, filled: true, color: Color(white: 0.07))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(.white))
+                }.buttonStyle(.plain)
+                Button { state.skip(1) } label: {
+                    YMIcon(glyph: .next, size: 16, weight: 1.8, filled: true)
+                }.buttonStyle(.plain)
+                Button {
+                    withAnimation(.ui) { state.nowPlaying = true; state.lyricsMode = true }
+                    if let s = player.song { LyricsStore.shared.load(s) }
+                } label: {
+                    YMIcon(glyph: .lyrics, size: 14, weight: 1.6).opacity(0.55)
+                }.buttonStyle(.plain)
+            }
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                MacMiniScrub(elapsed: player.elapsed, total: max(player.duration > 0 ? player.duration : state.track.duration, 1))
+            }
+            .frame(maxWidth: 360)
+        }
+    }
+
+    private var right: some View {
+        HStack(spacing: 14) {
+            if let s = player.song { QualityBadge(song: s) }
+            Button {
+                withAnimation(.ui) { state.nowPlaying = true; state.lyricsMode = true }
+                if let s = player.song { LyricsStore.shared.load(s) }
+            } label: {
+                YMIcon(glyph: .lyrics, size: 15, weight: 1.6)
+                    .foregroundStyle(state.lyricsMode ? Theme.lime : .white.opacity(0.65))
+            }.buttonStyle(.plain)
+            Button { SheetCenter.shared.queue = true } label: {
+                YMIcon(glyph: .queue, size: 15, weight: 1.6).opacity(0.7)
+            }.buttonStyle(.plain)
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .opacity(0.65)
+                VolumeSlider()
+                    .frame(width: 56)
+            }
+            .frame(width: 86)
+        }
+    }
+
+    private var modeGlyph: YMGlyph {
+        switch player.playMode {
+        case .loop: return .repeat
+        case .one: return .repeatOne
+        case .shuffle: return .shuffle
+        case .order: return .order
+        }
+    }
+
+    @ViewBuilder private var cover: some View {
+        Group {
+            if let url = coverURL {
+                CoverImage(url: url, points: 48)
+            } else if !state.track.cover.isEmpty {
+                Image(state.track.cover).resizable().scaledToFill()
+            } else {
+                Theme.fill(scheme).overlay(YMBrandMark(size: 22).opacity(0.6))
+            }
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
+    }
+
+    private var barChrome: some View {
+        ZStack {
+            // Cover-color bleed (glass only on the mini bar).
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            tint.opacity(0.78),
+                            tint.mix(with: Color(hex: 0x0A0A0C), by: 0.55).opacity(0.85),
+                            Color(hex: 0x0A0A0C).opacity(0.55)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            if let img = diff.entry(coverURL)?.image {
+                HStack(spacing: 0) {
+                    Image(platformImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 220)
+                        .blur(radius: 28)
+                        .saturation(1.55)
+                        .opacity(0.9)
+                    Spacer(minLength: 0)
+                }
+                .allowsHitTesting(false)
+            }
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.55)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(hex: 0x0A0A0C).opacity(0.38))
+            // Top glass edge
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.8
+                )
+                .blendMode(.plusLighter)
+                .opacity(0.9)
+        }
+    }
+}
+
+/// Compact lime scrubber for the desktop mini bar (home-v1).
+private struct MacMiniScrub: View {
+    let elapsed: TimeInterval
+    let total: TimeInterval
+    @State private var drag: Double?
+    var body: some View {
+        let shown = drag ?? min(1, elapsed / max(total, 1))
+        HStack(spacing: 8) {
+            Text(fmtTime(shown * total))
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 32, alignment: .leading)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18))
+                    Capsule().fill(Theme.lime).frame(width: g.size.width * CGFloat(shown))
+                    Circle().fill(.white)
+                        .frame(width: drag == nil ? 0 : 8, height: drag == nil ? 0 : 8)
+                        .shadow(color: Theme.lime.opacity(0.5), radius: 4)
+                        .offset(x: g.size.width * CGFloat(shown) - 4)
+                        .opacity(drag == nil ? 0 : 1)
+                }
+                .frame(height: 3)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    drag = max(0, min(1, Double(v.location.x / max(g.size.width, 1))))
+                }.onEnded { _ in
+                    if let f = drag { PlayerStore.shared.seek(to: f * total) }
+                    drag = nil
+                })
+            }
+            .frame(height: 16)
+            Text(fmtTime(total))
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 32, alignment: .trailing)
+        }
+    }
+}
+
+/// Full-window now-playing (from mini bar) — nowplaying-v2: lyrics | square cover+doodle, solid transport. No vinyl.
+struct MacNowPlaying: View {
+    @ObservedObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var lyrics = LyricsStore.shared
+    @ObservedObject private var stars = StarStore.shared
+    @ObservedObject private var vol = VolumeController.shared
+    @ObservedObject private var offline = OfflineCache.shared
+    @AppStorage("ym.lyricScale") private var lyricScale: Double = 1
+
+    private let coverSide: CGFloat = 300
+
+    var body: some View {
+        ZStack {
+            DreamField(track: state.track, animated: true).ignoresSafeArea()
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.black.opacity(0.12), .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 120)
+                Spacer(minLength: 0)
+                LinearGradient(colors: [.clear, .black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 280)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            VStack(spacing: 0) {
+                HStack {
+                    Button {
+                        withAnimation(.ui) { state.nowPlaying = false }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Color.black.opacity(0.28)))
+                            .overlay(Circle().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("关闭")
+                    .keyboardShortcut(.escape, modifiers: [])
+                    Spacer()
+                }
+                .padding(.horizontal, 28)
+                .padding(.top, 12)
+
+                HStack(alignment: .top, spacing: 40) {
+                    leftColumn
+                    rightColumn
+                }
+                .padding(.horizontal, 56)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                MacNPTransport(state: state)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 22)
+            }
+            .foregroundStyle(.white)
+        }
+        .onAppear {
+            state.lyricsMode = true
+            if let s = player.song { LyricsStore.shared.load(s) }
+        }
+        .onChange(of: player.song?.id) { _, _ in
+            if let s = player.song { LyricsStore.shared.load(s) }
+        }
+    }
+
+    private var leftColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(player.song?.title ?? state.track.title)
+                .font(.system(size: 28, weight: .bold))
+                .tracking(-0.4)
+                .lineLimit(2)
+            Text(player.song?.artist ?? state.track.artist)
+                .font(.system(size: 16))
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.top, 6)
+                .padding(.bottom, 22)
+
+            TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+                LiveLyricsView(time: player.elapsed, accent: Theme.lime, bare: true)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            Text("⌘ + 放大歌词 · ⌘ − 缩小")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.lime)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(Theme.lime.opacity(0.15)))
+                .padding(.top, 10)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var rightColumn: some View {
+        ZStack { dreamCover }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Don't clip doodle strokes that sit just outside the wrap math.
+            .contentShape(Rectangle())
+    }
+
+    /// Square cover + DoodleLayer forced to frame/cloud (no vinyl / orbit).
+    /// Canvas must leave ~110pt around the cover — cloud/moon/sparkle paths extend outside the slot
+    /// (iPhone uses the full screen GeometryReader; a tight wrap clips doodles away).
+    private var dreamCover: some View {
+        let side = coverSide
+        let pad: CGFloat = 120
+        let wrap = side + pad * 2
+        return ZStack {
+            // Doodles first (behind cover), full intensity, beat pulse on.
+            DoodleLayer(
+                track: cloudFrameTrack,
+                slot: CoverSlot(
+                    rect: CGRect(x: pad, y: pad, width: side, height: side),
+                    radius: 12
+                ),
+                ambience: .doodle,
+                intensity: max(state.intensity, 0.95),
+                beat: state.beatSync
+            )
+            .frame(width: wrap, height: wrap)
+            .allowsHitTesting(false)
+
+            Group {
+                if let u = state.remoteCoverURL ?? player.coverURL {
+                    let candidates = [side, CGFloat(320), CGFloat(600), CGFloat(48)].map { CoverCache.sized(u, points: $0) }
+                    let img = candidates.lazy.compactMap { CoverCache.shared.memory($0) ?? CoverCache.shared.cached($0) }.first
+                        ?? CoverCache.shared.memoryAnySize(candidates[0])
+                    if let img {
+                        Image(platformImage: img).resizable().scaledToFill()
+                    } else {
+                        CoverImage(url: u, points: side)
+                    }
+                } else if !state.track.cover.isEmpty {
+                    Image(state.track.cover).resizable().scaledToFill()
+                } else {
+                    Color.white.opacity(0.08).overlay(YMBrandMark(size: 96).opacity(0.5))
+                }
+            }
+            .frame(width: side, height: side)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
+            // Cover only clips itself — never the doodle sibling.
+        }
+        .frame(width: wrap, height: wrap)
+        // Explicitly allow doodle overflow into the art column.
+    }
+
+    /// energy/genre → Motif.cloud → DreamLayout.frame (design lock: no vinyl).
+    private var cloudFrameTrack: DreamTrack {
+        let t = state.track
+        return DreamTrack(
+            id: t.id, title: t.title, artist: t.artist, cover: t.cover, base: t.base, blobs: t.blobs,
+            bpm: t.bpm, energy: min(t.energy, 0.65), genre: "pop", duration: t.duration, lyrics: t.lyrics
+        )
+    }
+}
+
+/// Solid semi-transparent transport (NOT glass) — nowplaying-v2 bottom bar.
+private struct MacNPTransport: View {
+    @ObservedObject var state: AppState
+    @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
+    @ObservedObject private var offline = OfflineCache.shared
+
+    private var playing: Bool { player.hasRealPlayback ? player.isPlaying : state.isPlaying }
+    private var title: String { player.song?.title ?? state.track.title }
+    private var artist: String { player.song?.artist ?? state.track.artist }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                MacNPScrub(elapsed: player.elapsed, total: max(player.duration > 0 ? player.duration : state.track.duration, 1))
+            }
+            HStack(spacing: 0) {
+                left.frame(maxWidth: .infinity, alignment: .leading)
+                center
+                right.frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .frame(height: 88)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.55))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+        )
+        .foregroundStyle(.white)
+    }
+
+    private var left: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                Text(title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(artist).font(.system(size: 13)).foregroundStyle(.white.opacity(0.5)).lineLimit(1)
+            }
+            .frame(maxWidth: 240, alignment: .leading)
+            if let song = player.song {
+                Button { stars.toggle(song) } label: {
+                    YMIcon(
+                        glyph: stars.isStarred(song: song.id) ? .heartFill : .heart,
+                        size: 16, weight: 1.7,
+                        filled: stars.isStarred(song: song.id),
+                        color: stars.isStarred(song: song.id) ? Color(hex: 0xff5fa8) : .white.opacity(0.7)
+                    )
+                }.buttonStyle(.plain)
+                Button {
+                    if offline.isCached(song.id) { offline.remove(song.id) }
+                    else { offline.fetch(song, daily: false) }
+                } label: {
+                    YMIcon(glyph: .download, size: 15, weight: 1.6)
+                        .opacity(offline.isCached(song.id) || offline.busy.contains(song.id) ? 1 : 0.7)
+                        .foregroundStyle(offline.isCached(song.id) ? Theme.lime : .white)
+                }.buttonStyle(.plain)
+            }
+            Menu {
+                Button("音效设置") { SheetCenter.shared.sound = true }
+                Button("播放列表") { SheetCenter.shared.queue = true }
+            } label: {
+                YMIcon(glyph: .more, size: 15, weight: 1.6).opacity(0.7)
+            }
+        }
+    }
+
+    private var center: some View {
+        HStack(spacing: 20) {
+            Button { PlayerStore.shared.cyclePlayMode() } label: {
+                YMIcon(glyph: modeGlyph, size: 15, weight: 1.6).opacity(0.75)
+            }.buttonStyle(.plain)
+            Button { state.skip(-1) } label: {
+                YMIcon(glyph: .previous, size: 18, weight: 1.8, filled: true)
+            }.buttonStyle(.plain)
+            Button { state.setPlaying(!playing) } label: {
+                YMIcon(glyph: playing ? .pause : .play, size: 18, weight: 1.9, filled: true, color: Color(white: 0.07))
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(.white))
+            }.buttonStyle(.plain)
+            Button { state.skip(1) } label: {
+                YMIcon(glyph: .next, size: 18, weight: 1.8, filled: true)
+            }.buttonStyle(.plain)
+            VolumeSlider().frame(width: 56)
+        }
+    }
+
+    private var right: some View {
+        HStack(spacing: 14) {
+            if let s = player.song { QualityBadge(song: s) }
+            Button {
+                withAnimation(.ui) { state.lyricsMode.toggle() }
+            } label: {
+                YMIcon(glyph: .lyrics, size: 15, weight: 1.6)
+                    .foregroundStyle(state.lyricsMode ? Theme.lime : .white.opacity(0.65))
+            }.buttonStyle(.plain)
+            Button { SheetCenter.shared.queue = true } label: {
+                YMIcon(glyph: .queue, size: 15, weight: 1.6).opacity(0.7)
+            }.buttonStyle(.plain)
+            Button {
+                withAnimation(.ui) { state.nowPlaying = false }
+            } label: {
+                Image(systemName: "rectangle.bottomhalf.inset.filled")
+                    .font(.system(size: 14, weight: .medium))
+                    .opacity(0.7)
+            }
+            .buttonStyle(.plain)
+            .help("回到迷你条")
+        }
+    }
+
+    private var modeGlyph: YMGlyph {
+        switch player.playMode {
+        case .loop: return .repeat
+        case .one: return .repeatOne
+        case .shuffle: return .shuffle
+        case .order: return .order
+        }
+    }
+}
+
+private struct MacNPScrub: View {
+    let elapsed: TimeInterval
+    let total: TimeInterval
+    @State private var drag: Double?
+    var body: some View {
+        let shown = drag ?? min(1, elapsed / max(total, 1))
+        HStack(spacing: 10) {
+            Text(fmtTime(shown * total))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 36, alignment: .leading)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.15))
+                    Capsule().fill(Color.white).frame(width: g.size.width * CGFloat(shown))
+                    Circle().fill(.white)
+                        .frame(width: 9, height: 9)
+                        .offset(x: g.size.width * CGFloat(shown) - 4.5)
+                }
+                .frame(height: 3)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    drag = max(0, min(1, Double(v.location.x / max(g.size.width, 1))))
+                }.onEnded { _ in
+                    if let f = drag { PlayerStore.shared.seek(to: f * total) }
+                    drag = nil
+                })
+            }
+            .frame(height: 18)
+            Text(fmtTime(total))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 36, alignment: .trailing)
+        }
+    }
+}
+
+
+enum MacShot {
+    @MainActor static func applyTab(_ state: AppState) {
+        let a = ProcessInfo.processInfo.arguments
+        state.nowPlaying = false
+        if a.contains("-shotMacLib") { state.tab = .library }
+        else if a.contains("-shotMacMe") { state.tab = .me }
+        else if a.contains("-shotMacSearch") { state.tab = .search }
+        else if a.contains("-shotMacColl") { state.tab = .collection }
+        else if a.contains("-shotMacSound") { state.tab = .me }
+        else if a.contains("-shotMacAlbums") { state.tab = .library }
+        else if a.contains("-shotMacQueue") { state.tab = .home }
+        else if a.contains("-shotMacOffline") { state.tab = .me }
+        else { state.tab = .home }
+        state.path = []
+    }
+
+    @MainActor static func waitReady(timeout: TimeInterval = 10) async {
+        let lib = LibraryStore.shared
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if lib.connected && !lib.status.contains("连接中") {
+                // Give LibraryCache a moment to populate after connect.
+                if (lib.songTotal ?? 0) > 0 || !LibraryCache.shared.songs.isEmpty { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                if Date() > deadline.addingTimeInterval(-0.5) { return }
+                continue
+            }
+            let s = lib.status
+            if !s.isEmpty && !s.contains("连接中") && s != "待连接译梦服务端" && lib.connected { return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
+    @MainActor static func preparePlaying(_ state: AppState) async {
+        if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }
+        if let d = PlatformStore.shared.dailies.first {
+            let songs = d.tracks.filter { !$0.isUnplayable }
+            if !songs.isEmpty {
+                PlayerStore.shared.play(songs: songs)
+                // Wait for coverURL from startCurrent / applyNDSong.
+                for _ in 0..<20 {
+                    if PlayerStore.shared.coverURL != nil || state.remoteCoverURL != nil { break }
+                    try? await Task.sleep(for: .milliseconds(40))
+                }
+                if let u = PlayerStore.shared.coverURL ?? state.remoteCoverURL {
+                    let big = CoverCache.sized(u, points: 320)
+                    let mid = CoverCache.sized(u, points: 240)
+                    let mini = CoverCache.sized(u, points: 44)
+                    do {
+                        _ = try await CoverCache.shared.fetch(big)
+                        _ = try await CoverCache.shared.fetch(mid)
+                        _ = try await CoverCache.shared.fetch(mini)
+                        let hit = CoverCache.shared.memory(big) != nil
+                        fputs("[ym] cover ok mem=\(hit) \(big.path)\n", stderr)
+                    } catch {
+                        fputs("[ym] cover fail \(error.localizedDescription)\n", stderr)
+                    }
+                } else {
+                    fputs("[ym] coverURL nil after play\n", stderr)
+                }
+                withAnimation(.ui) { state.nowPlaying = true }
+                try? await Task.sleep(for: .milliseconds(500))
+                return
+            }
+        }
+        state.track = DreamMock.rose
+        state.isPlaying = true
+        state.remoteCoverURL = nil
+        withAnimation(.ui) { state.nowPlaying = true }
+    }
+
+    
+    /// Prefetch visible covers so Home/Library/Now Playing shots aren't blurhash stand-ins.
+    @MainActor static func warmCovers(limit: Int = 24) async {
+        var urls: [URL] = []
+        for r in PlatformStore.shared.recommend {
+            for p in r.lists.prefix(8) {
+                if let u = LibraryStore.shared.coverArtURL(id: p.coverId, size: 300) {
+                    urls.append(CoverCache.sized(u, points: YMLayout.cover(140)))
+                }
+            }
+        }
+        for s in LibraryCache.shared.songs.prefix(16) {
+            if let u = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) {
+                urls.append(CoverCache.sized(u, points: 48))
+            }
+        }
+        if let u = PlayerStore.shared.coverURL {
+            urls.append(CoverCache.sized(u, points: 320))
+            urls.append(CoverCache.sized(u, points: 44))
+        }
+        await withTaskGroup(of: Void.self) { g in
+            for u in urls.prefix(limit) {
+                g.addTask { _ = try? await CoverCache.shared.fetch(u) }
+            }
+        }
+    }
+
+    @MainActor static func run(state: AppState) async {
+        // Ensure Core is up even if MacRoot.bootstrap is still racing.
+        await ensureCore()
+        await waitReady(timeout: 8)
+        await HomeStore.shared.refresh()
+        applyTab(state)
+        let a = ProcessInfo.processInfo.arguments
+        if a.contains("-shotMacLib") {
+            state.tab = .library
+            await LibraryCache.shared.open(LibraryView.key(.songs, sort: state.albumSort), albumSort: state.albumSort)
+            try? await Task.sleep(for: .milliseconds(600))
+        }
+        if a.contains("-shotMacColl") {
+            state.tab = .collection
+            await StarStore.shared.load()
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if a.contains("-shotMacMe") {
+            state.tab = .me
+            await StarStore.shared.load()
+        }
+        if a.contains("-shotMacPlaying") {
+            state.tab = .home
+            await preparePlaying(state)
+            if let s = PlayerStore.shared.song {
+                LyricsStore.shared.load(s)
+                for _ in 0..<40 {
+                    if case .ready = LyricsStore.shared.phase { break }
+                    if case .empty = LyricsStore.shared.phase { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            state.lyricsMode = true
+            // Let DoodleLayer trim-in finish + mid-song lyric highlight.
+            if PlayerStore.shared.duration > 40 { PlayerStore.shared.seek(to: 95) }
+            try? await Task.sleep(for: .milliseconds(1800))
+        }
+        state.macSoundStage = false
+        state.macQueueStage = false
+        state.macOfflineStage = false
+        if a.contains("-shotMacSound") {
+            state.tab = .me
+            state.nowPlaying = false
+            state.path = []
+            state.macSoundStage = true
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        if a.contains("-shotMacQueue") {
+            state.tab = .home
+            state.nowPlaying = false
+            if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }
+            if let d = PlatformStore.shared.dailies.first {
+                let songs = d.tracks.filter { !$0.isUnplayable }
+                if !songs.isEmpty { PlayerStore.shared.play(songs: songs) }
+            }
+            // Prefetch queue row covers so ScrollView shot isn't empty placeholders.
+            var qurls: [URL] = []
+            for s in PlayerStore.shared.queue.prefix(24) {
+                if let u = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 120) {
+                    qurls.append(CoverCache.sized(u, points: 40))
+                }
+            }
+            await withTaskGroup(of: Void.self) { g in
+                for u in qurls { g.addTask { _ = try? await CoverCache.shared.fetch(u) } }
+            }
+            state.macQueueStage = true
+            try? await Task.sleep(for: .milliseconds(600))
+        }
+        if a.contains("-shotMacOffline") {
+            state.tab = .me
+            state.nowPlaying = false
+            state.macOfflineStage = true
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        if a.contains("-shotMacSearch") {
+            state.tab = .search
+            state.nowPlaying = false
+            if LibraryStore.shared.albums.isEmpty {
+                _ = try? await LibraryStore.shared.search(query: "") // no-op if unsupported
+                await HomeStore.shared.refresh()
+            }
+            // Prefer cache albums if LibraryStore.newest is thin.
+            if LibraryStore.shared.albums.count < 8 {
+                await LibraryCache.shared.open(LibraryView.key(.albums, sort: "newest"), albumSort: "newest")
+                let fromCache = LibraryCache.shared.albumList("newest")
+                if !fromCache.isEmpty { LibraryStore.shared.albums = Array(fromCache.prefix(30)) }
+            }
+            for alb in LibraryStore.shared.albums.prefix(24) {
+                if let u = LibraryStore.shared.coverURL(alb, size: 600) {
+                    _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: YMLayout.tile()))
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(700))
+        }
+        if a.contains("-shotMacLyrics") {
+            state.tab = .home
+            await preparePlaying(state)
+            if let s = PlayerStore.shared.song {
+                LyricsStore.shared.load(s)
+                // Wait for lyrics lines.
+                for _ in 0..<40 {
+                    if case .ready = LyricsStore.shared.phase { break }
+                    if case .empty = LyricsStore.shared.phase { break }
+                    try? await Task.sleep(for: .milliseconds(100))
+                }
+            }
+            withAnimation(.ui) { state.lyricsMode = true; state.nowPlaying = true }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if a.contains("-shotMacAlbums") {
+            state.tab = .library
+            state.librarySeg = .albums
+            await LibraryCache.shared.open(LibraryView.key(.albums, sort: state.albumSort), albumSort: state.albumSort)
+            // Prefetch album grid covers.
+            for alb in LibraryCache.shared.albumList(state.albumSort).prefix(18) {
+                if let u = LibraryStore.shared.coverURL(alb, size: 300) {
+                    _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: YMLayout.tile()))
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        if a.contains("-shotMacHome") || (!a.contains("-shotMacPlaying") && !a.contains("-shotMacSound")
+            && !a.contains("-shotMacLyrics") && !a.contains("-shotMacQueue") && !a.contains("-shotMacOffline")
+            && !a.contains("-shotMacSearch") && !a.contains("-shotMacLib") && !a.contains("-shotMacAlbums")
+            && !a.contains("-shotMacMe") && !a.contains("-shotMacColl")) {
+            await PlatformStore.shared.refresh()
+            // Seed a real track so the floating mini bar shows cover bleed (stay on home, not full NP).
+            if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }
+            if let d = PlatformStore.shared.dailies.first {
+                let songs = d.tracks.filter { !$0.isUnplayable }
+                if !songs.isEmpty {
+                    PlayerStore.shared.play(songs: songs)
+                    for _ in 0..<25 {
+                        if PlayerStore.shared.coverURL != nil || state.remoteCoverURL != nil { break }
+                        try? await Task.sleep(for: .milliseconds(40))
+                    }
+                    if PlayerStore.shared.isPlaying { PlayerStore.shared.toggle() }
+                }
+            }
+            state.nowPlaying = false
+            await warmCovers()
+            if let u = PlayerStore.shared.coverURL ?? state.remoteCoverURL {
+                RemoteDiffusion.shared.load(u)
+                _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: 48))
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+        capture(state: state)
+    }
+
+    @MainActor static func ensureCore() async {
+        YMLayout.pad = true
+        YMLayout.width = 1140
+        if LibraryStore.shared.connected { return }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let url = home.appendingPathComponent(".ym-core-account.env")
+        var user = "yimeng-test"; var pass = ""
+        if let t = try? String(contentsOf: url, encoding: .utf8) {
+            for line in t.split(whereSeparator: \.isNewline) {
+                let p = line.split(separator: "=", maxSplits: 1)
+                guard p.count == 2 else { continue }
+                let k = String(p[0]).trimmingCharacters(in: .whitespaces)
+                let v = String(p[1]).trimmingCharacters(in: .whitespaces)
+                if k == "YM_CORE_USER" || k == "USER" { user = v }
+                if k == "YM_CORE_PASS" || k == "PASS" || k == "PASSWORD" { pass = v }
+            }
+        }
+        guard !pass.isEmpty else { return }
+        if SourceStore.shared.active != .core { await SourceStore.shared.activate(.core) }
+        await LibraryStore.shared.connectCore(host: "http://localhost:8741", username: user, password: pass)
+        await HomeStore.shared.refresh()
+        await StarStore.shared.load()
+    }
+
+    @MainActor static func capture(state: AppState?) {
+        let s = state ?? AppState()
+        let a = ProcessInfo.processInfo.arguments
+        if a.contains("-shotMacPlaying") || a.contains("-shotMacLyrics") {
+            s.tab = .home; s.nowPlaying = true
+            if a.contains("-shotMacLyrics") { s.lyricsMode = true }
+        } else if a.contains("-shotMacAlbums") {
+            s.tab = .library; s.librarySeg = .albums; s.nowPlaying = false
+        } else if a.contains("-shotMacQueue") {
+            s.tab = .home; s.nowPlaying = false; s.macQueueStage = true
+        } else if a.contains("-shotMacOffline") {
+            s.tab = .me; s.nowPlaying = false; s.macOfflineStage = true
+        } else if a.contains("-shotMacSound") {
+            s.tab = .me; s.macSoundStage = true
+        } else if a.contains("-shotMacSearch") {
+            s.tab = .search; s.nowPlaying = false
+        } else {
+            applyTab(s)
+        }
+
+        YMLayout.pad = true
+        YMLayout.width = 1140
+
+        let root = MacRoot(state: s)
+            .environment(\.colorScheme, .dark)
+            .preferredColorScheme(.dark)
+            .frame(width: 1360, height: 860)
+            .background(Theme.base(.dark))
+        let host = NSHostingView(rootView: root)
+        host.frame = NSRect(x: 0, y: 0, width: 1360, height: 860)
+        host.appearance = NSAppearance(named: .darkAqua)
+        host.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.45))
+        host.layoutSubtreeIfNeeded()
+        guard let img = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+            fputs("[ym] shotMac bitmap failed\n", stderr); exit(0)
+        }
+        host.cacheDisplay(in: host.bounds, to: img)
+        guard let png = img.representation(using: .png, properties: [:]) else {
+            fputs("[ym] shotMac png failed\n", stderr); exit(0)
+        }
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("ymshots")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name: String
+        if a.contains("-shotMacPlaying") { name = "v46-mac-playing.png" }
+        else if a.contains("-shotMacLyrics") { name = "v46-mac-lyrics.png" }
+        else if a.contains("-shotMacAlbums") { name = "v46-mac-albums.png" }
+        else if a.contains("-shotMacSound") { name = "v46-mac-sound.png" }
+        else if a.contains("-shotMacQueue") { name = "v46-mac-queue.png" }
+        else if a.contains("-shotMacOffline") { name = "v46-mac-offline.png" }
+        else if a.contains("-shotMacLib") { name = "v46-mac-library.png" }
+        else if a.contains("-shotMacMe") { name = "v46-mac-me.png" }
+        else if a.contains("-shotMacSearch") { name = "v46-mac-search.png" }
+        else if a.contains("-shotMacColl") { name = "v46-mac-collection.png" }
+        else if a.contains("-shotMacHome") { name = "v46-mac-home.png" }
+        else { name = "v46-mac-home.png" }
+        let url = dir.appendingPathComponent(name)
+        try? png.write(to: url)
+        fputs("[ym] wrote \(url.path) \(png.count)\n", stderr)
+        if a.contains("-shotMacPlaying") || a.contains("-shotMacLyrics") {
+            let np = dir.appendingPathComponent("mac-np-v1.png")
+            try? png.write(to: np)
+            fputs("[ym] wrote \(np.path)\n", stderr)
+        }
+        exit(0)
+    }
+}

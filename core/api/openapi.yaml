@@ -1,0 +1,1703 @@
+openapi: 3.1.0
+info:
+  title: 译梦 (yimeng) Core API
+  version: 0.17.0
+  description: |
+    LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
+    token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
+    `POST /api/pair/request`. Media routes (`/api/stream/*`, `*/cover`) also
+    accept `?access_token=` because `<audio>`/`<img>` cannot set headers.
+    Errors use `{ "error": "<kind>", "message": "..." }`.
+    Optional TLS (`YIMENG_TLS_CERT`/`YIMENG_TLS_KEY`), trusted proxies
+    (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
+    (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
+    with `Retry-After` when exceeded. `/healthz` is not rate-limited.
+    Optional Subsonic-compatible `/rest/*.view` (disable with `YIMENG_SUBSONIC=false`):
+    password = paired device token (`ymd_…`); token+salt (t/s) is not supported.
+servers:
+  - url: http://nas.local:8741
+security:
+  - bearer: []
+tags:
+  - name: admin-ui
+    description: Embedded browser admin
+  - name: sources
+    description: StreamSource account management (credentials never leave the vault)
+  - name: subsonic
+    description: Subsonic-compatible /rest API
+  - name: system
+  - name: pairing
+  - name: library
+  - name: catalog
+  - name: media
+  - name: settings
+  - name: playback
+  - name: metadata
+  - name: history
+  - name: playlists
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      security: []
+      summary: Liveness probe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: yimeng-core }
+
+  /api/pair/request:
+    post:
+      tags: [pairing]
+      security: []
+      summary: Ask Core to print a new pairing code to its log (bootstrap for the first device)
+      description: The code is never returned over HTTP. Rate-limited per client IP.
+      responses:
+        "202":
+          description: Code printed in the Core log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expires_at: { type: string, format: date-time }
+                  message: { type: string }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/pair:
+    post:
+      tags: [pairing]
+      security: []
+      summary: Redeem a pairing code for a device token
+      description: Codes are single-use and short-lived (default 5 min). 5 failures/min from one IP (or 30 globally) lock pairing for 15 minutes (logged at WARN). Tokens do not expire; revoke via DELETE /api/devices/{id}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              additionalProperties: false
+              properties:
+                code: { type: string, example: "ABCD-EF23", description: "Case-insensitive; dash optional" }
+                name: { type: string, maxLength: 100, example: "宝英的 MacBook" }
+                device_type: { type: string, maxLength: 32, example: desktop }
+      responses:
+        "201":
+          description: Paired. The token is shown only once; store it securely.
+          headers:
+            Cache-Control: { schema: { type: string, example: no-store } }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device: { $ref: "#/components/schemas/Device" }
+                  token: { type: string, example: "ymd_..." }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Invalid or expired code
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/pair/codes:
+    post:
+      tags: [pairing]
+      summary: Create a pairing code from an already-paired device (to show in its UI)
+      responses:
+        "201":
+          description: New code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string }
+                  expires_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/devices:
+    get:
+      tags: [pairing]
+      summary: List paired devices
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Device" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/me:
+    get:
+      tags: [pairing]
+      summary: The device owning the presented token
+      responses:
+        "200": { description: Device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/me/stream-quality:
+    get:
+      tags: [media]
+      summary: This device's default stream quality and the formats the server can produce
+      responses:
+        "200": { description: Quality, content: { application/json: { schema: { $ref: "#/components/schemas/StreamQuality" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [media]
+      summary: Set this device's default stream quality (used when /api/stream has no format/bitrate query)
+      description: Omitted bitrate selects the format's default preset. A format the server cannot currently produce is stored but streams fall back to the original.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format]
+              additionalProperties: false
+              properties:
+                format: { type: string, enum: [original, aac, mp3, opus, flac] }
+                bitrate_kbps: { type: integer, description: "mp3 128|192|256|320 (320); aac 128|192|256 (256); opus 96|128|160|192 (160); not allowed for original/flac" }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/StreamQuality" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/devices/{id}:
+    patch:
+      tags: [pairing]
+      summary: Rename a device and/or set admin (admin only)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                admin: { type: boolean }
+      responses:
+        "200": { description: Updated device, content: { application/json: { schema: { $ref: "#/components/schemas/Device" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Cannot demote the last admin }
+    delete:
+      tags: [pairing]
+      summary: Revoke a device (its token stops working immediately)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/library/scan:
+    post:
+      tags: [library]
+      summary: Start a library scan (incremental by mtime/size unless full=true)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                root: { type: string, description: "Limit to a configured root or a sub-directory of one" }
+                full: { type: boolean, default: false, description: "Re-read every file" }
+      responses:
+        "202":
+          description: Scan started
+          headers:
+            Location: { schema: { type: string } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A scan is already running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, const: scan_running }
+                  job: { $ref: "#/components/schemas/ScanJob" }
+    get:
+      tags: [library]
+      summary: Most recent scan job
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/library/scan/{id}:
+    get:
+      tags: [library]
+      summary: Scan job status
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Job, content: { application/json: { schema: { $ref: "#/components/schemas/ScanJob" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/artists:
+    get:
+      tags: [catalog]
+      summary: List artists
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [name, albums, tracks], default: name } }
+      responses:
+        "200":
+          description: Page of artists
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Artist" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/artists/{id}:
+    get:
+      tags: [catalog]
+      summary: Artist page (artist + albums + up to 20 tracks)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Artist page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artist: { $ref: "#/components/schemas/Artist" }
+                  albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums:
+    get:
+      tags: [catalog]
+      summary: List albums
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [artist, title, year, added], default: artist } }
+        - { name: favorite, in: query, schema: { type: boolean }, description: only favorites }
+        - { name: artist_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Page of albums
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Album" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/albums/{id}:
+    get:
+      tags: [catalog]
+      summary: Album page (album + tracks + credits + related albums)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Album page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  album: { $ref: "#/components/schemas/Album" }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+                  credits: { type: array, items: { $ref: "#/components/schemas/Credit" }, description: "Empty unless a metadata provider is enabled" }
+                  related_albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums/{id}/cover:
+    get:
+      tags: [media]
+      summary: Album cover image (optional sized thumbnail)
+      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
+      responses:
+        "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/tracks:
+    get:
+      tags: [catalog]
+      summary: List tracks
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Order"
+        - $ref: "#/components/parameters/Q"
+        - { name: sort, in: query, schema: { type: string, enum: [title, artist, album, added, duration, year, track, plays, last_played, rating], default: title, description: "default is track when album_id is set" } }
+        - { name: favorite, in: query, schema: { type: boolean }, description: only favorites }
+        - { name: album_id, in: query, schema: { type: string } }
+        - { name: artist_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Page of tracks
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/PageMeta"
+                  - type: object
+                    properties: { items: { type: array, items: { $ref: "#/components/schemas/Track" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tracks/{id}:
+    get:
+      tags: [catalog]
+      summary: Track
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Track, content: { application/json: { schema: { $ref: "#/components/schemas/Track" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/tracks/{id}/cover:
+    get:
+      tags: [media]
+      summary: Track cover (embedded or folder art) (optional sized thumbnail)
+      description: Without size/format the original is served. With size (long edge, default 300, max 2048) a pure-Go resized thumbnail is cached (jpeg|webp|png).
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 2048, default: 300 }, description: "Long edge in px; omit with format for the original" }
+        - { name: format, in: query, schema: { type: string, enum: [jpeg, webp, png], default: jpeg } }
+      responses:
+        "200": { description: Image, content: { image/*: { schema: { type: string, format: binary } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/search:
+    get:
+      tags: [catalog]
+      summary: Search artists, albums and tracks (substring match)
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 200 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        "200":
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artists: { type: array, items: { $ref: "#/components/schemas/Artist" } }
+                  albums: { type: array, items: { $ref: "#/components/schemas/Album" } }
+                  tracks: { type: array, items: { $ref: "#/components/schemas/Track" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/stream/{id}:
+    get:
+      tags: [media]
+      summary: Stream a track, original or transcoded (GET and HEAD)
+      description: |
+        The file path is resolved from the database only and must lie inside a configured
+        library root (symlinks resolved). Without `format`/`bitrate` the device's default
+        stream quality applies (original if unset or not producible).
+
+        * `original`: file bytes as stored; Range, ETag, Last-Modified, If-Range, If-None-Match.
+        * Transcoded (requires ffmpeg on the server; otherwise 400 `format_unavailable`):
+          a cached transcode is served like a file (Range etc.). A first-time transcode is
+          streamed progressively while it is written to the cache: 200, chunked,
+          `Accept-Ranges: none`, Range ignored. Re-request with Range once cached
+          (HEAD shows `Accept-Ranges: bytes`). Cache keyed by track + source size/mtime +
+          profile, LRU-evicted above YIMENG_CACHE_MAX_BYTES; concurrent transcodes limited.
+        * Requests that cannot improve on the source (flac→flac, mp3/opus at ≥ source bitrate)
+          serve the original. `X-Stream-Profile` names what was served (e.g. `mp3-320`, `original`).
+      security: [{ bearer: [] }, { queryToken: [] }]
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: format, in: query, schema: { type: string, enum: [original, aac, mp3, opus, flac] } }
+        - { name: bitrate, in: query, description: "kbps preset; see stream-quality. Default per format.", schema: { type: integer } }
+        - { name: Range, in: header, schema: { type: string, example: "bytes=0-" } }
+        - { name: If-Range, in: header, schema: { type: string } }
+      responses:
+        "200":
+          description: Whole file or progressive transcode
+          headers:
+            ETag: { schema: { type: string } }
+            X-Stream-Profile: { schema: { type: string, example: mp3-320 } }
+            Accept-Ranges: { schema: { type: string, enum: [bytes, none] } }
+          content: { audio/*: { schema: { type: string, format: binary } } }
+        "206": { description: Partial content (original or cached transcode), content: { audio/*: { schema: { type: string, format: binary } } } }
+        "304": { description: Not modified (If-None-Match) }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "416": { description: Range not satisfiable }
+        "503": { description: Transcode could not be started, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players:
+    get:
+      tags: [playback]
+      summary: All players (paired devices) with their session state
+      responses:
+        "200":
+          description: States
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/PlayerState" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/players/{id}:
+    get:
+      tags: [playback]
+      summary: Player state
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: State, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/players/{id}/queue:
+    get:
+      tags: [playback]
+      summary: Player queue
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Queue, content: { application/json: { schema: { $ref: "#/components/schemas/Queue" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [playback]
+      summary: Edit the queue (replace | append | insert | remove | move | clear); current item follows its track
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/QueueOp" } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/play:
+    post:
+      tags: [playback]
+      summary: "Play — replace queue (track_ids), jump (index) or resume"
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/PlayRequest" } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/pause:
+    post:
+      tags: [playback]
+      summary: Pause (stores extrapolated position)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/stop:
+    post:
+      tags: [playback]
+      summary: Stop (idle, position 0)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/next:
+    post:
+      tags: [playback]
+      summary: Next track (wraps when repeat=all, else idle at end)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/prev:
+    post:
+      tags: [playback]
+      summary: Previous track (restarts current if > 3 s in)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/seek:
+    post:
+      tags: [playback]
+      summary: Seek (playing -> buffering)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [position_ms], properties: { position_ms: { type: integer, minimum: 0 } } } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/repeat:
+    post:
+      tags: [playback]
+      summary: Set repeat mode
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [mode], properties: { mode: { type: string, enum: [off, all, one] } } } } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Queue is empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/players/{id}/shuffle:
+    post:
+      tags: [playback]
+      summary: Toggle shuffle (a persisted play-order view; the queue itself is not reordered)
+      description: |
+        Enabling generates a new random play order (fresh seed) with the current track first.
+        `reshuffle: true` while enabled generates a new order. Disabling continues in natural
+        queue order from the current track. With repeat=all, wrapping past the last track
+        reshuffles with a new seed. Queue edits keep the order consistent: `insert` places the
+        new tracks right after the current one (play next), `append` spreads them randomly over
+        the upcoming part, `move` keeps play order, `remove` of the current track continues at
+        its play-order successor, `replace` reshuffles. Broadcasts player.state + queue.updated.
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties: { enabled: { type: boolean }, reshuffle: { type: boolean, default: false } }
+      responses:
+        "200": { description: New state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /ws:
+    get:
+      tags: [playback]
+      summary: WebSocket event stream
+      security: [{ bearer: [] }, { queryToken: [] }]
+      description: |
+        Upgrade to WebSocket. Messages are JSON `{ "type": ..., "data": ... }`.
+        Server → client: `hello` {device_id, players: PlayerState[]}, `player.state` (PlayerState),
+        `queue.updated` (Queue), `scan.progress` (ScanJob), `metadata.patched` {entity_type, entity_id}, `pong`.
+        Client → server: `player.progress` {player_id?, position_ms} (first report after buffering
+        moves to playing; send every few seconds), `player.ended` {player_id?, track_id} (advances
+        the queue; stale track ids are ignored), `ping`. player_id defaults to the caller's device.
+        Slow consumers are disconnected (close 1013) and should reconnect and re-read state.
+      responses:
+        "101": { description: Switching protocols }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tracks/{id}/credits:
+    get:
+      tags: [catalog]
+      summary: Track credits (from opt-in metadata providers)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Credits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { items: { type: array, items: { $ref: "#/components/schemas/Credit" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/metadata/enrich:
+    post:
+      tags: [metadata]
+      summary: Schedule a background metadata pass (MusicBrainz; also runs after every scan)
+      description: Tracks without an enrichment record are looked up by MBID → ISRC → search (score ≥ 0.9, duration ±3 s). Credits are stored; MBIDs/ISRC are only filled when missing; albums without local art get a Cover Art Archive cover. Progress arrives as WS `metadata.patched`.
+      responses:
+        "202": { description: Scheduled }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { description: No provider enabled, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/settings/artist-split:
+    get:
+      tags: [settings]
+      summary: Artist split policy
+      responses:
+        "200": { description: Policy, content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [settings]
+      summary: Replace the artist split policy (re-merges the library synchronously)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } }
+      responses:
+        "200": { description: Saved (normalized), content: { application/json: { schema: { $ref: "#/components/schemas/SplitConfig" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/system/backups:
+    get:
+      tags: [system]
+      summary: List stored backups (admin)
+      responses:
+        "200": { description: Backups, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/BackupInfo" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [system]
+      summary: Create a backup now (admin). VACUUM INTO snapshot zipped; never contains the master key.
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/BackupInfo" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/system/backups/{name}:
+    parameters: [{ name: name, in: path, required: true, schema: { type: string, pattern: '^yimeng-[0-9]{8}-[0-9]{6}(-[a-z0-9-]{1,32})?\.ymbak$' } }]
+    get:
+      tags: [system]
+      summary: Download a stored backup (admin)
+      responses:
+        "200": { description: Zip archive, content: { application/zip: { schema: { type: string, format: binary } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [system]
+      summary: Delete a stored backup (admin)
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/system/export:
+    get:
+      tags: [system]
+      summary: Stream a fresh backup archive (admin)
+      description: Zip with library.db (VACUUM INTO; vault entries stay AES-256-GCM encrypted) and manifest.json. include_key=true adds the vault master key — the archive then decrypts stored credentials.
+      parameters: [{ name: include_key, in: query, schema: { type: boolean, default: false } }]
+      responses:
+        "200": { description: Zip archive, content: { application/zip: { schema: { type: string, format: binary } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/system/restore:
+    post:
+      tags: [system]
+      summary: Upload a backup archive to restore (admin); applied at the next start
+      description: The archive is validated (manifest, SQLite integrity_check, schema not newer than this Core) and staged. On the next start the current database is kept as `*.pre-restore-<ts>` and the staged one swapped in, then migrations run (with an automatic pre-migration backup).
+      requestBody: { required: true, content: { application/zip: { schema: { type: string, format: binary } } } }
+      responses:
+        "202": { description: Staged; restart required, content: { application/json: { schema: { type: object, properties: { restart_required: { type: boolean }, message: { type: string }, manifest: { type: object } } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/tracks/{id}/lyrics:
+    get:
+      tags: [catalog]
+      summary: Lyrics for a track (synced LRC or plain)
+      description: "Resolution: sidecar `<file>.lrc` beside the audio file (read on demand, inside library roots, GB18030 auto-detected) → embedded tag (USLT / LYRICS / UNSYNCEDLYRICS / ©lyr) → optional remote provider. Synced lyrics are preferred. LRC [offset] is already applied to time_ms."
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Lyrics, content: { application/json: { schema: { $ref: "#/components/schemas/Lyrics" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Track not found (not_found) or no lyrics (no_lyrics)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/scrobble:
+    post:
+      tags: [history]
+      summary: Record a play reported by a client that played the track itself
+      description: Plays from Core-managed players are recorded automatically when a track is left after ≥50% / 4 min (or ended). Scrobbles are stored as-is.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [track_id]
+              properties:
+                track_id: { type: string }
+                played_at: { type: string, format: date-time, description: "default now; must not be in the future" }
+                duration_ms: { type: integer, description: listened duration }
+                completed: { type: boolean }
+      responses:
+        "204": { description: Recorded }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/history:
+    get:
+      tags: [history]
+      summary: Listening history, newest first
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - { name: player_id, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        track_id: { type: string }
+                        player_id: { type: string }
+                        played_at: { type: string, format: date-time }
+                        duration_ms: { type: integer }
+                        completed: { type: boolean }
+                        source: { type: string, enum: [core, scrobble, subsonic] }
+                        title: { type: string }
+                        artist_name: { type: string }
+                        album_id: { type: string }
+                        album_title: { type: string }
+                        available: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/history/top:
+    get:
+      tags: [history]
+      summary: Most played tracks, albums or artists
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [track, album, artist], default: track } }
+        - { name: period, in: query, schema: { type: string, enum: [7d, 30d, 90d, 365d, all], default: all } }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Ranking
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, artist_name: { type: string }, plays: { type: integer } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/favorites:
+    get:
+      tags: [history]
+      summary: Favorites (newest first)
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [track, album, artist] } }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Favorites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object, properties: { type: { type: string }, id: { type: string }, name: { type: string }, created_at: { type: string, format: date-time }, available: { type: boolean } } } }
+
+  /api/favorites/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [history]
+      summary: Mark as favorite (event favorite.changed)
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [history]
+      summary: Remove favorite
+      responses:
+        "204": { description: Done }
+
+  /api/ratings/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    put:
+      tags: [history]
+      summary: Set a 1-5 rating; 0 clears (event rating.changed)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [rating], properties: { rating: { type: integer, minimum: 0, maximum: 5 } } } } } }
+      responses:
+        "204": { description: Done }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/playlists:
+    get:
+      tags: [playlists]
+      summary: All playlists (static and smart) with counts
+      responses:
+        "200": { description: Playlists, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Playlist" } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [playlists]
+      summary: Create a static (track_ids) or smart (rules) playlist
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlaylistInput" } } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/playlists/import:
+    post:
+      tags: [playlists]
+      summary: Import an M3U/M3U8 playlist (≤4 MiB) as a static playlist
+      description: Entries are matched against the library only (referenced files are never opened) — exact path, path relative to a library root, unique file name, then `#EXTINF` "artist - title".
+      parameters: [{ name: name, in: query, schema: { type: string } }]
+      requestBody: { required: true, content: { audio/x-mpegurl: { schema: { type: string } } } }
+      responses:
+        "201":
+          description: Imported
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  playlist: { $ref: "#/components/schemas/Playlist" }
+                  matched: { type: integer }
+                  unmatched: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/playlists/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [playlists]
+      summary: Playlist with a page of tracks (smart playlists are evaluated now)
+      parameters: [{ $ref: "#/components/parameters/Limit" }, { $ref: "#/components/parameters/Offset" }]
+      responses:
+        "200":
+          description: Playlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Playlist" }
+                  - type: object
+                    properties:
+                      missing: { type: integer, description: "static items whose track is currently not in the library" }
+                      tracks: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Track" } }, total: { type: integer }, limit: { type: integer }, offset: { type: integer } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [playlists]
+      summary: Rename / comment / change rules (smart only)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PlaylistInput" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [playlists]
+      summary: Delete a playlist
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/playlists/{id}/items:
+    post:
+      tags: [playlists]
+      summary: Edit items of a static playlist (event playlist.updated)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [op]
+              properties:
+                op: { type: string, enum: [replace, append, insert, remove, move, clear] }
+                track_ids: { type: array, items: { type: string } }
+                index: { type: integer }
+                from: { type: integer }
+                to: { type: integer }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/Playlist" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Smart playlists have no editable items, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/playlists/{id}/m3u:
+    get:
+      tags: [playlists]
+      summary: Export as extended M3U (UTF-8)
+      parameters:
+        - $ref: "#/components/parameters/Id"
+        - { name: paths, in: query, schema: { type: string, enum: [absolute, relative], default: absolute }, description: "relative = relative to the file's library root" }
+      responses:
+        "200": { description: M3U, content: { audio/x-mpegurl: { schema: { type: string } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/system:
+    get:
+      tags: [system]
+      summary: Version, library stats, scan state, ffmpeg/loudness caps, root diagnostics
+      description: |
+        Available to every paired device. Reports version/uptime, library counts, latest scan,
+        per-root reachability and free space, database size, transcoder formats and cache size,
+        loudness analysis queue, backup freshness, and self-diagnostics (permission errors,
+        low disk, low inotify watches, missing ffmpeg, stale backups). Query strings are never
+        written to the access log (tokens live there for media).
+      responses:
+        "200":
+          description: System info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string }
+                  go_version: { type: string }
+                  os: { type: string }
+                  arch: { type: string }
+                  started_at: { type: string, format: date-time }
+                  uptime_sec: { type: integer }
+                  schema_version: { type: integer }
+                  library:
+                    type: object
+                    properties:
+                      tracks: { type: integer }
+                      albums: { type: integer }
+                      artists: { type: integer }
+                      files: { type: integer }
+                      lossless_files: { type: integer }
+                      playlists: { type: integer }
+                      plays: { type: integer }
+                      duration_ms: { type: integer }
+                      bytes: { type: integer }
+                  scan: { type: object, description: latest scan job, nullable: true }
+                  roots:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        ok: { type: boolean }
+                        error: { type: string }
+                        files: { type: integer }
+                        free_bytes: { type: integer }
+                  database:
+                    type: object
+                    properties:
+                      size_bytes: { type: integer }
+                      wal_bytes: { type: integer }
+                      free_bytes: { type: integer }
+                  transcode:
+                    type: object
+                    properties:
+                      available: { type: boolean }
+                      formats: { type: array, items: { $ref: "#/components/schemas/FormatInfo" } }
+                      cache_bytes: { type: integer }
+                      cache_max_bytes: { type: integer }
+                  loudness:
+                    type: object
+                    properties:
+                      enabled: { type: boolean }
+                      pending: { type: integer }
+                      failed: { type: integer }
+                  backups:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      last: { type: string, format: date-time, nullable: true }
+                  devices:
+                    type: object
+                    properties:
+                      paired: { type: integer }
+                      active_24h: { type: integer }
+                  features: { type: object, additionalProperties: { type: boolean } }
+                  diagnostics:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        level: { type: string, enum: [info, warn, error] }
+                        code: { type: string }
+                        message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/players/{id}/transfer:
+    post:
+      tags: [playback]
+      summary: Move the queue and playhead to another player
+      description: |
+        The destination receives the queue, shuffle order, repeat mode, current index and
+        position. If the source was playing it arrives paused (the new device resumes).
+        The source becomes idle with an empty queue. Publishes player.transferred plus
+        player.state / queue.updated for both players. Devices with an open /ws are marked
+        online (device.online / device.offline events; hello includes the online set).
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties: { to: { type: string, description: destination player/device id } }
+      responses:
+        "200": { description: Destination state, content: { application/json: { schema: { $ref: "#/components/schemas/PlayerState" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Source queue empty, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/settings/library-roots:
+    get:
+      tags: [settings]
+      summary: Configured library roots (admin)
+      responses:
+        "200": { description: Roots, content: { application/json: { schema: { type: object, properties: { roots: { type: array, items: { type: string } } } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [settings]
+      summary: Replace library roots (admin; persisted, survives restart)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [roots], properties: { roots: { type: array, items: { type: string }, minItems: 1 } } } } } }
+      responses:
+        "200": { description: Saved }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/overrides/{type}/{id}:
+    parameters:
+      - { name: type, in: path, required: true, schema: { type: string, enum: [track, album, artist] } }
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [catalog]
+      summary: Read the metadata override patch for an entity
+      responses:
+        "200": { description: Patch }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [catalog]
+      summary: Set/merge a metadata override (admin; survives rescans)
+      description: Whitelisted fields only. Applied immediately and re-applied after every Merge.
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        "200": { description: Updated entity }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [catalog]
+      summary: Clear overrides (admin); next rescan restores tags
+      responses:
+        "204": { description: Cleared }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/albums/merge:
+    post:
+      tags: [catalog]
+      summary: Merge albums into a target (admin)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [target, sources], properties: { target: { type: string }, sources: { type: array, items: { type: string } } } } } } }
+      responses:
+        "200": { description: Target album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/albums/split:
+    post:
+      tags: [catalog]
+      summary: Move tracks from an album into a new (or existing) album (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source, track_ids]
+              properties:
+                source: { type: string }
+                track_ids: { type: array, items: { type: string } }
+                title: { type: string, description: required when creating a new album }
+                artist_name: { type: string }
+                target_id: { type: string, description: existing album; omit to create }
+      responses:
+        "200": { description: Destination album, content: { application/json: { schema: { $ref: "#/components/schemas/Album" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/metadata/providers:
+    get:
+      tags: [metadata]
+      summary: List enabled metadata providers (MusicBrainz when configured; lyrics providers are not listed here)
+      description: |
+        Returns the MetadataProvider registry (id, capability bitset, health).
+        Remote lyrics backends (lrclib, and stub netease/qq) are wired via
+        `metadata.providers` / `YIMENG_PROVIDERS` and consulted by
+        `GET /api/tracks/{id}/lyrics` when no local/embedded lyrics exist.
+      responses:
+        "200":
+          description: Providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, capabilities, health]
+                      properties:
+                        id: { type: string }
+                        capabilities: { type: integer, description: "Capability bitset (CapTrackTags=1, CapAlbumInfo=2, …)" }
+                        health: { type: string, enum: [ok, degraded, down] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/tracks/{id}/download:
+    get:
+      tags: [library]
+      summary: Download a track for offline caching
+      description: |
+        Serves the library original (or an optional transcode via `format`/`bitrate`)
+        with `Content-Disposition: attachment`. Prefers a complete file with
+        Content-Length and Range support — transcodes are materialized into the
+        cache before the response body starts. Query `access_token` is allowed
+        (same as stream/cover) for download managers that cannot set headers.
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: format, in: query, schema: { type: string, enum: [original, aac, mp3, opus, flac] } }
+        - { name: bitrate, in: query, schema: { type: integer } }
+        - { name: access_token, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Audio file
+          headers:
+            Content-Disposition: { schema: { type: string } }
+            X-Download-Profile: { schema: { type: string } }
+          content:
+            audio/*: { schema: { type: string, format: binary } }
+            application/octet-stream: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { description: Transcode failed }
+
+  /rest/ping.view:
+    get:
+      tags: [subsonic]
+      summary: Subsonic ping (full /rest surface is Subsonic-compatible; see README)
+      description: |
+        Auth with `u` (ignored) + `p=<device token>` or `p=enc:<hex>`, or Bearer.
+        Also getLicense, getMusicFolders, getIndexes, getArtists, getAlbumList2,
+        getAlbum, getSong, search3, getPlaylists, getPlaylist, getLyrics,
+        getCoverArt, stream, download. Responses are Subsonic XML or `f=json`.
+      parameters:
+        - { name: u, in: query, schema: { type: string } }
+        - { name: p, in: query, schema: { type: string }, description: "ymd_ device token" }
+        - { name: f, in: query, schema: { type: string, enum: [xml, json, jsonp] } }
+      security: []
+      responses:
+        "200": { description: "subsonic-response envelope" }
+
+  /api/sources:
+    get:
+      tags: [sources]
+      summary: List StreamSource accounts (health + linked status; never credentials)
+      responses:
+        "200":
+          description: Sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        health: { type: string, enum: [ok, degraded, down, needs_reauth] }
+                        login_methods: { type: array, items: { type: object } }
+                        linked: { type: boolean }
+                        account: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/sources/{id}:
+    get:
+      tags: [sources]
+      summary: Get one StreamSource
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: Source }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/sources/{id}/login:
+    post:
+      tags: [sources]
+      summary: Store credentials for a source (admin; cookie/password)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [qr, cookie, password, oauth, api_key] }
+                cookie: { type: string }
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200": { description: AccountInfo }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "501": { description: Method not supported by stub }
+  /api/sources/{id}/login/qr:
+    post:
+      tags: [sources]
+      summary: Start QR login (admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: QR challenge }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources/{id}/login/qr/{challenge}:
+    get:
+      tags: [sources]
+      summary: Poll QR login (admin)
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: challenge, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{ status }" }
+  /api/sources/{id}/credentials:
+    delete:
+      tags: [sources]
+      summary: Remove stored credentials (admin)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/sources/{id}/sync:
+    post:
+      tags: [sources]
+      summary: Sync remote library page (admin; stubs return 501)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: SyncPage }
+        "501": { description: Not implemented by stub }
+
+  /api/players/{id}/sleep:
+    post:
+      tags: [playback]
+      summary: Arm or clear a sleep timer (pauses when due)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                minutes: { type: integer, description: "0 clears; >0 arms that many minutes from now" }
+      responses:
+        "200": { description: Player state with sleep_until }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/players/{id}/radio:
+    post:
+      tags: [playback]
+      summary: Fill the queue with radio/auto-continue seeds (same artist, then genre)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [seed_track_id]
+              properties:
+                seed_track_id: { type: string }
+                limit: { type: integer, default: 25 }
+                replace: { type: boolean }
+      responses:
+        "200": { description: Player state }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin:
+    get:
+      tags: [admin-ui]
+      summary: Redirect to embedded web admin
+      security: []
+      responses:
+        "302": { description: Redirect to /admin/ }
+  /admin/:
+    get:
+      tags: [admin-ui]
+      summary: Embedded web admin + setup wizard (pair, system, health, stats)
+      security: []
+      responses:
+        "200": { description: HTML }
+  /api/library/health:
+    get:
+      tags: [library]
+      summary: Library health report (missing covers, genre gaps, format counts)
+      responses:
+        "200": { description: HealthReport }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/stats:
+    get:
+      tags: [library]
+      summary: Library listening stats (top tracks/artists)
+      responses:
+        "200": { description: Stats }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/stats/on-this-day:
+    get:
+      tags: [library]
+      summary: Tracks played on this calendar day in past years
+      parameters:
+        - { name: month, in: query, schema: { type: integer, minimum: 1, maximum: 12 } }
+        - { name: day, in: query, schema: { type: integer, minimum: 1, maximum: 31 } }
+      responses:
+        "200": { description: OnThisDay }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
+    queryToken: { type: apiKey, in: query, name: access_token }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+    Offset: { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Order: { name: order, in: query, schema: { type: string, enum: [asc, desc], default: asc } }
+    Q: { name: q, in: query, description: "Case-insensitive (ASCII) substring filter", schema: { type: string, maxLength: 200 } }
+  responses:
+    BadRequest: { description: Invalid request, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Unauthorized: { description: Missing / invalid / revoked device token, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: Admin device required, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    RateLimited:
+      description: Too many attempts (pairing) or HTTP rate limit exceeded
+      headers: { Retry-After: { schema: { type: integer } } }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+  schemas:
+    Credit:
+      type: object
+      properties:
+        track_id: { type: string }
+        role: { type: string, example: "instrument (guitar)" }
+        name: { type: string }
+        mb_id: { type: string }
+        source: { type: string, example: musicbrainz }
+    TrackRef:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        artist_name: { type: string }
+        album_id: { type: string }
+        album_title: { type: string }
+        duration_ms: { type: integer }
+        replaygain: { $ref: "#/components/schemas/ReplayGain" }
+    PlayerState:
+      type: object
+      properties:
+        player_id: { type: string }
+        transport: { type: string, enum: [idle, buffering, playing, paused] }
+        position_ms: { type: integer, description: "Extrapolated to updated_at while playing" }
+        updated_at: { type: string, format: date-time }
+        current_index: { type: integer, description: "-1 = none" }
+        queue_length: { type: integer }
+        repeat: { type: string, enum: [off, all, one] }
+        shuffle: { type: boolean }
+        online: { type: boolean, description: "true while the device holds an open /ws" }
+        track: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
+        lease: { oneOf: [{ $ref: "#/components/schemas/Lease" }, { type: "null" }] }
+        next_index: { type: integer, description: "Queue index that plays after the current track ends naturally (repeat/shuffle aware); -1 = none" }
+        next: { oneOf: [{ $ref: "#/components/schemas/TrackRef" }, { type: "null" }] }
+        next_lease: { oneOf: [{ $ref: "#/components/schemas/Lease" }, { type: "null" }], description: "Prefetch hint for gapless playback" }
+    Lease:
+      type: object
+      properties:
+        delivery: { type: string, enum: [direct, proxy, client_sdk] }
+        url: { type: string, example: /api/stream/tr_1a2b }
+        format: { type: string }
+        expires_at: { type: string, format: date-time }
+    Queue:
+      type: object
+      properties:
+        player_id: { type: string }
+        current_index: { type: integer }
+        shuffle: { type: boolean }
+        play_order: { type: array, items: { type: integer }, description: "Queue indices in play order (identity when not shuffled)" }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/TrackRef" }
+              - { type: object, properties: { index: { type: integer } } }
+    PlayRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        track_ids: { type: array, items: { type: string }, maxItems: 5000, description: Replace the queue }
+        index: { type: integer, minimum: 0, description: Start at / jump to this queue index }
+        position_ms: { type: integer, minimum: 0 }
+    QueueOp:
+      type: object
+      required: [op]
+      additionalProperties: false
+      properties:
+        op: { type: string, enum: [replace, append, insert, remove, move, clear] }
+        track_ids: { type: array, items: { type: string } }
+        index: { type: integer, description: "insert position / remove index" }
+        from: { type: integer }
+        to: { type: integer }
+    SplitConfig:
+      type: object
+      additionalProperties: false
+      description: |
+        Always-on separators: ; ； 、 / ／ and feat./ft./featuring (featured role).
+      properties:
+        exceptions: { type: array, maxItems: 1000, items: { type: string, maxLength: 200 }, description: "Names never split (case-insensitive), e.g. AC/DC" }
+        split_ampersand: { type: boolean, default: false, description: "Also split on & ＆" }
+        split_comma: { type: boolean, default: false, description: "Also split on , ，" }
+        extra_separators: { type: array, maxItems: 20, items: { type: string, maxLength: 8 }, description: 'Literal separators, spaces significant, e.g. " x "' }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, example: not_found }
+        message: { type: string }
+    PageMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+    Device:
+      type: object
+      properties:
+        id: { type: string, example: dev_0123abcd }
+        name: { type: string }
+        device_type: { type: string }
+        created_at: { type: string, format: date-time }
+        admin: { type: boolean, description: "Admin devices may use system/admin APIs. The first paired device is admin." }
+        last_seen_at: { type: string, format: date-time }
+    ScanJob:
+      type: object
+      properties:
+        id: { type: string }
+        roots: { type: array, items: { type: string } }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        total: { type: integer }
+        processed: { type: integer }
+        added: { type: integer }
+        updated: { type: integer }
+        unchanged: { type: integer }
+        removed: { type: integer }
+        failed: { type: integer }
+        error: { type: string }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+    ArtistRef:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [primary, feat] }
+    Artist:
+      type: object
+      properties:
+        id: { type: string, example: ar_1a2b3c }
+        name: { type: string }
+        sort_name: { type: string }
+        mb_id: { type: string }
+        album_count: { type: integer }
+        track_count: { type: integer }
+    Album:
+      type: object
+      properties:
+        id: { type: string, example: al_1a2b3c }
+        title: { type: string }
+        artist_name: { type: string }
+        artists: { type: array, items: { $ref: "#/components/schemas/ArtistRef" } }
+        year: { type: integer }
+        genre: { type: string }
+        track_count: { type: integer }
+        duration_ms: { type: integer }
+        mb_release_id: { type: string }
+        has_cover: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Track:
+      type: object
+      properties:
+        id: { type: string, example: tr_1a2b3c }
+        title: { type: string }
+        artist_name: { type: string }
+        artists: { type: array, items: { $ref: "#/components/schemas/ArtistRef" } }
+        album_id: { type: string }
+        album_title: { type: string }
+        disc_no: { type: integer }
+        track_no: { type: integer }
+        year: { type: integer }
+        genre: { type: string }
+        duration_ms: { type: integer }
+        isrc: { type: string }
+        mb_recording_id: { type: string }
+        format: { type: string, example: flac }
+        stream: { $ref: "#/components/schemas/StreamInfo" }
+        play_count: { type: integer }
+        last_played_at: { type: string, format: date-time }
+        favorite: { type: boolean }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        created_at: { type: string, format: date-time }
+    StreamInfo:
+      type: object
+      description: Properties of the source file that /api/stream serves as original (signal path)
+      properties:
+        format: { type: string, example: flac, description: container }
+        codec: { type: string, example: flac, description: "flac | mp3 | aac | alac | opus | vorbis | pcm | unknown" }
+        sample_rate: { type: integer, example: 96000 }
+        bit_depth: { type: integer, example: 24, description: lossless only }
+        channels: { type: integer, example: 2 }
+        bitrate_kbps: { type: integer, description: average }
+        lossless: { type: boolean }
+        size_bytes: { type: integer }
+        replaygain: { $ref: "#/components/schemas/ReplayGain" }
+    ReplayGain:
+      type: object
+      description: "ReplayGain of the source file: gains in dB relative to -18 LUFS, peaks linear. Clients apply gain (+ clip prevention via peak); Core never alters audio."
+      properties:
+        track_gain: { type: number, example: -7.5 }
+        track_peak: { type: number, example: 0.988 }
+        album_gain: { type: number }
+        album_peak: { type: number }
+        source: { type: string, enum: [tag, analyzed] }
+    StreamQuality:
+      type: object
+      properties:
+        format: { type: string, enum: [original, aac, mp3, opus, flac] }
+        bitrate_kbps: { type: integer }
+        available:
+          type: array
+          description: Formats this server can produce now (original always)
+          items:
+            type: object
+            properties:
+              format: { type: string }
+              lossless: { type: boolean }
+              bitrates: { type: array, items: { type: integer } }
+              default_bitrate: { type: integer }
+    BackupInfo:
+      type: object
+      properties:
+        name: { type: string, example: yimeng-20261021-120000-scheduled.ymbak }
+        size: { type: integer }
+        created_at: { type: string, format: date-time }
+        reason: { type: string, example: "scheduled | manual | pre-migrate-5" }
+    Lyrics:
+      type: object
+      properties:
+        track_id: { type: string }
+        source: { type: string, example: sidecar, description: "sidecar | embedded | provider name" }
+        synced: { type: boolean }
+        offset_ms: { type: integer }
+        lines: { type: array, items: { type: object, properties: { time_ms: { type: integer }, text: { type: string } } } }
+        text: { type: string }
+        meta: { type: object, additionalProperties: { type: string } }
+    Playlist:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        comment: { type: string }
+        smart: { type: boolean }
+        rules: { $ref: "#/components/schemas/SmartRules" }
+        track_count: { type: integer }
+        duration_ms: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PlaylistInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 200 }
+        comment: { type: string }
+        track_ids: { type: array, items: { type: string }, maxItems: 10000 }
+        rules: { $ref: "#/components/schemas/SmartRules" }
+    SmartRules:
+      type: object
+      description: |
+        Smart playlist rules, evaluated at read time.
+        Text fields (title, artist, album, albumartist, genre, format, codec): is, is_not, contains, not_contains, starts_with.
+        Number fields (year, duration [s], plays, rating, sample_rate, bit_depth): eq, ne, gt, gte, lt, lte, between [min,max].
+        Date fields (added, last_played): in_last / not_in_last (days), before / after (RFC 3339).
+        Bool fields (favorite, lossless): is true|false.
+      example: { match: all, rules: [{ field: genre, op: contains, value: jazz }, { field: added, op: in_last, value: 30 }], sort: added, order: desc, limit: 100 }
+      properties:
+        match: { type: string, enum: [all, any], default: all }
+        rules:
+          type: array
+          maxItems: 50
+          items: { type: object, required: [field, op, value], properties: { field: { type: string }, op: { type: string }, value: {} } }
+        sort: { type: string, description: "any /api/tracks sort, or random" }
+        order: { type: string, enum: [asc, desc] }
+        limit: { type: integer, maximum: 5000, default: 500 }
+    FormatInfo:
+      type: object
+      properties:
+        format: { type: string }
+        lossless: { type: boolean }
+        bitrates: { type: array, items: { type: integer } }
+        default_bitrate: { type: integer }
+

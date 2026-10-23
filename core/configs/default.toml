@@ -1,0 +1,52 @@
+# Copy and point YIMENG_CONFIG at it. Every key can also be overridden by env:
+# YIMENG_BIND, YIMENG_LIBRARY_ROOTS (comma-separated), YIMENG_DB_PATH,
+# YIMENG_VAULT_PATH, YIMENG_CACHE_DIR, YIMENG_CACHE_MAX_BYTES.
+[server]
+bind = "0.0.0.0:8741"
+mdns = true               # announce _yimeng._tcp on the LAN; env YIMENG_MDNS
+
+[library]
+roots = ["/music"]
+scan_on_start = true
+watch = "auto"            # auto | fsnotify | poll | off  (auto: poll on network mounts)
+watch_debounce = "5s"
+rescan_interval = "1h"    # used in poll mode or when watching is unavailable; "0s" = off
+
+[db]
+path = "/var/yimeng/library.db"
+
+[vault]
+path = "/var/yimeng/vault"
+# master_key_file = "/var/yimeng/master.key"
+
+[cache]
+dir = "/var/yimeng/cache"
+max_bytes = 2147483648     # transcode cache limit (LRU); env YIMENG_CACHE_MAX_BYTES
+
+[transcode]
+ffmpeg = ""                # "" = look up ffmpeg in PATH (absent -> original-only); path; or "off"
+concurrency = 0            # concurrent ffmpeg processes; 0 = NumCPU/2
+
+[auth]
+pair_code_ttl_seconds = 300
+
+[metadata]
+# Optional remote providers (lyrics / metadata). Default includes lrclib.
+# Set providers = [] to disable. NetEase/QQ are stubs (no safe public API).
+providers = ["lrclib"]
+
+[metadata.musicbrainz]
+enabled = false            # opt-in: fetch MBIDs, credits and Cover Art Archive covers (≤1 req/s)
+contact = ""               # REQUIRED when enabled: your email or URL (sent in the User-Agent)
+# base_url = "https://musicbrainz.org"
+
+[http]
+# tls_cert = "/path/to/cert.pem"
+# tls_key  = "/path/to/key.pem"
+# trusted_proxies = ["10.0.0.0/8", "127.0.0.1"]  # honour X-Forwarded-For from these
+# rate_limit = 50          # req/s per client (token or IP); 0 = off
+# rate_burst = 200
+# global_rate_limit = 0    # req/s whole server; 0 = off
+
+[subsonic]
+enabled = true  # /rest Subsonic API; password = paired device token (ymd_…)

@@ -1,0 +1,150 @@
+name: Yimeng
+options:
+  bundleIdPrefix: art.yimeng
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  Yimeng:
+    type: application
+    platform: iOS
+    sources:
+      - Yimeng
+      - Shared
+    dependencies:
+      - target: YimengWidgets
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        INFOPLIST_FILE: Config/Yimeng-Info.plist
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "把今日乐签保存到相册"
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "连接局域网里的飞牛 NAS / 音乐服务器"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_UIBackgroundModes: "audio"
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "听歌识曲时录制约 10 秒环境声音，发送到你的译梦服务端识别。"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+        INFOPLIST_KEY_UIRequiresFullScreen: NO
+        CODE_SIGNING_ALLOWED: NO
+        # Simulator: ad-hoc sign with entitlements so Keychain works (unsigned → errSecMissingEntitlement -34018).
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": Yimeng/YimengSim.entitlements
+        # Free personal team: App Groups only on simulator builds; device widgets fall back to placeholders.
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator*]": "$(inherited) YM_APP_GROUP"
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"
+  YimengWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - YimengWidgets
+      - Shared
+      - path: Yimeng/Assets.xcassets
+        buildPhase: resources
+    info:
+      path: YimengWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: 译梦
+        CFBundleShortVersionString: "0.3.6"
+        CFBundleVersion: "9"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.app.widgets
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGNING_ALLOWED: NO
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        SKIP_INSTALL: YES
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": YimengWidgets/YimengWidgetsSim.entitlements
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphonesimulator*]": "$(inherited) YM_APP_GROUP"
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"
+
+  YimengMac:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - YimengMac
+      - path: Yimeng
+        excludes:
+          - WidgetsIntents.swift
+          - DebugSnap.swift
+          - Recognize.swift
+          - Yueqian.swift
+          - OnboardingFlow.swift
+          - NowPlayingMore.swift
+          - CoreV30.swift
+          - CoreV31.swift
+          - NowPlayingView.swift
+      - path: Shared
+        excludes:
+          - "*Activity*"
+          - "*Widget*"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: art.yimeng.mac
+        PRODUCT_NAME: 译梦
+        SWIFT_VERSION: "5.0"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: 译梦
+        INFOPLIST_KEY_NSHumanReadableCopyright: "译梦 · 梦中的涂鸦"
+        INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGNING_ALLOWED: NO
+        MARKETING_VERSION: "0.3.6"
+        CURRENT_PROJECT_VERSION: "9"
+  YimengTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - YimengTests
+    dependencies:
+      - target: Yimeng
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yimeng.app/Yimeng"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  YimengUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - YimengUITests
+    dependencies:
+      - target: Yimeng
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Yimeng
+        TARGETED_DEVICE_FAMILY: "1,2"
+schemes:
+  Yimeng:
+    build:
+      targets:
+        Yimeng: all
+        YimengTests: [test]
+        YimengUITests: [test]
+    test:
+      targets:
+        - YimengTests
+        - YimengUITests
+  YimengMac:
+    build:
+      targets:
+        YimengMac: all
+    run:
+      config: Debug

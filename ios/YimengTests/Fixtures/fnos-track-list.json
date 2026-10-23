@@ -1,0 +1,6 @@
+{"code":0,"msg":"","data":{"total":2,"list":[
+ {"guid":"t1","title":"夜曲","coverId":"c1","duration":226000,"trackNo":3,"isFavorite":true,
+  "album":{"guid":"a1","name":"十一月的萧邦","coverId":"ca1"},"artists":[{"guid":"r1","name":"周杰伦"}],
+  "audioSpec":{"format":"FLAC","codec":"flac","bitrate":1411000,"sampleRate":44100,"bitDepth":16,"channel":2}},
+ {"guid":"t2","title":"无封面","duration":180000,"album":{"guid":"a2","name":"X","coverId":"ca2"},"artists":[{"guid":"r2","name":"A"},{"guid":"r3","name":"B"}]}
+]}}
