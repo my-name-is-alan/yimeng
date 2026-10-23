@@ -45,6 +45,8 @@ struct LiveLyricsView: View {
     let accent: Color
     var onConfigureCore: () -> Void = {}
     var onFonts: () -> Void = {}
+    /// Mac split NP: no dark panel / chips / desaturation — lyrics sit on DreamField.
+    var bare = false
     @ObservedObject private var store = LyricsStore.shared
     @ObservedObject private var fonts = LyricFontStore.shared
     @AppStorage("ym.lyricTrans") private var showTrans = true
@@ -58,7 +60,9 @@ struct LiveLyricsView: View {
         let ms = Int(time * 1000)
         let idx = store.index(at: ms)
         ZStack {
-            Color(red: 12 / 255, green: 10 / 255, blue: 14 / 255).opacity(0.52).ignoresSafeArea()
+            if !bare {
+                Color(red: 12 / 255, green: 10 / 255, blue: 14 / 255).opacity(0.52).ignoresSafeArea()
+            }
             switch store.phase {
             case .ready:
                 GeometryReader { g in
@@ -74,8 +78,8 @@ struct LiveLyricsView: View {
                                         .onTapGesture { Haptics.tick(); PlayerStore.shared.seek(to: Double(l.tMs) / 1000 + 0.01) }
                                 }
                             }
-                            .padding(.horizontal, 28)
-                            .padding(.vertical, g.size.height * 0.5)
+                            .padding(.horizontal, bare ? 4 : 28)
+                            .padding(.vertical, g.size.height * (bare ? 0.28 : 0.5))
                         }
                         .scrollDisabled(true)
                         .onAppear { proxy.scrollTo(idx, anchor: UnitPoint(x: 0, y: 0.36)) }
@@ -94,17 +98,19 @@ struct LiveLyricsView: View {
             case .empty(let msg):
                 LyricsEmpty(message: msg, showCoreHint: !NavidromeClient.core, onConfigure: onConfigureCore)
             }
-            VStack {
-                HStack(spacing: 8) {
+            if !bare {
+                VStack {
+                    HStack(spacing: 8) {
+                        Spacer()
+                        if store.hasTrans { chip("译", on: showTrans) { showTrans.toggle() } }
+                        if store.hasRoma { chip("罗", on: showRoma) { showRoma.toggle() } }
+                        chip("Aa", on: false) { onFonts() }
+                    }.padding(.horizontal, 20).padding(.top, 70)
                     Spacer()
-                    if store.hasTrans { chip("译", on: showTrans) { showTrans.toggle() } }
-                    if store.hasRoma { chip("罗", on: showRoma) { showRoma.toggle() } }
-                    chip("Aa", on: false) { onFonts() }
-                }.padding(.horizontal, 20).padding(.top, 70)
-                Spacer()
+                }
             }
         }
-        .saturation(0.55)
+        .saturation(bare ? 1 : 0.55)
     }
     private var lineStep: CGFloat { 62 + (showTrans && store.hasTrans ? 10 : 0) + (showRoma && store.hasRoma ? 10 : 0) }
 
@@ -122,8 +128,10 @@ struct LiveLyricsView: View {
                 else { Text(l.text) }
             }
             .font(fonts.font(size: (active ? 24 : 21) * k))
+            .foregroundStyle(active && bare ? accent : Color.primary)
+            .shadow(color: active && bare ? accent.opacity(0.25) : .clear, radius: 12)
             .background(alignment: .leading) {
-                if active && (l.words ?? []).isEmpty {
+                if active && (l.words ?? []).isEmpty && !bare {
                     RoundedRectangle(cornerRadius: 4).fill(accent.opacity(0.32)).padding(.vertical, 4).padding(.horizontal, -4)
                 }
             }

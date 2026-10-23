@@ -33,3 +33,15 @@
 ### 与定稿差距（壳）
 - 侧栏次级区（我喜欢/最近/本地）与顶栏搜索胶囊未按 HTML 细抠——保留真实 Tab 信息架构。
 - Home 内容区仍是现有乐签/FM/推荐，不是稿上的「乐馆」分区标签；壳层优先。
+
+## 已做（2026-10-23 · 第二刀全屏 NP）
+
+- `MacNowPlaying` 按 **nowplaying-v2**：左歌名/艺人 + `LiveLyricsView(bare:)`（当前行 lime）；右方封面 + `DoodleLayer` **强制 cloud/frame**（禁黑胶）；底 `MacNPTransport` **实心黑半透明**（非玻璃）+ 白进度条。
+- 迷你条点进全屏；chevron / Esc / 运输条「迷你」回壳。
+- ⌘= / ⌘- 歌词缩放（`ym.lyricScale`）。
+- 截图：仓库外 `~/ymshots/mac-np-v1.png`；盒上 `/workspace/ym-proto-review/mac-desk/mac-np-v1.png`。
+
+### 与定稿差距（NP）
+- 歌词区用真实 `LiveLyricsView`，空歌词时显示空态而非稿上假句。
+- 运输条右侧控件顺序/图标与 HTML 略有出入（队列/回壳），无独立「均衡器」入口（进音效设置）。
+- 涂鸦为运行时 DoodleLayer，非稿上静态 SVG 云朵路径，但同源 frame/cloud 规则。
