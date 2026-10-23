@@ -57,18 +57,33 @@ actor CoreClient {
         return i
     }
     /// Authenticated platform list (logged_in + capabilities). Prefer after login / token restore.
+    /// CodingBot: auth GET /api/v1/server/info returns CorePlatform shape; /api/plugins is Status (manifest).
     func refreshPlatforms() async {
-        struct Plugins: Decodable { var platforms: [CorePlatform]?; var items: [CorePlatform]? }
-        if let r: Plugins = try? await get("/api/plugins"), let p = r.platforms ?? r.items, !p.isEmpty {
+        if let i: CoreServerInfo = try? await get("/api/v1/server/info", auth: true), let p = i.platforms, !p.isEmpty {
             CoreState.setPlatforms(p); return
         }
-        if let arr: [CorePlatform] = try? await get("/api/plugins"), !arr.isEmpty {
-            CoreState.setPlatforms(arr); return
+        struct PluginStatus: Decodable {
+            struct Manifest: Decodable { var id: String?; var name: String?; var capabilities: [String]? }
+            struct Account: Decodable { var nickname: String?; var vip: Bool?; var avatarUrl: String? }
+            var manifest: Manifest?; var enabled: Bool?; var loggedIn: Bool?
+            var account: Account?; var accounts: [Account]?
         }
-        // Fall back: authenticated server info (some builds put per-user platforms here)
-        if let i: CoreServerInfo = try? await get("/api/v1/server/info", auth: true), let p = i.platforms, !p.isEmpty {
-            CoreState.setPlatforms(p)
+        struct PluginsWrap: Decodable { var items: [PluginStatus]?; var platforms: [CorePlatform]? }
+        guard let r: PluginsWrap = try? await get("/api/plugins") else { return }
+        if let p = r.platforms, !p.isEmpty { CoreState.setPlatforms(p); return }
+        let mapped: [CorePlatform] = (r.items ?? []).compactMap { s in
+            guard let id = s.manifest?.id, !id.isEmpty else { return nil }
+            var pl = CorePlatform(origin: id)
+            pl.name = s.manifest?.name
+            pl.enabled = s.enabled ?? true
+            pl.loggedIn = s.loggedIn ?? false
+            pl.capabilities = s.manifest?.capabilities
+            pl.nickname = s.account?.nickname ?? s.accounts?.first?.nickname
+            pl.vip = s.account?.vip ?? s.accounts?.first?.vip
+            pl.avatarUrl = s.account?.avatarUrl ?? s.accounts?.first?.avatarUrl
+            return pl
         }
+        if !mapped.isEmpty { CoreState.setPlatforms(mapped) }
     }
     func login(username: String, password: String) async throws {
         struct Body: Encodable { let username: String; let password: String; let deviceName: String; let deviceType: String }

@@ -64,13 +64,17 @@ final class YueqianStore: ObservableObject {
             } else { card = nil }
             return
         }
-        let lines = await LyricsStore.fetch(s).0
-        let quote = Self.highlight(lines.map(\.text)) ?? s.album ?? s.title
         let url = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 600)
-        card = Card(song: s, quote: quote, date: Date(), origin: origin, coverURL: url)
-        if let url { cover = try? await CoverCache.shared.fetch(url) }
-        YMWidgetBridge.card(card, cover: cover)
+        // Paint card first (album/title quote); lyrics fill in after — avoids stuck loading on slow lyric fetch.
+        card = Card(song: s, quote: s.album ?? s.title, date: Date(), origin: origin, coverURL: url)
         palette = PaperPalette.make(hex: s.colors ?? CoreState.colors(for: url), image: cover)
+        if let url { cover = try? await CoverCache.shared.fetch(url); palette = PaperPalette.make(hex: s.colors ?? CoreState.colors(for: url), image: cover) }
+        YMWidgetBridge.card(card, cover: cover)
+        let lines = await LyricsStore.fetch(s).0
+        if let q = Self.highlight(lines.map(\.text)) {
+            card = Card(song: s, quote: q, date: Date(), origin: origin, coverURL: url)
+            YMWidgetBridge.card(card, cover: cover)
+        }
     }
     /// Seeded by the date → same song all day, different tomorrow.
     static func dayPick() async -> NDSong? {
