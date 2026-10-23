@@ -65,8 +65,15 @@ object DreamMock {
     )
     val cloud = DreamTrack(
         id = "ym-0412", title = "云朵来信", artist = "王菲",
-        base = Color(0xFF7A2240),
-        blobs = listOf(Color(0xFFFF6A88), Color(0xFFFFB199), Color(0xFFFF9A5A), Color(0xFFFFD3C4)),
+        base = Color(0xFF1A1028),
+        blobs = listOf(Color(0xFF7A1CFF), Color(0xFFFF5FA8), Color(0xFF33D17A), Color(0xFFFFD36B)),
         bpm = 68, energy = 0.3, genre = "ballad",
+    )
+    /** Cover-derived warm stage palette (唱作人 red/gold) for live now-playing. */
+    val stage = DreamTrack(
+        id = "ym-stage", title = "舞台", artist = "",
+        base = Color(0xFF1A0C10),
+        blobs = listOf(Color(0xFFFF3D2E), Color(0xFFFFB000), Color(0xFF7A1CFF), Color(0xFFFF7A1A)),
+        bpm = 96, energy = 0.55, genre = "ballad",
     )
 }

@@ -32,7 +32,7 @@ enum class YMGlyph {
     // tabs / sidebar
     Home, Library, Collection, Search, Me,
     // player
-    Play, Pause, Previous, Next, Shuffle, Repeat, RepeatOne, Order, Lyrics, Queue, More,
+    Play, Pause, Previous, Next, Shuffle, Repeat, RepeatOne, Order, Lyrics, Queue, More, Eq, AddList,
     // actions
     Heart, HeartFill, Star, Download, Share, Settings, Back, Close, Recognize, Chevron,
 }
@@ -55,6 +55,8 @@ object YMIconPaths {
         YMGlyph.Lyrics -> quote()
         YMGlyph.Queue -> list()
         YMGlyph.More -> dots()
+        YMGlyph.Eq -> eq()
+        YMGlyph.AddList -> addList()
         YMGlyph.Heart -> heart(fill = false)
         YMGlyph.HeartFill -> heart(fill = true)
         YMGlyph.Star -> star()
@@ -237,6 +239,28 @@ object YMIconPaths {
         for (i in xs.indices) {
             moveTo(xs[i], 0.5f - hs[i] / 2); lineTo(xs[i], 0.5f + hs[i] / 2)
         }
+    }
+
+
+    /** Three horizontal doodle EQ sliders. */
+    private fun eq(): Path = Path().apply {
+        val ys = floatArrayOf(0.28f, 0.50f, 0.72f)
+        val ends = floatArrayOf(0.72f, 0.90f, 0.58f)
+        for (i in ys.indices) {
+            moveTo(0.10f, ys[i]); lineTo(ends[i], ys[i])
+            addOval(Rect(ends[i] - 0.05f, ys[i] - 0.05f, ends[i] + 0.05f, ys[i] + 0.05f))
+        }
+    }
+
+    /** Note + plus — add to playlist. */
+    private fun addList(): Path = Path().apply {
+        // list lines
+        moveTo(0.14f, 0.30f); lineTo(0.52f, 0.30f)
+        moveTo(0.14f, 0.50f); lineTo(0.48f, 0.50f)
+        moveTo(0.14f, 0.70f); lineTo(0.44f, 0.70f)
+        // plus
+        moveTo(0.68f, 0.36f); lineTo(0.88f, 0.36f)
+        moveTo(0.78f, 0.26f); lineTo(0.78f, 0.46f)
     }
 
     /** Scale unit-square path into pixel size. */
