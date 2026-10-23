@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -356,10 +357,10 @@ private fun PlayerPage(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             } else {
-                // Cover mode — top-anchored like HTML (NOT vertically centered)
-                Spacer(Modifier.height(18.dp))
+                // Cover mode — top-anchored; cover slightly tighter so chrome packs (skel6b)
+                Spacer(Modifier.height(12.dp))
                 PlayerCoverWithDoodle(track.coverUrl)
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(14.dp))
                 Text(
                     track.title,
                     color = Color.White,
@@ -397,12 +398,12 @@ private fun PlayerPage(
                 PlayerProgress(progress, posSec, durationSec, ::fmt) { progress = it }
             }
 
-            // Secondary 5 keys — tight under progress (HTML .sec mt 16 → keep close)
+            // Secondary 5 keys — tight under progress (HTML .sec mt 16)
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp)
-                    .padding(top = 12.dp),
+                    .padding(top = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -410,7 +411,8 @@ private fun PlayerPage(
                     YMIcon(
                         YMGlyph.Lyrics,
                         size = 22.dp,
-                        color = Color.White.copy(0.90f),
+                        weight = 1.70f,
+                        color = Color.White.copy(0.92f),
                         active = lyricsMode,
                         modifier = Modifier.clickable { lyricsMode = !lyricsMode },
                     )
@@ -424,14 +426,15 @@ private fun PlayerPage(
                         )
                     }
                 }
-                YMIcon(YMGlyph.Eq, size = 22.dp, color = Color.White.copy(0.90f))
-                YMIcon(YMGlyph.AddList, size = 22.dp, color = Color.White.copy(0.90f))
-                YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.90f))
-                YMIcon(YMGlyph.More, size = 22.dp, color = Color.White.copy(0.90f))
+                YMIcon(YMGlyph.Eq, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+                YMIcon(YMGlyph.AddList, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+                YMIcon(YMGlyph.Queue, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+                YMIcon(YMGlyph.More, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
             }
 
-            // Push transport to bottom (HTML .tr { margin-top: auto })
-            if (!lyricsMode) Spacer(Modifier.weight(1f))
+            // v41/skel6b: 五键紧贴进度下、运输条紧贴五键下 — fixed tight gap, never weight(1f)
+            if (!lyricsMode) Spacer(Modifier.height(16.dp))
+            else Spacer(Modifier.height(10.dp))
 
             // Transport: solid black 32% + white 8% 0.5dp stroke — NO glass (§8 / §6.1)
             PlayerTransportCapsule(paused = paused, onToggle = { paused = !paused })
@@ -446,18 +449,19 @@ private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit)
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircleChromeButton(onClick = onBack) {
+            // Soft bowed chevron (dream-doodle), not sharp Lucide V
             Canvas(Modifier.size(22.dp)) {
-                val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val stroke = Stroke(width = 2.1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 val c = Offset(size.width / 2f, size.height / 2f)
-                drawPath(
-                    Path().apply {
-                        moveTo(c.x - 6.dp.toPx(), c.y - 2.dp.toPx())
-                        lineTo(c.x, c.y + 4.dp.toPx())
-                        lineTo(c.x + 6.dp.toPx(), c.y - 2.dp.toPx())
-                    },
-                    color = Color.White,
-                    style = stroke,
-                )
+                val path = Path().apply {
+                    moveTo(c.x - 6.5.dp.toPx(), c.y - 2.dp.toPx())
+                    quadraticTo(c.x, c.y + 5.5.dp.toPx(), c.x + 6.5.dp.toPx(), c.y - 2.dp.toPx())
+                }
+                // crayon ghost
+                translate(0.7f * density, 0.8f * density) {
+                    drawPath(path, Color.White.copy(0.35f), style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                }
+                drawPath(path, Color.White, style = stroke)
             }
         }
         Text(
@@ -474,6 +478,7 @@ private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit)
             YMIcon(
                 if (liked) YMGlyph.HeartFill else YMGlyph.Heart,
                 size = 20.dp,
+                weight = 1.70f,
                 filled = liked,
                 color = if (liked) Color(0xFFFF5FA8) else Color.White,
             )
@@ -523,7 +528,7 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
     val pulse = kotlin.math.exp(-7.0 * 0.12).toFloat()
     val beatScale = 1f + 0.04f * 0.75f * pulse
 
-    Box(Modifier.size(330.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sx = size.width / 350f
             val sy = size.height / 350f
@@ -705,7 +710,7 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            YMIcon(YMGlyph.Repeat, size = 22.dp, color = Color.White.copy(0.90f))
+            YMIcon(YMGlyph.Repeat, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.90f))
             YMIcon(YMGlyph.Previous, size = 30.dp, filled = true, color = Color.White)
             Box(
                 Modifier
