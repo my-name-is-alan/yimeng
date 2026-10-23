@@ -136,9 +136,11 @@ struct DateTile: View {
     var body: some View {
         let day = Calendar.current.component(.day, from: Date())
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous).fill(tint.map { AnyShapeStyle($0.opacity(0.9)) } ?? AnyShapeStyle(Theme.fill(scheme)))
-            WobblyFrame(seed: UInt64(day)).stroke((tint == nil ? Theme.accent(scheme) : .white).opacity(0.8), lineWidth: 1.6)
-            Text("\(day)").font(.system(size: size * 0.44, weight: .black, design: .rounded)).foregroundStyle(tint == nil ? Theme.accent(scheme) : .white)
+            // Nil tint → accent/lime wash (never Theme.fill gray).
+            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous)
+                .fill(tint.map { AnyShapeStyle($0.opacity(0.9)) } ?? AnyShapeStyle(Theme.accent(scheme).opacity(scheme == .dark ? 0.35 : 0.28)))
+            WobblyFrame(seed: UInt64(day)).stroke((tint == nil ? Theme.lime : .white).opacity(0.85), lineWidth: 1.6)
+            Text("\(day)").font(.system(size: size * 0.44, weight: .black, design: .rounded)).foregroundStyle(tint == nil ? Theme.lime : .white)
         }.frame(width: size, height: size)
     }
 }

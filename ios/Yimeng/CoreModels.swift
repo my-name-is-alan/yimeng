@@ -5,6 +5,7 @@ import Foundation
 
 struct CoreCover: Codable, Hashable, Sendable {
     var url: String?
+    var sourceUrl: String?         // absolute CDN; url is often relative /api/v1/images/…
     var blurhash: String?
     var colors: [String]?          // 3 × "#rrggbb"
 }
@@ -104,6 +105,7 @@ struct CoreArtist: Codable, Hashable, Sendable {
     var name: String
     var albumCount: Int?
     var cover: CoreCover?
+    var pictureUrl: String?        // some platforms send picture_url
     var origin: String?
     var sortLetter: String?
     var topTracks: [CoreTrack]?

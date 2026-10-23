@@ -129,7 +129,7 @@ struct ArtistAvatar: View {
             Circle().fill(LinearGradient(colors: [tint.opacity(0.85), tint.opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing))
             Text(String(artist.name.prefix(1)).uppercased()).font(.system(size: size * 0.38, weight: .heavy)).foregroundStyle(.white.opacity(0.9))
             Crayon(shape: Circle(), color: .white.opacity(0.5), width: 1.2).padding(3)
-            ArtistImage(url: library.coverArtURL(id: artist.coverId ?? "ar-\(artist.id)", size: Int(size * 3)))
+            ArtistImage(url: artist.coverId.flatMap { library.coverArtURL(id: $0, size: Int(size * 3)) })
         }
         .frame(width: size, height: size).clipShape(Circle())
     }

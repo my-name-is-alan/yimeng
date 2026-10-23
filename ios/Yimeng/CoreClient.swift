@@ -255,6 +255,31 @@ actor CoreClient {
         return all
     }
     func suggest(_ q: String) async -> [String] { ((try? await get("/api/v1/search/suggest", query: ["q": q]) as CoreSuggest)?.items) ?? [] }
+    /// Platform hot search words (透传). Tries several paths; empty if Core has none yet.
+    struct HotWord: Decodable { var word: String; var tag: String?
+        init(word: String, tag: String? = nil) { self.word = word; self.tag = tag }
+        init(from d: Decoder) throws {
+            if let s = try? d.singleValueContainer().decode(String.self) { word = s; tag = nil; return }
+            let c = try d.container(keyedBy: K.self)
+            word = (try? c.decode(String.self, forKey: .word)) ?? (try? c.decode(String.self, forKey: .keyword)) ?? (try? c.decode(String.self, forKey: .query)) ?? ""
+            tag = (try? c.decode(String.self, forKey: .tag)) ?? (try? c.decode(String.self, forKey: .icon))
+        }
+        private enum K: String, CodingKey { case word, keyword, query, tag, icon }
+    }
+    func searchHot(_ origin: String) async throws -> [HotWord] {
+        struct Wrap: Decodable { var items: [HotWord]?; var words: [HotWord]?; var list: [HotWord]? }
+        let path = "/api/v1/online/\(origin)/search/hot"
+        if let w: Wrap = try? await get(path, cache: true) {
+            let a = w.items ?? w.words ?? w.list ?? []; if !a.isEmpty { return a.filter { !$0.word.isEmpty } }
+        }
+        if let w: Wrap = try? await get("/api/v1/search/hot", query: ["origin": origin], cache: true) {
+            let a = w.items ?? w.words ?? w.list ?? []; if !a.isEmpty { return a.filter { !$0.word.isEmpty } }
+        }
+        if let arr: [HotWord] = try? await get(path, cache: true) { return arr.filter { !$0.word.isEmpty } }
+        if let arr: [String] = try? await get(path, cache: true) { return arr.map { HotWord(word: $0, tag: nil) } }
+        return []
+    }
+
     func searchAll(_ q: String, online: Bool) async throws -> CoreSearch { try await get("/api/v1/search", query: ["q": q, "online": online ? "1" : "0"]) }
     func progress(ids: [String]) async -> [String: Int] {
         guard !ids.isEmpty, let l: CoreProgressList = try? await get("/api/v1/progress", query: ["ids": ids.joined(separator: ",")]) else { return [:] }

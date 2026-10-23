@@ -37,7 +37,9 @@ extension CoreClient {
     }
     nonisolated static func nd(_ a: CoreArtist) -> NDArtist {
         CoreState.remember(cover: a.cover)
-        var x = NDArtist(id: a.id, name: a.name, albumCount: a.albumCount, coverId: a.cover?.url)
+        // Keep list cover; prefer absolute/source when present. Do not hit /artists/{id} for art.
+        let coverId = a.cover?.sourceUrl ?? a.pictureUrl ?? a.cover?.url
+        var x = NDArtist(id: a.id, name: a.name, albumCount: a.albumCount, coverId: coverId)
         x.sortLetter = a.sortLetter
         x.origin = a.origin ?? splitExternal(a.id)?.origin
         return x

@@ -237,6 +237,8 @@ struct LibrarySearchView: View {
     @State private var songs: [NDSong] = []
     @State private var searching = false
     @State private var recognizing = false
+    @State private var guess: [String] = []
+    @State private var hot: [(word: String, tag: String?)] = []
     let cats: [(String, Color)] = [("周杰伦", Color(red: 0.48, green: 0.36, blue: 1)), ("独立摇滚", Color(red: 0.91, green: 0.36, blue: 1)),
                                    ("古风", Color(red: 0.23, green: 0.51, blue: 0.96)), ("电子", Color(red: 0.08, green: 0.72, blue: 0.65))]
     private var liveOnly: Bool { library.useLiveOnly }
@@ -345,28 +347,8 @@ struct LibrarySearchView: View {
                     if albums.isEmpty && songs.isEmpty && artists.isEmpty && !q.isEmpty && !searching {
                         EmptyState(kind: .search)
                     }
-                    if q.isEmpty && !library.albums.isEmpty {
-                        SectionHeader(title: "曲库 · 新入库", more: false)
-                        let newest = Array(library.albums.prefix(YMLayout.wide ? 24 : 16))
-                        if YMLayout.wide {
-                            let w = YMLayout.tile()
-                            LazyVGrid(columns: YMLayout.grid(), spacing: 20) {
-                                ForEach(newest) { a in
-                                    Button { state.path.append(.ndAlbum(a)) } label: {
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            RemoteCover(url: library.coverURL(a), size: w)
-                                            Text(a.name).font(.system(size: 14, weight: .semibold)).lineLimit(1).foregroundStyle(Theme.fg(scheme))
-                                            Text(a.artist).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
-                                        }
-                                    }.buttonStyle(.plain).albumMenu(a)
-                                }
-                            }.padding(.horizontal, Theme.margin)
-                        } else {
-                            RemoteAlbumRow(albums: newest)
-                        }
-                        Text(library.status)
-                            .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme))
-                            .padding(.horizontal, Theme.margin).padding(.top, 8)
+                    if q.isEmpty {
+                        searchDiscover
                     }
                 } else {
                     SectionHeader(title: "我的曲库", more: false).motionIn(0.12)
@@ -395,17 +377,107 @@ struct LibrarySearchView: View {
         }
         .sheet(isPresented: $recognizing) { RecognizeSheet().presentationDetents([.medium, .large]).presentationCornerRadius(28) }
         .task {
-            guard liveOnly, albums.isEmpty, q.isEmpty else { return }
-            albums = Array(library.albums.prefix(16))
+            guard liveOnly, q.isEmpty else { return }
+            await loadDiscover()
         }
+    }
+
+    @ViewBuilder private var searchDiscover: some View {
+        if !guess.isEmpty {
+            SectionHeader(title: "猜你喜欢", more: false)
+            let cols = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: cols, alignment: .leading, spacing: 14) {
+                ForEach(Array(guess.prefix(8).enumerated()), id: \.offset) { _, w in
+                    Button { applySearch(w) } label: {
+                        Text(w).font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.fg(scheme))
+                            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal, Theme.margin)
+        }
+        if !hot.isEmpty {
+            SectionHeader(title: "热搜榜", more: false)
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(hot.prefix(15).enumerated()), id: \.offset) { i, item in
+                    Button { applySearch(item.word) } label: {
+                        HStack(spacing: 12) {
+                            Text("\(i + 1)").font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundStyle(i < 3 ? Theme.accent(scheme) : Theme.secondary(scheme))
+                                .frame(width: 22, alignment: .leading)
+                            Text(item.word).font(.system(size: 15)).foregroundStyle(Theme.fg(scheme)).lineLimit(1)
+                            if let tag = item.tag, !tag.isEmpty {
+                                Text(tag).font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Theme.accent(scheme))
+                                    .padding(.horizontal, 5).padding(.vertical, 2)
+                                    .background(Capsule().strokeBorder(Theme.accent(scheme).opacity(0.55), lineWidth: 1))
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    if i < min(hot.count, 15) - 1 {
+                        Rectangle().fill(Theme.divider(scheme)).frame(height: 0.5).padding(.leading, 34)
+                    }
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.fill(scheme))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Theme.fg(scheme).opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+            )
+            .padding(.horizontal, Theme.margin)
+        }
+    }
+
+    private func applySearch(_ w: String) {
+        q = w
+        Task { await runSearch() }
+    }
+
+    private func loadDiscover() async {
+        // Prefer platform hot search; fall back to daily titles / artists as 猜你喜欢 + 热搜.
+        var g: [String] = [], h: [(String, String?)] = []
+        if NavidromeClient.core {
+            let origins = CoreState.platforms(can: "daily").map(\.origin)
+            let o = origins.first ?? "netease"
+            if let words = try? await CoreClient.shared.searchHot(o), !words.isEmpty {
+                h = words.prefix(15).map { ($0.word, $0.tag) }
+                g = Array(words.prefix(8).map(\.word))
+            }
+            if g.isEmpty {
+                let dailies = PlatformStore.shared.dailies
+                if dailies.isEmpty { await PlatformStore.shared.refresh() }
+                for d in PlatformStore.shared.dailies {
+                    for s in d.tracks.prefix(6) {
+                        g.append(s.title)
+                        if h.count < 15 { h.append((s.title, nil)) }
+                        if !s.artist.isEmpty, g.count < 8 { g.append(s.artist.components(separatedBy: " / ").first ?? s.artist) }
+                    }
+                }
+            }
+        }
+        // Dedupe preserve order
+        func uniq(_ a: [String]) -> [String] {
+            var seen = Set<String>(), out: [String] = []
+            for x in a { let k = x.lowercased(); if seen.insert(k).inserted { out.append(x) } }
+            return out
+        }
+        guess = uniq(g)
+        var seenH = Set<String>(); var hotOut: [(word: String, tag: String?)] = []
+        for (w, tag) in h {
+            let k = w.lowercased(); if seenH.insert(k).inserted { hotOut.append((w, tag)) }
+        }
+        hot = hotOut
     }
 
     private func runSearch() async {
         guard liveOnly else { return }
         let query = q.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            albums = Array(library.albums.prefix(16))
-            songs = []; artists = []
+            albums = []; songs = []; artists = []
+            await loadDiscover()
             return
         }
         searching = true

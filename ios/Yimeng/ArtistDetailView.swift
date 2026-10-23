@@ -13,15 +13,29 @@ struct ArtistDetailView: View {
     @State private var failed = false
     private var originHint: String? { artist.origin ?? (artist.id.contains(":") ? String(artist.id.split(separator: ":")[0]) : nil) }
 
-    private var heroURL: URL? { library.coverArtURL(id: artist.coverId ?? "ar-\(artist.id)", size: 800) }
+    private var heroURL: URL? {
+        if let id = artist.coverId ?? detail?.artist.coverId { return library.coverArtURL(id: id, size: 800) }
+        if let img = detail?.image, !img.isEmpty { return library.coverArtURL(id: img, size: 800) ?? URL(string: img) }
+        if let cid = detail?.albums.first?.coverId ?? detail?.albums.first?.id { return library.coverArtURL(id: cid, size: 800) }
+        return nil
+    }
     private var top: [NDSong] { (detail?.top.isEmpty == false ? detail!.top : fallbackTop) }
+    private var displayArtist: NDArtist {
+        var a = artist
+        if a.coverId == nil || a.coverId?.isEmpty == true {
+            if let img = detail?.image, !img.isEmpty { a.coverId = img }
+            else if let cid = detail?.albums.first?.coverId { a.coverId = cid }
+            else if let id = detail?.albums.first?.id { a.coverId = id }
+        }
+        return a
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .bottomLeading) {
                     ZStack {
-                        ArtistAvatar(artist: artist, size: 420).clipShape(Rectangle()).scaleEffect(1.1)
+                        ArtistAvatar(artist: displayArtist, size: 420).clipShape(Rectangle()).scaleEffect(1.1)
                     }
                     .frame(height: 360).frame(maxWidth: .infinity).clipped()
                     LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .clear, location: 0.35),

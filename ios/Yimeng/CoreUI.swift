@@ -94,7 +94,7 @@ struct ChartsView: View {
                 else if charts.isEmpty { EmptyState(kind: failed ? .network : .playlists).padding(.top, 30) }
                 LazyVStack(spacing: 14) {
                     ForEach(charts, id: \.id) { c in
-                        Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(c.id), title: c.name, subtitle: c.updateFrequency ?? "", origin: c.origin ?? origin, cover: c.cover?.url.flatMap(URL.init(string:))))) } label: { row(c) }
+                        Button { state.path.append(.trackList(TrackListSpec(kind: .playlist(c.id), title: c.name, subtitle: c.updateFrequency ?? "", origin: c.origin ?? origin, cover: LibraryStore.shared.coverArtURL(id: c.cover?.url ?? c.coverUrl ?? c.cover?.sourceUrl, size: 600)))) } label: { row(c) }
                             .buttonStyle(.plain)
                     }
                 }.padding(.horizontal, Theme.margin).padding(.top, 18)
@@ -119,11 +119,21 @@ struct ChartsView: View {
             if let o = r.origins, !o.isEmpty, o != origins { origins = o }
         } catch { charts = []; failed = true }
     }
+    private func chartURL(_ raw: String?) -> URL? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let u = LibraryStore.shared.coverArtURL(id: raw, size: 300) { return u }
+        // Absolute CDN only — never URL(string:) a bare relative path.
+        return raw.hasPrefix("http") ? URL(string: raw) : nil
+    }
     private func row(_ c: CoreChart) -> some View {
         let top = Array((c.preview ?? []).prefix(3))
-        let urls: [URL?] = top.isEmpty ? [c.cover?.url.flatMap(URL.init(string:))] : top.map { $0.cover?.url.flatMap(URL.init(string:)) }
+        // CodingBot: cover.url is relative /api/v1/images/… — must go through coverArtURL, not URL(string:).
+        let coverRaw = c.cover?.url ?? c.coverUrl ?? c.cover?.sourceUrl
+        let urls: [URL?] = top.isEmpty
+            ? [chartURL(coverRaw)]
+            : top.map { chartURL($0.cover?.url ?? $0.coverUrl ?? $0.cover?.sourceUrl) }
         return HStack(alignment: .center, spacing: 16) {
-            ChartCollage(urls: urls)
+            ChartCollage(urls: urls.isEmpty || urls.allSatisfy({ $0 == nil }) ? [chartURL(coverRaw)] : urls)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text(c.name).font(.system(size: 17, weight: .bold)).lineLimit(1).truncationMode(.middle)
@@ -399,24 +409,56 @@ struct PlatformHomeSections: View {
 struct DailyMixCard: View {
     let origin: String; let songs: [NDSong]
     @EnvironmentObject var state: AppState
+    @Environment(\.colorScheme) private var scheme
     static func spec(_ origin: String, _ songs: [NDSong]) -> TrackListSpec {
         TrackListSpec(kind: .daily, title: "\(CoreOrigin.label(origin)) · 每日推荐", subtitle: "\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号", origin: origin, songs: songs)
     }
+    private var wash: Color {
+        if let c = Color(hexString: songs.first?.colors?.first) { return c.opacity(0.55) }
+        // Soft lime/ink wash — never plain Theme.fill alone.
+        return Theme.accent(scheme).opacity(scheme == .dark ? 0.22 : 0.18)
+    }
     var body: some View {
         // Body opens the list; only the explicit play button plays.
-        HStack(spacing: 16) {
+        HStack(spacing: 14) {
             Button { state.path.append(.trackList(Self.spec(origin, songs))) } label: {
-            HStack(spacing: 16) {
-                DateTile(tint: Color(hexString: songs.first?.colors?.first))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号").font(.system(size: 13)).opacity(0.65)
-                    ForEach(songs.prefix(2)) { s in Text("\(s.title) — \(s.artist)").font(.system(size: 14)).lineLimit(1).truncationMode(.middle) }
+                HStack(spacing: 14) {
+                    ZStack {
+                        let covers = Array(songs.prefix(3))
+                        if covers.count >= 2 {
+                            ForEach(Array(covers.enumerated().reversed()), id: \.offset) { i, s in
+                                RemoteCover(url: LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 200), size: 72, corner: 12)
+                                    .rotationEffect(.degrees([0, 8, -7][i]))
+                                    .offset(x: [CGFloat(0), 10, -6][i], y: [CGFloat(0), 4, 8][i])
+                                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                            }
+                        } else {
+                            DateTile(size: 84, tint: Color(hexString: songs.first?.colors?.first) ?? Theme.accent(scheme).opacity(0.85))
+                        }
+                        WobblyFrame(seed: 11, inset: 2).stroke(Theme.fg(scheme).opacity(0.35), lineWidth: 1.4)
+                            .frame(width: 92, height: 92)
+                    }
+                    .frame(width: 96, height: 96)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(songs.count) 首 · 按 \(CoreOrigin.label(origin)) 账号").font(.system(size: 13)).opacity(0.7)
+                        ForEach(songs.prefix(2)) { s in
+                            Text("\(s.title) — \(s.artist)").font(.system(size: 14, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
-            }.contentShape(Rectangle())
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(wash)
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(Theme.fg(scheme).opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [6, 4])))
+                )
+                .contentShape(Rectangle())
             }.buttonStyle(.plain)
             Button { PlayerStore.shared.play(songs: songs.filter { !$0.isUnplayable }, startAt: 0) } label: {
-                YMIcon(glyph: .play, size: 28, weight: 2.0, filled: true)
+                PlayCircle(size: 44)
             }.buttonStyle(.plain)
         }
     }
