@@ -337,7 +337,7 @@ func (p *Plugin) ArtistAlbums(ctx context.Context, id string, offset, limit int)
 	}
 	// order 0 = latest (by publish date) — natural for an artist albums tab.
 	if err := p.one(ctx, "music.musichallAlbum.AlbumListServer", "GetAlbumList",
-		map[string]any{"singerMid": mid, "order": 0, "number": limit, "begin": offset}, &d); err != nil {
+		map[string]any{"singerMid": mid, "order": 0, "num": limit, "begin": offset}, &d); err != nil {
 		return online.ArtistAlbumList{}, err
 	}
 	out := online.ArtistAlbumList{Total: d.Total, Items: make([]online.Album, 0, len(d.AlbumList))}
@@ -347,7 +347,7 @@ func (p *Plugin) ArtistAlbums(ctx context.Context, id string, offset, limit int)
 		}
 		al := online.Album{
 			ID: fid("album-" + a.AlbumMid), Origin: origin, Title: a.AlbumName,
-			CoverURL: albumCover(a.AlbumMid, 500), TrackCount: a.TotalNum,
+			CoverURL: albumCover(a.AlbumMid, 500), TrackCount: a.TotalNum, // upstream often sends 0 here
 		}
 		if a.SingerName != "" {
 			al.Artists = []online.Ref{{ID: fid("artist-" + mid), Name: a.SingerName}}
@@ -357,6 +357,9 @@ func (p *Plugin) ArtistAlbums(ctx context.Context, id string, offset, limit int)
 			al.Year, _ = strconv.Atoi(a.PublishDate[:4])
 		}
 		out.Items = append(out.Items, al)
+		if len(out.Items) >= limit {
+			break
+		}
 	}
 	return out, nil
 }
