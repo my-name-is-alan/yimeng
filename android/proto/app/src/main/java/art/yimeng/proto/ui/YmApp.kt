@@ -18,6 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -344,7 +348,15 @@ private fun PlayerPage(
             intensity = 0.75f,
         )
 
+        // iOS NowPlayingView: lyrics full-bleed behind chrome; cover/info only in cover mode.
         // skel6c: Cover(weight=1) + chrome at bottom — never Spacer(weight) above transport
+        if (lyricsMode) {
+            PlayerLyricsFullscreen(
+                progress = progress,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
@@ -356,13 +368,8 @@ private fun PlayerPage(
             PlayerTopBar(liked = liked, onBack = onBack, onLike = { liked = !liked })
 
             if (lyricsMode) {
-                PlayerLyricsFullscreen(
-                    progress = progress,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                )
+                // Chrome spacer only — lyrics already fill middle behind (no empty cover slots)
+                Spacer(Modifier.weight(1f))
             } else {
                 Box(
                     Modifier
@@ -754,7 +761,9 @@ private fun PlayerLyricsFullscreen(
     progress: Float,
     modifier: Modifier = Modifier,
 ) {
-    // M6: past || active → theme accent (Lime); future → white ~0.4; smooth color advance
+    // Port of iOS LyricsView / LiveLyrics (yimeng-clean @ 0.3.8/19):
+    // uniform dark scrim α0.52 + left-aligned lines + current @ ~36% Y + soft edge MASK.
+    // Do NOT paint opaque top/bottom dark rectangles (those looked like empty cover slots).
     val lines = listOf(
         "那些欲言又止",
         "一笑带过",
@@ -763,54 +772,75 @@ private fun PlayerLyricsFullscreen(
         "梦还在心中不曾熄灭",
         "这一路走来不容易",
         "你和我曾并肩前进",
+        "风雨里也不曾回头",
+        "译梦还在心中",
+        "这一刻只为你停留",
     )
     val current = ((progress * lines.size).toInt()).coerceIn(0, lines.lastIndex)
-    Box(modifier) {
+    val scrim = Color(red = 12f / 255f, green = 10f / 255f, blue = 14f / 255f, alpha = 0.45f)
+    val density = LocalDensity.current
+    val lineStepPx = with(density) { 62.dp.toPx() }
+
+    BoxWithConstraints(modifier) {
+        val stageH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        // Uniform scrim (iOS Color(12,10,14).opacity(0.52)) — full bleed, no banded slots
+        Box(Modifier.fillMaxSize().background(scrim))
+
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(vertical = 24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 28.dp)
+                .offset {
+                    val y = stageH * 0.28f - current * lineStepPx
+                    IntOffset(0, y.toInt())
+                }
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    // iOS .mask(LinearGradient clear@0.08…black@0.2…black@0.8…clear@0.9)
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            // Keep iOS-style edge fade, but start later so middle stays lyrics-first
+                            0.00f to Color.Transparent,
+                            0.04f to Color.Transparent,
+                            0.12f to Color.Black,
+                            0.88f to Color.Black,
+                            0.96f to Color.Transparent,
+                            1.00f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top,
         ) {
             lines.forEachIndexed { i, line ->
                 val past = i < current
                 val active = i == current
+                val dist = kotlin.math.abs(i - current)
+                // M6 / LiveLyrics phone: past || active → Theme.lime; future → white ~0.4
                 val target = when {
-                    past -> Lime.copy(alpha = 0.90f)
                     active -> Lime
-                    else -> Color.White.copy(0.40f)
+                    past -> Lime.copy(alpha = 0.90f)
+                    else -> Color.White.copy(alpha = if (dist == 1) 0.55f else 0.40f)
                 }
                 val color by animateColorAsState(
                     targetValue = target,
                     animationSpec = tween(durationMillis = 550),
                     label = "lyricAccent",
                 )
-                val size = if (active) 24.sp else 21.sp
                 Text(
                     line,
                     color = color,
-                    fontSize = size,
+                    fontSize = if (active) 24.sp else 21.sp,
                     fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(vertical = 11.dp),
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 11.dp),
                 )
             }
         }
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color(0xFF0C0A0E).copy(0.72f),
-                        0.08f to Color(0xFF0C0A0E).copy(0.45f),
-                        0.20f to Color.Transparent,
-                        0.80f to Color.Transparent,
-                        0.90f to Color(0xFF0C0A0E).copy(0.45f),
-                        1f to Color(0xFF0C0A0E).copy(0.72f),
-                    ),
-                ),
-        )
     }
 }
 
