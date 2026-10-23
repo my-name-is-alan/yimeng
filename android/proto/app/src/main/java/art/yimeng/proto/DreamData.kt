@@ -66,8 +66,16 @@ object DreamMock {
     val cloud = DreamTrack(
         id = "ym-0412", title = "云朵来信", artist = "王菲",
         base = Color(0xFF1A1028),
-        blobs = listOf(Color(0xFF7A1CFF), Color(0xFFFF5FA8), Color(0xFF33D17A), Color(0xFFFFD36B)),
+        // order matches DreamField HTML stops: pink, gold, purple, green
+        blobs = listOf(Color(0xFFFF5FA8), Color(0xFFFFD36B), Color(0xFF7A1CFF), Color(0xFF33D17A)),
         bpm = 68, energy = 0.3, genre = "ballad",
+    )
+    /** Superdesign target-cover-v3 field (same stops as HTML mock). */
+    val coverV3 = DreamTrack(
+        id = "ym-cover-v3", title = "出现又离开 (Live)", artist = "梁博",
+        base = Color(0xFF1A1028),
+        blobs = listOf(Color(0xFFFF5FA8), Color(0xFFFFD36B), Color(0xFF7A1CFF), Color(0xFF33D17A)),
+        bpm = 96, energy = 0.55, genre = "ballad",
     )
     /** Cover-derived warm stage palette (唱作人 red/gold) for live now-playing. */
     val stage = DreamTrack(

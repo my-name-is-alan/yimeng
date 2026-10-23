@@ -141,21 +141,18 @@ object YMIconPaths {
         moveTo(0.78f, 0.18f); lineTo(0.90f, 0.30f); lineTo(0.78f, 0.42f)
     }
 
+    /** Dual-arrow repeat (target-cover-v3 / Lucide-like), crayon stroke via YMIcon. */
     private fun loop(one: Boolean): Path = Path().apply {
-        // Arc -40° → 220° (counterclockwise ≈ Swift clockwise:false)
-        val c = Offset(0.50f, 0.50f); val r = 0.32f
-        val start = Math.toRadians(-40.0)
-        val end = Math.toRadians(220.0)
-        val steps = 24
-        for (i in 0..steps) {
-            val t = i / steps.toFloat()
-            val a = start + (end - start) * t
-            val pt = Offset(c.x + cos(a).toFloat() * r, c.y + sin(a).toFloat() * r)
-            if (i == 0) moveTo(pt.x, pt.y) else lineTo(pt.x, pt.y)
-        }
-        moveTo(0.72f, 0.18f); lineTo(0.86f, 0.32f); lineTo(0.68f, 0.36f)
+        // top arrow → right then down-left hook
+        moveTo(0.70f, 0.18f); lineTo(0.88f, 0.34f); lineTo(0.70f, 0.34f)
+        moveTo(0.82f, 0.34f); lineTo(0.22f, 0.34f)
+        quadraticTo(0.12f, 0.34f, 0.12f, 0.46f)
+        // bottom arrow ← left then up-right hook
+        moveTo(0.30f, 0.82f); lineTo(0.12f, 0.66f); lineTo(0.30f, 0.66f)
+        moveTo(0.18f, 0.66f); lineTo(0.78f, 0.66f)
+        quadraticTo(0.88f, 0.66f, 0.88f, 0.54f)
         if (one) {
-            moveTo(0.46f, 0.38f); lineTo(0.52f, 0.38f); lineTo(0.52f, 0.68f)
+            moveTo(0.46f, 0.42f); lineTo(0.52f, 0.42f); lineTo(0.52f, 0.58f)
         }
     }
 
@@ -164,11 +161,25 @@ object YMIconPaths {
         moveTo(0.62f, 0.32f); lineTo(0.82f, 0.50f); lineTo(0.62f, 0.68f)
     }
 
+    /** Lyrics — speech bubble with text lines (target-cover-v3). */
     private fun quote(): Path = Path().apply {
-        addOval(Rect(0.18f, 0.22f, 0.40f, 0.44f))
-        moveTo(0.28f, 0.44f); lineTo(0.28f, 0.72f); lineTo(0.42f, 0.72f)
-        addOval(Rect(0.55f, 0.22f, 0.77f, 0.44f))
-        moveTo(0.65f, 0.44f); lineTo(0.65f, 0.72f); lineTo(0.79f, 0.72f)
+        // rounded bubble body
+        moveTo(0.18f, 0.22f)
+        lineTo(0.82f, 0.22f)
+        quadraticTo(0.90f, 0.22f, 0.90f, 0.30f)
+        lineTo(0.90f, 0.58f)
+        quadraticTo(0.90f, 0.66f, 0.82f, 0.66f)
+        lineTo(0.42f, 0.66f)
+        lineTo(0.28f, 0.82f)
+        lineTo(0.32f, 0.66f)
+        lineTo(0.18f, 0.66f)
+        quadraticTo(0.10f, 0.66f, 0.10f, 0.58f)
+        lineTo(0.10f, 0.30f)
+        quadraticTo(0.10f, 0.22f, 0.18f, 0.22f)
+        close()
+        // text lines
+        moveTo(0.24f, 0.36f); lineTo(0.72f, 0.36f)
+        moveTo(0.24f, 0.48f); lineTo(0.66f, 0.48f)
     }
 
     private fun list(): Path = Path().apply {
@@ -242,13 +253,15 @@ object YMIconPaths {
     }
 
 
-    /** Three horizontal doodle EQ sliders. */
+    /** Three vertical doodle EQ faders (target-cover-v3). */
     private fun eq(): Path = Path().apply {
-        val ys = floatArrayOf(0.28f, 0.50f, 0.72f)
-        val ends = floatArrayOf(0.72f, 0.90f, 0.58f)
-        for (i in ys.indices) {
-            moveTo(0.10f, ys[i]); lineTo(ends[i], ys[i])
-            addOval(Rect(ends[i] - 0.05f, ys[i] - 0.05f, ends[i] + 0.05f, ys[i] + 0.05f))
+        // x positions + knob y + full track top/bottom
+        val xs = floatArrayOf(0.28f, 0.50f, 0.72f)
+        val knobs = floatArrayOf(0.42f, 0.34f, 0.50f)
+        for (i in xs.indices) {
+            val x = xs[i]
+            moveTo(x, 0.16f); lineTo(x, 0.84f)
+            addOval(Rect(x - 0.07f, knobs[i] - 0.07f, x + 0.07f, knobs[i] + 0.07f))
         }
     }
 

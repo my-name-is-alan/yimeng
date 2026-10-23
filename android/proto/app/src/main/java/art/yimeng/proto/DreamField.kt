@@ -66,22 +66,23 @@ fun DreamField(
             base + breathe * 0.08f * sin(tSec * 0.28f + i * 2.1f) * h
 
         val b = track.blobs
-        // Layered soft blobs — multi-color, not a single dead wash
-        softBlob(b[0], Offset(cx(0, w * 0.18f), cy(0, h * 0.12f)), w * 0.72f, peak = 0.62f)
-        softBlob(b[1], Offset(cx(1, w * 0.82f), cy(1, h * 0.28f)), w * 0.68f, peak = 0.55f)
-        softBlob(b[2], Offset(cx(2, w * 0.12f), cy(2, h * 0.62f)), w * 0.70f, peak = 0.50f)
-        softBlob(b[3], Offset(cx(3, w * 0.78f), cy(3, h * 0.82f)), w * 0.65f, peak = 0.48f)
-        // Extra mid-layer for mesh density (mix of blob0/2)
+        // target-cover-v3.html radial stops: pink@20%30%, gold@80%20%, purple@50%80%, green@10%90%
+        // blobs[] order expected: [pink, gold, purple, green] for mock match (home orange still works)
+        softBlob(b[0], Offset(cx(0, w * 0.20f), cy(0, h * 0.26f)), w * 0.95f, peak = 0.85f)
+        softBlob(b[1], Offset(cx(1, w * 0.82f), cy(1, h * 0.16f)), w * 0.90f, peak = 0.78f)
+        softBlob(b[2], Offset(cx(2, w * 0.50f), cy(2, h * 0.80f)), w * 1.00f, peak = 0.72f)
+        softBlob(b[3], Offset(cx(3, w * 0.10f), cy(3, h * 0.90f)), w * 0.75f, peak = 0.45f)
+        // Soft mid wash — pink lift behind cover
         softBlob(
             b[0].copy(alpha = 1f),
-            Offset(cx(4, w * 0.50f), cy(4, h * 0.45f)),
+            Offset(cx(4, w * 0.48f), cy(4, h * 0.40f)),
             w * 0.55f,
-            peak = 0.35f,
+            peak = 0.38f,
         )
         softBlob(
-            b.getOrElse(2) { b[0] }.copy(alpha = 1f),
-            Offset(cx(5, w * 0.42f), cy(5, h * 0.72f)),
-            w * 0.50f,
+            b[1].copy(alpha = 1f),
+            Offset(cx(5, w * 0.62f), cy(5, h * 0.55f)),
+            w * 0.48f,
             peak = 0.30f,
         )
 

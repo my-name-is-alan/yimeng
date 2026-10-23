@@ -47,6 +47,11 @@ import coil.compose.AsyncImage
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.border
 
 private val Lime = Color(0xFFC8F542)
 private val Base = Color(0xFF0A0A0C)
@@ -312,19 +317,18 @@ private fun PlayerPage(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Pixel targets from sd-np/target-cover-v3.html (390×844 canvas)
     var progress by remember(track.id) { mutableFloatStateOf(0.35f) }
     var liked by remember(track.id) { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var lyricsMode by remember { mutableStateOf(false) }
-    val durationSec = 403
+    val durationSec = 403 // 6:43
     val posSec = (progress * durationSec).toInt()
     fun fmt(s: Int) = "%d:%02d".format(s / 60, s % 60)
-    // Cover-warm multi-color field (not a single dead wash)
-    val dream = DreamMock.stage
-    val beatAgo = 0.12f // demo onset lead
+    val dream = DreamMock.coverV3.copy(title = track.title, artist = track.artist)
+    val beatAgo = 0.12f
 
     Box(modifier.background(Base)) {
-        // DreamField ONLY breathes — chrome outside never scales (§6.1)
         DreamField(
             dream,
             Modifier.fillMaxSize(),
@@ -336,67 +340,69 @@ private fun PlayerPage(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(top = 10.dp, bottom = 16.dp),
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                // HTML .c pad 20 / bottom ~34 including home — nav inset already applied
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PlayerTopBar(liked = liked, onBack = onBack, onLike = { liked = !liked })
 
             if (lyricsMode) {
-                // FULLSCREEN lyrics (§v32) — not a card on cover page
                 PlayerLyricsFullscreen(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .padding(horizontal = 28.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             } else {
-                // Cover mode
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
+                // Cover mode — top-anchored like HTML (NOT vertically centered)
+                Spacer(Modifier.height(18.dp))
+                PlayerCoverWithDoodle(track.coverUrl)
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    track.title,
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    track.artist,
+                    color = Color.White.copy(0.60f),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PlayerCoverWithDoodle(track.coverUrl)
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        track.title,
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 28.dp),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(track.artist, color = Color.White.copy(0.65f), fontSize = 14.sp)
-                    Spacer(Modifier.height(10.dp))
-                    // Quality badge pills + mood/BPM (v24)
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        QualityPill("FLAC 24/96", accentDot = true)
-                        QualityPill("Hi-Res")
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "舞台 · 夜晚 · ${dream.bpm} BPM",
-                        color = Color.White.copy(0.40f),
-                        fontSize = 11.sp,
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    PlayerProgress(progress, posSec, durationSec, ::fmt) { progress = it }
+                    QualityPill("FLAC 24/96", accentDot = true)
+                    QualityPill("Hi-Res", mutedFill = true)
                 }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "舞台 · 夜晚 · ${dream.bpm} BPM",
+                    color = Color.White.copy(0.50f),
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(14.dp))
+                PlayerProgress(progress, posSec, durationSec, ::fmt) { progress = it }
             }
 
-            // Secondary 5 doodle YMIcons — first = lyrics bubble
+            // Secondary 5 keys — tight under progress (HTML .sec mt 16 → keep close)
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 36.dp, vertical = 10.dp),
+                    .padding(horizontal = 18.dp)
+                    .padding(top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -404,7 +410,7 @@ private fun PlayerPage(
                     YMIcon(
                         YMGlyph.Lyrics,
                         size = 22.dp,
-                        color = Color.White.copy(0.9f),
+                        color = Color.White.copy(0.90f),
                         active = lyricsMode,
                         modifier = Modifier.clickable { lyricsMode = !lyricsMode },
                     )
@@ -418,11 +424,14 @@ private fun PlayerPage(
                         )
                     }
                 }
-                YMIcon(YMGlyph.Eq, size = 22.dp, color = Color.White.copy(0.85f))
-                YMIcon(YMGlyph.AddList, size = 22.dp, color = Color.White.copy(0.85f))
-                YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.85f))
-                YMIcon(YMGlyph.More, size = 22.dp, color = Color.White.copy(0.85f))
+                YMIcon(YMGlyph.Eq, size = 22.dp, color = Color.White.copy(0.90f))
+                YMIcon(YMGlyph.AddList, size = 22.dp, color = Color.White.copy(0.90f))
+                YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.90f))
+                YMIcon(YMGlyph.More, size = 22.dp, color = Color.White.copy(0.90f))
             }
+
+            // Push transport to bottom (HTML .tr { margin-top: auto })
+            if (!lyricsMode) Spacer(Modifier.weight(1f))
 
             // Transport: solid black 32% + white 8% 0.5dp stroke — NO glass (§8 / §6.1)
             PlayerTransportCapsule(paused = paused, onToggle = { paused = !paused })
@@ -433,29 +442,30 @@ private fun PlayerPage(
 @Composable
 private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircleChromeButton(onClick = onBack) {
-            Canvas(Modifier.size(16.dp)) {
-                val stroke = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+            Canvas(Modifier.size(22.dp)) {
+                val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 val c = Offset(size.width / 2f, size.height / 2f)
                 drawPath(
                     Path().apply {
-                        moveTo(c.x - 5.5.dp.toPx(), c.y - 2.dp.toPx())
-                        lineTo(c.x, c.y + 3.5.dp.toPx())
-                        lineTo(c.x + 5.5.dp.toPx(), c.y - 2.dp.toPx())
+                        moveTo(c.x - 6.dp.toPx(), c.y - 2.dp.toPx())
+                        lineTo(c.x, c.y + 4.dp.toPx())
+                        lineTo(c.x + 6.dp.toPx(), c.y - 2.dp.toPx())
                     },
-                    color = Color.White.copy(0.9f),
+                    color = Color.White,
                     style = stroke,
                 )
             }
         }
         Text(
             "译梦 · 梦境 CLOUD",
-            color = Color.White.copy(0.82f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
+            color = Color.White.copy(0.80f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.12.em,
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
             maxLines = 1,
@@ -463,9 +473,9 @@ private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit)
         CircleChromeButton(onClick = onLike) {
             YMIcon(
                 if (liked) YMGlyph.HeartFill else YMGlyph.Heart,
-                size = 18.dp,
+                size = 20.dp,
                 filled = liked,
-                color = if (liked) Color(0xFFFF5FA8) else Color.White.copy(0.9f),
+                color = if (liked) Color(0xFFFF5FA8) else Color.White,
             )
         }
     }
@@ -475,7 +485,7 @@ private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit)
 private fun CircleChromeButton(onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
         Modifier
-            .size(36.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .background(Color.Black.copy(0.28f))
             .clickable(onClick = onClick),
@@ -484,51 +494,42 @@ private fun CircleChromeButton(onClick: () -> Unit, content: @Composable () -> U
 }
 
 @Composable
-private fun QualityPill(label: String, accentDot: Boolean = false) {
+private fun QualityPill(label: String, accentDot: Boolean = false, mutedFill: Boolean = false) {
     Row(
         Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(0.08f))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .background(if (mutedFill) Color.White.copy(0.10f) else Color.Black.copy(0.20f))
+            .border(1.dp, Color.White.copy(0.20f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (accentDot) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF33D17A)))
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Lime))
         }
-        Text(label, color = Color.White.copy(0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.08.em,
+        )
     }
 }
 
 @Composable
 private fun PlayerCoverWithDoodle(coverUrl: String?) {
-    // Living cloud/moon/star frame ONLY around cover; white 50% glow r=4; cover shadow black 35%
-    var tSec by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
-        val start = withFrameNanos { it }
-        while (true) {
-            withFrameNanos { now ->
-                tSec = (now - start) / 1_000_000_000f
-            }
-        }
-    }
+    // HTML .art 330×330 on 390w; keep ratio, slightly tighter on tall phones
     val pulse = kotlin.math.exp(-7.0 * 0.12).toFloat()
-    val beatScale = 1f + 0.04f * 0.75f * pulse // beat scale ONLY on doodle (§6.1)
+    val beatScale = 1f + 0.04f * 0.75f * pulse
 
-    Box(Modifier.size(310.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(330.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val cover = 232.dp.toPx()
-            val left = (size.width - cover) / 2f
-            val top = (size.height - cover) / 2f
-            val rc = Rect(left, top, left + cover, top + cover)
-            val fr = Rect(rc.left - 12f, rc.top - 12f, rc.right + 12f, rc.bottom + 12f)
-            val path = Path().apply {
-                addPath(DoodlePaths.frame(fr, seed = 41uL, jitter = 3.2f))
-                addPath(DoodlePaths.cloud(Offset(left + cover * 0.55f, top - 14.dp.toPx()), 70.dp.toPx()))
-                addPath(DoodlePaths.cloud(Offset(left - 18.dp.toPx(), top + cover * 0.55f), 52.dp.toPx()))
-                addPath(DoodlePaths.sparkle(Offset(left + cover + 6.dp.toPx(), top + 16.dp.toPx()), 8.dp.toPx()))
-                addPath(DoodlePaths.moon(Offset(left + 6.dp.toPx(), top + cover + 4.dp.toPx()), 10.dp.toPx()))
-            }
+            val sx = size.width / 350f
+            val sy = size.height / 350f
+            fun tx(x: Float) = x * sx
+            fun ty(y: Float) = y * sy
+            val path = coverDoodlePath(::tx, ::ty)
             val pivot = Offset(size.width / 2f, size.height / 2f)
             drawIntoCanvas { canvas ->
                 canvas.save()
@@ -538,50 +539,98 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
                 val glow = Paint().asFrameworkPaint().apply {
                     isAntiAlias = true
                     style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 1.8.dp.toPx()
+                    strokeWidth = 1.15.dp.toPx()
                     strokeCap = android.graphics.Paint.Cap.ROUND
                     strokeJoin = android.graphics.Paint.Join.ROUND
-                    color = android.graphics.Color.argb(128, 255, 255, 255) // white 50%
-                    maskFilter = BlurMaskFilter(4.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
+                    color = android.graphics.Color.argb(110, 255, 255, 255)
+                    maskFilter = BlurMaskFilter(3.5.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
                 }
                 canvas.nativeCanvas.drawPath(path.asAndroidPath(), glow)
                 canvas.restore()
             }
-            // Main stroke
             scale(beatScale, beatScale, pivot) {
                 drawPath(
                     path,
-                    color = Color.White.copy(0.6f + 0.3f * 0.75f),
-                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    color = Color.White.copy(0.82f),
+                    style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
+                val sparkle = Path().apply {
+                    moveTo(tx(290f), ty(20f))
+                    quadraticTo(tx(292f), ty(30f), tx(300f), ty(32f))
+                    quadraticTo(tx(292f), ty(34f), tx(290f), ty(44f))
+                    quadraticTo(tx(288f), ty(34f), tx(280f), ty(32f))
+                    quadraticTo(tx(288f), ty(30f), tx(290f), ty(20f))
+                    close()
+                }
+                drawPath(sparkle, color = Color.White.copy(0.95f))
             }
         }
         CoverImage(
             coverUrl,
             Modifier
-                .size(232.dp)
+                .size(278.dp)
                 .drawBehind {
                     drawIntoCanvas { canvas ->
                         val paint = Paint().asFrameworkPaint().apply {
                             isAntiAlias = true
-                            color = android.graphics.Color.argb(89, 0, 0, 0) // 35%
-                            maskFilter = BlurMaskFilter(32.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
+                            color = android.graphics.Color.argb(89, 0, 0, 0)
+                            maskFilter = BlurMaskFilter(35.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
                         }
-                        val r = 18.dp.toPx()
+                        val r = 12.dp.toPx()
                         canvas.nativeCanvas.drawRoundRect(
                             0f,
-                            12.dp.toPx(),
+                            20.dp.toPx(),
                             size.width,
-                            size.height + 12.dp.toPx(),
+                            size.height + 20.dp.toPx(),
                             r,
                             r,
                             paint,
                         )
                     }
                 }
-                .clip(RoundedCornerShape(18.dp)),
+                .clip(RoundedCornerShape(12.dp)),
             fallback = Color(0xFFFF7A1A),
         )
+    }
+}
+
+/** Port of target-cover-v3.html doodle SVG (viewBox 350×350) — soft curves, NOT jagged polylines. */
+private fun coverDoodlePath(tx: (Float) -> Float, ty: (Float) -> Float): Path {
+    return Path().apply {
+        moveTo(tx(20f), ty(25f))
+        cubicTo(tx(100f), ty(20f), tx(250f), ty(30f), tx(325f), ty(25f))
+        cubicTo(tx(330f), ty(100f), tx(320f), ty(250f), tx(325f), ty(325f))
+        cubicTo(tx(250f), ty(330f), tx(100f), ty(320f), tx(25f), ty(325f))
+        cubicTo(tx(20f), ty(250f), tx(30f), ty(100f), tx(25f), ty(25f))
+        moveTo(tx(10f), ty(40f))
+        cubicTo(tx(90f), ty(30f), tx(260f), ty(15f), tx(340f), ty(30f))
+        cubicTo(tx(345f), ty(110f), tx(330f), ty(260f), tx(335f), ty(340f))
+        cubicTo(tx(255f), ty(350f), tx(85f), ty(365f), tx(15f), ty(350f))
+        cubicTo(tx(10f), ty(270f), tx(25f), ty(120f), tx(10f), ty(40f))
+        moveTo(tx(280f), ty(45f))
+        quadraticTo(tx(285f), ty(40f), tx(290f), ty(45f))
+        quadraticTo(tx(285f), ty(50f), tx(280f), ty(45f))
+        moveTo(tx(270f), ty(330f))
+        cubicTo(tx(270f), ty(310f), tx(290f), ty(305f), tx(300f), ty(315f))
+        cubicTo(tx(310f), ty(300f), tx(330f), ty(305f), tx(330f), ty(320f))
+        cubicTo(tx(345f), ty(320f), tx(350f), ty(340f), tx(335f), ty(345f))
+        lineTo(tx(265f), ty(345f))
+        cubicTo(tx(255f), ty(340f), tx(260f), ty(330f), tx(270f), ty(330f))
+        moveTo(tx(5f), ty(150f))
+        cubicTo(tx(5f), ty(130f), tx(25f), ty(125f), tx(35f), ty(135f))
+        cubicTo(tx(45f), ty(120f), tx(65f), ty(125f), tx(65f), ty(140f))
+        cubicTo(tx(80f), ty(140f), tx(85f), ty(160f), tx(70f), ty(165f))
+        lineTo(tx(0f), ty(165f))
+        val rcx = tx(325f); val rcy = ty(25f)
+        val rx = kotlin.math.abs(tx(333f) - tx(325f)); val ry = kotlin.math.abs(ty(33f) - ty(25f))
+        addOval(Rect(rcx - rx, rcy - ry, rcx + rx, rcy + ry))
+        moveTo(tx(315f), ty(15f)); lineTo(tx(335f), ty(35f))
+        moveTo(tx(25f), ty(325f))
+        cubicTo(tx(25f), ty(325f), tx(35f), ty(340f), tx(50f), ty(335f))
+        val rcx2 = tx(25f); val rcy2 = ty(325f)
+        val r2x = kotlin.math.abs(tx(29f) - tx(25f)); val r2y = kotlin.math.abs(ty(329f) - ty(325f))
+        addOval(Rect(rcx2 - r2x, rcy2 - r2y, rcx2 + r2x, rcy2 + r2y))
+        moveTo(tx(50f), ty(335f)); lineTo(tx(120f), ty(280f))
     }
 }
 
@@ -593,16 +642,11 @@ private fun PlayerProgress(
     fmt: (Int) -> String,
     onScrub: (Float) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(fmt(posSec), color = Color.White.copy(0.45f), fontSize = 11.sp)
-            Text(fmt(durationSec), color = Color.White.copy(0.45f), fontSize = 11.sp)
-        }
-        Spacer(Modifier.height(6.dp))
+    Column(Modifier.fillMaxWidth()) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(16.dp)
+                .height(20.dp)
                 .pointerInput(Unit) {
                     detectTapGestures { offset ->
                         onScrub((offset.x / size.width).coerceIn(0f, 1f))
@@ -613,20 +657,35 @@ private fun PlayerProgress(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(2.dp)
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(Color.White.copy(0.22f)),
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(0.20f)),
             ) {
                 Box(
                     Modifier
                         .fillMaxWidth(progress)
                         .fillMaxHeight()
-                        .background(Color.White.copy(0.92f)),
+                        .background(Color.White),
                 )
             }
             Box(Modifier.fillMaxWidth(progress).wrapContentWidth(Alignment.End)) {
-                Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))
+                Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White))
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                fmt(posSec),
+                color = Color.White.copy(0.60f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                fmt(durationSec),
+                color = Color.White.copy(0.60f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }
@@ -636,32 +695,21 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp)
-            .height(64.dp)
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color.Black.copy(0.32f)) // solid black 32% — NOT glass
-            .then(
-                Modifier.drawBehind {
-                    // white 8% 0.5dp stroke
-                    val stroke = 0.5.dp.toPx()
-                    drawRoundRect(
-                        color = Color.White.copy(0.08f),
-                        style = Stroke(width = stroke),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f),
-                    )
-                },
-            ),
+            .height(76.dp)
+            .clip(RoundedCornerShape(38.dp))
+            .background(Color.Black.copy(0.32f))
+            .border(1.dp, Color.White.copy(0.10f), RoundedCornerShape(38.dp)),
     ) {
         Row(
-            Modifier.fillMaxSize().padding(horizontal = 18.dp),
+            Modifier.fillMaxSize().padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            YMIcon(YMGlyph.Repeat, size = 20.dp, color = Color.White.copy(0.85f))
-            YMIcon(YMGlyph.Previous, size = 22.dp, filled = true, color = Color.White)
+            YMIcon(YMGlyph.Repeat, size = 22.dp, color = Color.White.copy(0.90f))
+            YMIcon(YMGlyph.Previous, size = 30.dp, filled = true, color = Color.White)
             Box(
                 Modifier
-                    .size(48.dp)
+                    .size(60.dp)
                     .clip(CircleShape)
                     .background(Color.White)
                     .clickable(onClick = onToggle),
@@ -669,16 +717,24 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
             ) {
                 YMIcon(
                     if (paused) YMGlyph.Play else YMGlyph.Pause,
-                    size = 22.dp,
+                    size = 26.dp,
                     filled = true,
                     color = Color.Black,
                 )
             }
-            YMIcon(YMGlyph.Next, size = 22.dp, filled = true, color = Color.White)
-            Text("1x", color = Color.White.copy(0.85f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            YMIcon(YMGlyph.Next, size = 30.dp, filled = true, color = Color.White)
+            Text(
+                "1x",
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.width(24.dp),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
+
 
 @Composable
 private fun PlayerLyricsFullscreen(modifier: Modifier = Modifier) {
@@ -760,7 +816,7 @@ private fun DoodleEmptyState(title: String, subtitle: String) {
             drawPath(spark, ink, style = stroke)
         }
         Spacer(Modifier.height(12.dp))
-        Text(title, color = Color.White.copy(0.75f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(title, color = Color.White.copy(0.90f), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Text(subtitle, color = Color.White.copy(0.4f), fontSize = 13.sp)
     }
