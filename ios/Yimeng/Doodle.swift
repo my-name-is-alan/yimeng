@@ -209,6 +209,13 @@ extension DreamLayout {
     var centered: Bool { self == .frame }
 }
 
+
+/// Mutable orbit phase updated each TimelineView tick (class so we can advance without @State thrash).
+private final class DoodleOrbitClock {
+    var phase: Double = 0
+    var lastTick: CFTimeInterval = 0
+}
+
 /// Generative doodles seeded by the track. Drawn in with `.trim` on track change; wobble via Metal distortion.
 /// Beat: E chase-light + G star trail along the cover frame (no whole-layer scale pulse).
 struct DoodleLayer: View {
@@ -218,6 +225,7 @@ struct DoodleLayer: View {
     var intensity: Double = 0.7
     var beat = true
     @State private var drawn: CGFloat = 0
+    @State private var orbitClock = DoodleOrbitClock()
     @Environment(\.accessibilityReduceMotion) private var reduceEnv
     private var calm: Bool { YMMotion.calm(reduceEnv) }
 
@@ -243,17 +251,66 @@ struct DoodleLayer: View {
         Color(hex: 0xc4f542), Color(hex: 0x5eead4), Color(hex: 0xff7ab8), Color(hex: 0x9b6dff)
     ]
 
+    /// Transport playing? Real AVPlayer wins; mock NP uses AppState.
+    private var transportPlaying: Bool {
+        let p = PlayerStore.shared
+        if p.hasRealPlayback { return p.isPlaying }
+        return AppStateBridge.current?.isPlaying ?? true
+    }
+
+    /// Tempo for orbit: server BPM → live BeatStore → track.bpm. Clamped so laps stay calm.
+    private func effectiveBPM() -> Double {
+        if let s = track.serverBPM, s >= 50 { return min(168, s) }
+        let r = BeatStore.read()
+        if r.live, r.bpm >= 50 { return min(168, r.bpm) }
+        let fb = Double(track.bpm)
+        return fb >= 50 ? min(168, fb) : 96
+    }
+
+    /// One chase lap ≈ 16 beats, hard-clamped to 6.5…12s (宝英: current 2.4s felt too fast).
+    private func lapSeconds(bpm: Double) -> Double {
+        let raw = 16.0 * 60.0 / max(bpm, 50)
+        return min(12, max(6.5, raw))
+    }
+
+    /// Advance orbit phase only while playing; freeze on pause. Prefer song elapsed when streaming.
+    private func advanceOrbitPhase() -> Double {
+        let bpm = effectiveBPM()
+        let lap = lapSeconds(bpm: bpm)
+        let p = PlayerStore.shared
+        if p.hasRealPlayback {
+            // Song-locked: elapsed freezes on pause / seeks with scrub — ideal.
+            let ph = (p.elapsed / lap).truncatingRemainder(dividingBy: 1)
+            orbitClock.phase = ph < 0 ? ph + 1 : ph
+            orbitClock.lastTick = CACurrentMediaTime()
+            return orbitClock.phase
+        }
+        let now = CACurrentMediaTime()
+        if orbitClock.lastTick == 0 { orbitClock.lastTick = now }
+        let dt = min(0.12, max(0, now - orbitClock.lastTick))
+        orbitClock.lastTick = now
+        if transportPlaying && !calm && !shotMac {
+            orbitClock.phase += dt / lap
+        }
+        return orbitClock.phase.truncatingRemainder(dividingBy: 1)
+    }
+
     var body: some View {
         GeometryReader { g in
             TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 30)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate * (calm ? 0.08 : 1)
-                // 0…1 beat envelope (not a scale factor).
+                let run = advanceOrbitPhase()
+                // 0…1 beat envelope (not a scale factor) — Align flash to BeatStore / serverBPM.
                 let beatAmt: Double = {
                     guard beat && !calm else { return 0 }
                     if PlayerStore.shared.hasRealPlayback {
-                        return intensity * BeatStore.pulse(serverBPM: track.serverBPM)
+                        let pulse = BeatStore.pulse(serverBPM: track.serverBPM)
+                        let energy = BeatStore.read().energy
+                        return intensity * max(pulse, energy * 0.35)
                     }
-                    return intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))
+                    // Mock: soft downbeat from track BPM, phase-aligned to orbit when possible.
+                    let bpm = effectiveBPM()
+                    return intensity * max(0, sin(t * bpm / 60 * 2 * .pi))
                 }()
                 ZStack {
                     switch ambience {
@@ -265,7 +322,7 @@ struct DoodleLayer: View {
                             .shadow(color: .white.opacity(0.35), radius: 4)
                         stars(size: g.size).opacity(Double(drawn))
                         if !calm {
-                            chaseAndTrail(size: g.size, time: t, beatAmt: beatAmt)
+                            chaseAndTrail(size: g.size, run: run, beatAmt: beatAmt)
                                 .opacity(Double(drawn))
                         }
                     case .stardust: StardustHalo(track: track, slot: slot, time: t, intensity: intensity)
@@ -282,9 +339,11 @@ struct DoodleLayer: View {
         .allowsHitTesting(false)
         .onAppear {
             if shotMac { drawn = 1 } else { redraw() }
+            orbitClock = DoodleOrbitClock()
         }
         .onChange(of: track.id) { _, _ in
             if shotMac { drawn = 1 } else { redraw() }
+            orbitClock = DoodleOrbitClock()
         }
     }
 
@@ -337,39 +396,39 @@ struct DoodleLayer: View {
     }
 
     @ViewBuilder
-    private func chaseAndTrail(size: CGSize, time: Double, beatAmt: Double) -> some View {
+    private func chaseAndTrail(size: CGSize, run: Double, beatAmt: Double) -> some View {
         let orbit = beatOrbit(size: size)
-        let run = CGFloat((time / 2.4).truncatingRemainder(dividingBy: 1))
+        let runF = CGFloat(run)
         let seg: CGFloat = 0.078
-        let col = chaseColor(at: time / 2.4)
+        let col = chaseColor(at: run) // hue drifts once per lap
         let hot = beatAmt
         let chaseW = strokeWidth * (2.0 + 1.4 * hot)
         let flashW = strokeWidth * (2.4 + 2.2 * hot)
 
         ZStack {
-            // G faint dashed color trail along the orbit
+            // G faint dashed color trail — dash marches with orbit phase (not wall-clock * 50).
             orbit
                 .stroke(
                     col.opacity(0.55),
-                    style: StrokeStyle(lineWidth: strokeWidth * 0.85, lineCap: .round, dash: [7, 16], dashPhase: CGFloat(-time * 50))
+                    style: StrokeStyle(lineWidth: strokeWidth * 0.85, lineCap: .round, dash: [7, 16], dashPhase: -runF * 140)
                 )
                 .opacity(0.30 + 0.22 * intensity)
                 .blur(radius: 0.35)
 
             // E chase segment (wrap-aware Shape.trim)
-            chaseStroke(orbit, from: run, length: seg, color: col, width: chaseW)
+            chaseStroke(orbit, from: runF, length: seg, color: col, width: chaseW)
                 .shadow(color: col.opacity(0.85), radius: 8 + 6 * hot)
                 .opacity(0.75 + 0.25 * intensity)
 
             // Beat flash: short brighter white-ish segment at same phase
             if hot > 0.05 {
-                chaseStroke(orbit, from: run, length: seg * 0.55, color: Color.white.opacity(0.55 + 0.45 * hot), width: flashW)
+                chaseStroke(orbit, from: runF, length: seg * 0.55, color: Color.white.opacity(0.55 + 0.45 * hot), width: flashW)
                     .shadow(color: .white.opacity(0.7 * hot), radius: 10)
                     .blendMode(.plusLighter)
             }
 
-            // G star dots on the same orbit
-            starTrail(orbit: orbit, time: time, beatAmt: hot)
+            // G star dots — same tempo, evenly spaced around the orbit
+            starTrail(orbit: orbit, run: run, beatAmt: hot)
         }
     }
 
@@ -390,17 +449,14 @@ struct DoodleLayer: View {
     }
 
     @ViewBuilder
-    private func starTrail(orbit: Path, time: Double, beatAmt: Double) -> some View {
+    private func starTrail(orbit: Path, run: Double, beatAmt: Double) -> some View {
         let n = 5
         let sizes: [CGFloat] = [7, 5, 6, 4, 5]
-        let speeds: [Double] = [2.4, 2.8, 3.2, 2.6, 3.0]
-        let delays: [Double] = [0, 0.7, 1.4, 2.0, 0.3]
         ForEach(0..<n, id: \.self) { i in
-            let dur = speeds[i]
-            let frac = CGFloat(((time + delays[i]) / dur).truncatingRemainder(dividingBy: 1))
+            let frac = CGFloat((run + Double(i) / Double(n)).truncatingRemainder(dividingBy: 1))
             let pt = PathSampler.point(orbit, fraction: frac)
-            let col = chaseColor(at: time / 1.8 + Double(i) * 0.22)
-            let pulse = 1 + 0.28 * beatAmt + 0.12 * sin(time * 3.1 + Double(i) * 1.3)
+            let col = chaseColor(at: run + Double(i) * 0.18)
+            let pulse = 1 + 0.28 * beatAmt + 0.08 * sin(run * 2 * .pi + Double(i) * 1.3)
             Circle()
                 .fill(col)
                 .frame(width: sizes[i], height: sizes[i])
