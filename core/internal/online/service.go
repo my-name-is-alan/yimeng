@@ -493,7 +493,7 @@ func (s *Service) UserPlaylists(ctx context.Context, origin string) ([]Playlist,
 
 // ── playback ───────────────────────────────────────────────────────────────
 
-// Resolution is what plays for a requested track. URL stays in Core.
+// Resolution is what plays for a requested track. URL may be exposed as play_url when Header is empty (direct CDN); otherwise Core proxies.
 type Resolution struct {
 	permit   *streamPermit
 	TrackID  string `json:"track_id"`

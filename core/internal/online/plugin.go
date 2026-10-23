@@ -260,7 +260,8 @@ type QRPoll struct {
 	Account  *Account `json:"account,omitempty"`
 }
 
-// Stream is a just-in-time resolved upstream URL. URL and Header never leave Core.
+// Stream is a just-in-time resolved upstream URL. Header stays in Core (injected when
+// proxying). When Header is empty, Core may 302 / return play_url so the client hits the CDN directly.
 type Stream struct {
 	URL            string            `json:"-"`
 	Alternates     []string          `json:"-"` // same file on other CDN hosts, tried in order when URL fails

@@ -29,6 +29,7 @@ type gwPlugin struct {
 	userFromCookie bool   // Account() user id = cookie U
 	real           []byte // when set, the CDN serves these bytes (a real mp3) for every track
 	forbiddenHost  bool   // primary URL answers 200 audio/mpeg with an HTML "Forbidden" page
+	noHeader       bool   // when true, Resolve omits Header (App-direct CDN / NetEase-style)
 }
 
 func (p *gwPlugin) Manifest() online.Manifest {
@@ -118,7 +119,9 @@ func (p *gwPlugin) Resolve(ctx context.Context, id string, q online.Quality) (on
 			s.Alternates = []string{s.URL}
 			s.URL = p.cdn + "/forbidden/" + id + ".mp3"
 		}
-		s.Header = map[string]string{"X-Cdn-Auth": "secret-cdn"}
+		if !p.noHeader {
+			s.Header = map[string]string{"X-Cdn-Auth": "secret-cdn"}
+		}
 	} else {
 		s.Reason = "需要付费购买"
 	}
@@ -165,7 +168,7 @@ func newOnlineEnv(t *testing.T) (*env, *gwPlugin) { return newOnlineEnvExtra(t) 
 func newOnlineEnvExtra(t *testing.T, extra ...func(cdn string) online.Factory) (*env, *gwPlugin) {
 	plug := &gwPlugin{}
 	cdn := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-Cdn-Auth") != "secret-cdn" {
+		if !plug.noHeader && r.Header.Get("X-Cdn-Auth") != "secret-cdn" {
 			http.Error(w, "no auth", 401)
 			return
 		}
@@ -408,8 +411,10 @@ func TestOnlineStreamEntitlement(t *testing.T) {
 		t.Fatalf("re-resolve after 403: %d %q", res.StatusCode, body)
 	}
 	res, body = e.do("GET", "/api/online/resolve/gw:prev", "", tok)
+	// headers required → no play_url; CDN host must not appear; stream_url stays Core path
 	if res.StatusCode != 200 || !strings.Contains(string(body), `"entitlement":"preview"`) || !strings.Contains(string(body), `"preview_start_ms":30000`) ||
-		!strings.Contains(string(body), `"stream_url":"/api/stream/gw:prev"`) || strings.Contains(string(body), "127.0.0.1") {
+		!strings.Contains(string(body), `"stream_url":"/api/stream/gw:prev"`) || strings.Contains(string(body), "127.0.0.1") ||
+		strings.Contains(string(body), `"play_url"`) {
 		t.Fatalf("resolve %s", body)
 	}
 	if res, _ := e.do("GET", "/api/stream/gw:missing", "", tok); res.StatusCode != 404 {
@@ -526,5 +531,39 @@ func TestPluginQRChannel(t *testing.T) {
 	res, body = e.do("POST", "/api/plugins/gw/login/qr", "", e.token)
 	if res.StatusCode != 200 {
 		t.Fatalf("%d %s", res.StatusCode, body)
+	}
+}
+
+func TestOnlineStreamDirectRedirect(t *testing.T) {
+	e, plug := newOnlineEnv(t)
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, e.token)
+	e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=SECRET-SESSION"}`, e.token)
+	// NetEase-style: HTTPS CDN URL, no injected headers → 302 (audio bypasses Core).
+	plug.noHeader = true
+	plug.cdn = "https://m801.music.126.net/test"
+	want := plug.cdn + "/full.mp3"
+
+	cl := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", e.srv.URL+"/api/stream/gw:full", nil)
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	res, err := cl.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 302 || res.Header.Get("Location") != want {
+		t.Fatalf("direct 302: %d Location=%q want %q", res.StatusCode, res.Header.Get("Location"), want)
+	}
+	if res.Header.Get("X-Yimeng-Entitlement") != "full" {
+		t.Fatalf("entitlement header %q", res.Header.Get("X-Yimeng-Entitlement"))
+	}
+
+	_, body := e.do("GET", "/api/online/resolve/gw:full", "", e.token)
+	if !strings.Contains(string(body), `"stream_url":"/api/stream/gw:full"`) ||
+		!strings.Contains(string(body), `"play_url":"`+want+`"`) {
+		t.Fatalf("resolve play_url %s", body)
+	}
+	if strings.Contains(string(body), "secret-cdn") || strings.Contains(string(body), `"Header"`) {
+		t.Fatalf("cookies/headers leaked: %s", body)
 	}
 }

@@ -848,6 +848,18 @@ func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
 
 // ---- playback ---------------------------------------------------------------
 
+
+// canDirectCDN reports whether the client can GET the resolved HTTPS URL without
+// Core injecting headers (NetEase-style tokens-in-query). Non-empty Header means
+// proxy (QQ/Kugou Referer/UA).
+func canDirectCDN(res online.Resolution) bool {
+	if res.URL == "" || len(res.Header) != 0 {
+		return false
+	}
+	u, err := url.Parse(res.URL)
+	return err == nil && u.Scheme == "https" && u.Host != ""
+}
+
 func qualityQ(r *http.Request) online.Quality {
 	switch q := online.Quality(r.URL.Query().Get("quality")); q {
 	case online.QStandard, online.QHigh, online.QLossless, online.QHiRes:
@@ -857,7 +869,8 @@ func qualityQ(r *http.Request) online.Quality {
 }
 
 // onlineResolve tells clients what /api/stream/{id} will play (entitlement,
-// preview window, fallback) without exposing the upstream URL.
+// preview window, fallback). stream_url is always the Core path; play_url is the
+// absolute CDN URL when Header is empty so clients can play App-direct.
 func (d Deps) onlineResolve(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !library.IsExternalID(id) {
@@ -869,15 +882,20 @@ func (d Deps) onlineResolve(w http.ResponseWriter, r *http.Request) {
 		d.onlineErr(w, "resolve", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, struct {
+	out := struct {
 		online.Resolution
 		StreamURL string `json:"stream_url"`
-	}{res, "/api/stream/" + url.PathEscape(id)})
+		PlayURL   string `json:"play_url,omitempty"`
+	}{Resolution: res, StreamURL: "/api/stream/" + url.PathEscape(id)}
+	if canDirectCDN(res) {
+		out.PlayURL = res.URL
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
-// streamExternal proxies an online track. Local equivalents are served from
-// disk; previews stream only the segment the platform returned. Upstream
-// URLs and cookies never reach the client.
+// streamExternal serves an online track. Default is App-direct: 302 to the CDN
+// when Resolve needs no injected headers. Proxy remains for sources that require
+// Referer/UA/cookies, for transcode, and for /download. Cookies never leave Core.
 func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) bool {
 	if d.onlineFor(r.Context()) == nil || !library.IsExternalID(id) {
 		return false
@@ -928,6 +946,14 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			}
 			defer closeStream()
 			r = r.WithContext(ctx)
+		}
+		// App-direct CDN: bare GET works → 302 so audio bytes skip the VPS.
+		if canDirectCDN(res) && prof.IsOriginal() && !strings.HasSuffix(r.URL.Path, "/download") {
+			h := w.Header()
+			d.setOnlineHeaders(h, res)
+			h.Set("X-Stream-Profile", transcode.Original)
+			http.Redirect(w, r, res.URL, http.StatusFound)
+			return true
 		}
 		resp, status := d.fetchUpstream(r, method, res, prof.IsOriginal())
 		if resp == nil {

@@ -249,8 +249,10 @@ alternative considered. Newest items at the bottom.
 - Fallback goes only to (1) local files or (2) other platforms where the user
   is logged in and fully entitled, matched by ISRC or title + artist + duration
   (≥ 0.75), and recorded in `track_equivalents`.
-- Upstream URLs and cookies stay in Core. `/api/stream/{id}` proxies, and
-  `/api/online/resolve/{id}` reports the decision.
+- Default delivery is App-direct CDN: when Resolve returns an HTTPS URL with no
+  required headers, `/api/stream/{id}` 302-redirects and resolve includes `play_url`.
+  Proxy remains for sources that need injected headers (QQ/Kugou Referer/UA).
+  Cookies never leave Core; `/api/online/resolve/{id}` reports the decision.
 
 ## D32 Materialize external items into the canonical tables
 - When an online track is favorited, rated, added to a playlist or cloned, it

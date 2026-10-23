@@ -115,16 +115,20 @@ Core **never** uses unblock, 解灰, song_url_match, ncmget or any third-party g
 4. Otherwise return the original result (preview or unavailable).
 
 `GET /api/online/resolve/{id}` returns the decision (entitlement, preview
-window, `fallback`, `play_id`, `stream_url`) without the upstream URL. The web
-player calls it before playing an online track, because `<audio>` cannot read
-response headers.
+window, `fallback`, `play_id`, `stream_url`, and when safe `play_url` + `expires_at`).
+`stream_url` is always the Core path (compat). `play_url` is the absolute HTTPS CDN
+URL only when no injected headers are required (NetEase); cookies are never in JSON.
+The web player calls resolve before playing an online track, because `<audio>` cannot
+read response headers.
 
-`GET /api/stream/{id}` with an online id is the proxy:
-- It resolves (lease cached) and serves a local fallback from disk.
-- Otherwise it fetches the CDN URL with the plugin's headers and forwards `Range`.
-- It sets `X-Yimeng-Entitlement`, `X-Yimeng-Play-Id`, `X-Yimeng-Fallback` and `X-Yimeng-Preview-Start-Ms`/`End-Ms`.
-- On upstream 403/404/410 it invalidates the lease and re-resolves once.
-- Clients never see the CDN URL or cookies. Transcoding is not applied to online streams.
+`GET /api/stream/{id}` with an online id:
+- Resolves (lease cached) and serves a local fallback from disk.
+- When the CDN URL is HTTPS and `Header` is empty, responds **302** to that URL so
+  audio bytes do not traverse Core (App-direct).
+- Otherwise proxies: fetches the CDN URL with the plugin's headers and forwards `Range`
+  (QQ/Kugou Referer/UA, or any `?format=` transcode / download path).
+- Sets `X-Yimeng-Entitlement`, `X-Yimeng-Play-Id`, `X-Yimeng-Fallback` and `X-Yimeng-Preview-Start-Ms`/`End-Ms`.
+- On upstream 403/404/410 (proxy path) it invalidates the lease and re-resolves once.
 
 ## 7. API
 
@@ -148,7 +152,7 @@ All routes require a device token. Mutations of plugin state require the admin r
 | `POST /api/online/{origin}/playlists/{id}/clone` | `{name?, prefer_local?=true, skip_unavailable?}` → local static playlist (local copies substituted) |
 | `GET /api/online/favorites[?origin=]` | each account's cloud "liked songs" |
 | `GET /api/online/resolve/{id}` | play decision (see §6) |
-| `GET /api/stream/{id}` | proxy for online ids |
+| `GET /api/stream/{id}` | 302 to CDN when headers empty; else proxy |
 | `GET /api/tracks/{id}/lyrics` | online ids use the plugin (with `translation`) |
 | `PUT /api/favorites/track/{id}`, `PUT /api/ratings/track/{id}` | materialize online tracks first |
 | `GET/PUT /api/settings/mode` | first-run mode `local | online | both`, plus `local_tracks` and `online_enabled` |
