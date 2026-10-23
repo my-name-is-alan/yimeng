@@ -180,9 +180,9 @@ func validMid(id string) error {
 func (p *Plugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
 	var d struct {
 		VecHotkey []struct {
-			Query string `json:"query"`
-			Score int64  `json:"score"`
-			URL   string `json:"url"`
+			Query   string          `json:"query"`
+			Score   json.RawMessage `json:"score"` // upstream sends a decimal string
+			JumpURL string          `json:"jump_url"`
 		} `json:"vec_hotkey"`
 	}
 	// search_id is an opaque session token; a random hex is fine for anonymous hot keys.
@@ -198,9 +198,25 @@ func (p *Plugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
 			continue
 		}
 		seen[kw] = true
-		out = append(out, online.HotKeyword{Keyword: kw, Score: h.Score, URL: h.URL})
+		out = append(out, online.HotKeyword{Keyword: kw, Score: parseFlexibleInt64(h.Score), URL: h.JumpURL})
 	}
 	return out, nil
+}
+
+func parseFlexibleInt64(raw json.RawMessage) int64 {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0
+	}
+	var n int64
+	if json.Unmarshal(raw, &n) == nil {
+		return n
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		n, _ = strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+		return n
+	}
+	return 0
 }
 
 func (p *Plugin) Tracks(ctx context.Context, ids []string) ([]online.Track, error) {

@@ -82,7 +82,7 @@ func newFake() *fake {
 		"/api/w/login/cellphone":               "login_wrong.json",
 		"/api/w/login":                         "login_wrong.json",
 		"/api/login/token/refresh":             "login_ok.json",
-		"/api/search/hot/detail":               "search_hot_detail.json",
+		"/api/search/hot":                       "search_hot_detail.json",
 	}}
 }
 
@@ -333,10 +333,7 @@ func TestHotSearch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hot %v", err)
 	}
-	if len(items) < 2 || items[0].Keyword != "罗刹海市" || items[0].Score != 34771 {
+	if len(items) < 2 || items[0].Keyword != "我不难过" || items[0].Score != 3 {
 		t.Fatalf("items %+v", items)
-	}
-	if items[1].URL == "" {
-		t.Fatalf("expected url on second item %+v", items[1])
 	}
 }

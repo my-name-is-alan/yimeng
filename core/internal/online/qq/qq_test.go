@@ -369,7 +369,10 @@ func TestHotSearch(t *testing.T) {
 		t.Fatalf("hot %v", err)
 	}
 	// duplicate 周杰伦 and empty query stripped
-	if len(items) != 2 || items[0].Keyword != "周杰伦" || items[0].Score != 100 || items[1].Keyword != "晴天" {
+	if len(items) != 2 || items[0].Keyword != "neon" || items[0].Score != 1217950 || items[1].Keyword != "天龙八部之宿敌" || items[1].Score != 720124 {
 		t.Fatalf("items %+v", items)
+	}
+	if items[1].URL == "" {
+		t.Fatalf("expected jump_url %+v", items[1])
 	}
 }

@@ -374,23 +374,30 @@ func parseIDs(ids []string) ([]int64, error) {
 }
 
 func (p *Plugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
+	// /search/hot/detail is gone on current hosts; /search/hot?type=1111 still works.
 	var r struct {
-		Data []struct {
-			SearchWord string `json:"searchWord"`
-			Score      int64  `json:"score"`
-			URL        string `json:"url"`
-		} `json:"data"`
+		Result struct {
+			Hots []struct {
+				First string `json:"first"`
+				Second int64  `json:"second"`
+			} `json:"hots"`
+		} `json:"result"`
 	}
-	if err := p.weapi(ctx, "/api/search/hot/detail", map[string]any{}, &r); err != nil {
+	if err := p.weapi(ctx, "/api/search/hot", map[string]any{"type": 1111}, &r); err != nil {
 		return nil, err
 	}
-	out := make([]online.HotKeyword, 0, len(r.Data))
-	for _, d := range r.Data {
-		kw := strings.TrimSpace(d.SearchWord)
+	out := make([]online.HotKeyword, 0, len(r.Result.Hots))
+	for i, d := range r.Result.Hots {
+		kw := strings.TrimSpace(d.First)
 		if kw == "" {
 			continue
 		}
-		out = append(out, online.HotKeyword{Keyword: kw, Score: d.Score, URL: d.URL})
+		// second is usually 1; prefer reverse rank as a soft score when missing heat.
+		score := d.Second
+		if score <= 1 {
+			score = int64(len(r.Result.Hots) - i)
+		}
+		out = append(out, online.HotKeyword{Keyword: kw, Score: score})
 	}
 	return out, nil
 }
