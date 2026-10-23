@@ -106,6 +106,9 @@ struct CoreArtist: Codable, Hashable, Sendable {
     var cover: CoreCover?
     var origin: String?
     var sortLetter: String?
+    var topTracks: [CoreTrack]?
+    var albums: [CoreAlbum]?
+    var description: String?
 }
 
 struct CorePlaylist: Codable, Hashable, Sendable {

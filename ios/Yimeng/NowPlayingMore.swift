@@ -177,6 +177,10 @@ struct NowPlayingMoreSheet: View {
         close { state.path.append(.ndAlbum(a)) }
     }
     private func goArtist() {
+        if let id = song.artistId, !id.isEmpty {
+            let name = song.artist.components(separatedBy: CharacterSet(charactersIn: "/&,;")).first?.trimmingCharacters(in: .whitespaces) ?? song.artist
+            close { state.path.append(.ndArtist(NDArtist(id: id, name: name, albumCount: nil))); return }
+        }
         let name = song.artist.components(separatedBy: CharacterSet(charactersIn: "/&,;")).first?.trimmingCharacters(in: .whitespaces) ?? song.artist
         Task { @MainActor in
             var ar = LibraryCache.shared.artists.first { $0.name == name }

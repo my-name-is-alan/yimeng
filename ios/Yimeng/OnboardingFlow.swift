@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - First-run gate
 
@@ -1050,7 +1055,21 @@ struct SourceConnectView: View {
                 .pickerStyle(.segmented)
                 .onChange(of: embyMode) { _, _ in draft.secret = ""; embyPick = nil; lib.embyUsers = [] }
             }
-            field("服务器地址", text: $draft.host, prompt: kind.hostPlaceholder)
+            HStack(alignment: .bottom, spacing: 8) {
+                field("服务器地址", text: $draft.host, prompt: kind.hostPlaceholder)
+                if draft.connected, !draft.host.isEmpty {
+                    Button("复制") {
+                        #if canImport(UIKit)
+                        UIPasteboard.general.string = draft.host
+                        #elseif canImport(AppKit)
+                        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(draft.host, forType: .string)
+                        #endif
+                        SheetCenter.shared.say("已复制地址")
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .padding(.bottom, 10)
+                }
+            }
             if kind.usesUserPass {
                 field(kind == .emby && embyMode == .apiKey ? "用户名（可选）" : "用户名", text: $draft.username,
                       prompt: kind == .emby && embyMode == .apiKey ? "留空则从列表中选择" : "用户名")

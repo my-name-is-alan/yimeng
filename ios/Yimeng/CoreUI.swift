@@ -174,9 +174,13 @@ final class PlatformStore: ObservableObject {
             if let x = try? await c.daily(p.origin), !x.list.isEmpty { d.append(Daily(origin: p.origin, tracks: x.list.map(CoreClient.nd), date: x.date)) }
         }
         // /home carries the platforms' own recommended playlists (one ETag'd call); fall back per platform.
+        // Also consume `*.mine` into userPlaylists so homepage / 曲库 can show 我的歌单 after platform login.
+        var mineByOrigin: [String: [NDPlaylist]] = [:]
         if let h = try? await c.home(), let secs = h.sections {
-            for s in secs where s.id.hasSuffix(".playlists") && s.error == nil {
-                if let o = s.origin, let l = s.playlists, !l.isEmpty { r.append((o, l.map(CoreClient.nd))) }
+            for s in secs where s.error == nil {
+                guard let o = s.origin, let l = s.playlists, !l.isEmpty else { continue }
+                if s.id.hasSuffix(".playlists") { r.append((o, l.map(CoreClient.nd))) }
+                if s.id.hasSuffix(".mine") { mineByOrigin[o, default: []] += l.map(CoreClient.nd) }
             }
         } else {
             for p in CoreState.platforms(can: "recommend_playlists") {
@@ -184,8 +188,13 @@ final class PlatformStore: ObservableObject {
             }
         }
         dailies = d; recommend = r
+        if !mineByOrigin.isEmpty {
+            // Home `*.mine` is a flat list — put under 我创建的; loadUserPlaylists will refine created/collected.
+            userPlaylists = mineByOrigin.keys.sorted().map { o in (o, mineByOrigin[o] ?? [], []) }
+        }
         fmOrigins = CoreState.platforms(can: "fm").map(\.origin)
         YMWidgetBridge.fm(fmOrigins)
+        await loadUserPlaylists()
         OfflineCache.shared.precache()
     }
     func loadUserPlaylists() async {
@@ -196,7 +205,8 @@ final class PlatformStore: ObservableObject {
             let co = (try? await CoreClient.shared.userPlaylists(p.origin, type: "collected"))?.map(CoreClient.nd) ?? []
             if !cr.isEmpty || !co.isEmpty { out.append((p.origin, cr, co)) }
         }
-        userPlaylists = out
+        // Prefer refined created/collected; keep home `*.mine` fallback when endpoints return nothing.
+        if !out.isEmpty { userPlaylists = out }
     }
 }
 
@@ -265,13 +275,9 @@ struct PlatformHomeSections: View {
     @Environment(\.colorScheme) var scheme
     var body: some View {
         if YMLayout.wide {
-            // Wide iPad content column: 乐签 + daily cards side by side, FM next to the first recommendation row.
+            // Wide: daily cards in grid. 乐签 stays above (HomeLive) — do not hide or duplicate here.
             let cols = Array(repeating: GridItem(.flexible(), spacing: 20, alignment: .top), count: YMLayout.cardColumns)
             LazyVGrid(columns: cols, alignment: .leading, spacing: 4) {
-                VStack(alignment: .leading, spacing: 0) {
-                    SectionHeader(title: "今日乐签", more: false).padding(.horizontal, -Theme.margin)
-                    YueqianHomeTicket()
-                }
                 ForEach(store.dailies) { d in
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false).padding(.horizontal, -Theme.margin)
@@ -306,6 +312,7 @@ struct PlatformHomeSections: View {
                 SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false)
                 recRow(r, pad: Theme.margin)
             }
+            mineHomeSections
         } else {
         ForEach(store.dailies) { d in
             SectionHeader(title: "\(CoreOrigin.label(d.origin)) · 每日推荐", more: false)
@@ -320,6 +327,17 @@ struct PlatformHomeSections: View {
             SectionHeader(title: "\(CoreOrigin.label(r.origin)) · 推荐歌单", more: false)
             recRow(r, pad: Theme.margin)
         }
+        mineHomeSections
+        }
+    }
+
+    @ViewBuilder private var mineHomeSections: some View {
+        ForEach(store.userPlaylists, id: \.origin) { g in
+            let lists = g.created + g.collected
+            if !lists.isEmpty {
+                SectionHeader(title: "\(CoreOrigin.label(g.origin)) · 我的歌单", more: false)
+                recRow((g.origin, lists), pad: Theme.margin)
+            }
         }
     }
     @ViewBuilder func recRow(_ r: (origin: String, lists: [NDPlaylist]), pad: CGFloat) -> some View {

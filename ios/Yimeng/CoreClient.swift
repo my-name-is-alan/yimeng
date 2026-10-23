@@ -253,9 +253,21 @@ actor CoreClient {
     func userPlaylists(_ origin: String, type: String) async throws -> [CorePlaylist] {
         let p: CorePage<CorePlaylist> = try await get("/api/v1/online/\(origin)/user/playlists", query: ["type": type], cache: true); return p.items
     }
+    /// Online album/artist detail: path id is the platform-native id (origin already in the path).
+    func onlineAlbum(origin: String, id: String) async throws -> CoreAlbum {
+        try await get("/api/v1/online/\(origin)/albums/\(Self.path(id))", cache: true)
+    }
+    func onlineArtist(origin: String, id: String) async throws -> CoreArtist {
+        try await get("/api/v1/online/\(origin)/artists/\(Self.path(id))", cache: true)
+    }
 
     /// Online ids look like `netease:12345` — keep them in one path segment.
     nonisolated static func path(_ id: String) -> String { id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id }
+    /// Split `origin:nativeId`. Returns nil for local / plain ids.
+    nonisolated static func splitExternal(_ id: String) -> (origin: String, native: String)? {
+        guard let i = id.firstIndex(of: ":"), i > id.startIndex, i < id.index(before: id.endIndex) else { return nil }
+        return (String(id[..<i]), String(id[id.index(after: i)...]))
+    }
 
     // MARK: media URLs
 

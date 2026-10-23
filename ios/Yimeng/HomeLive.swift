@@ -48,29 +48,12 @@ struct HomeLive: View {
                         FirstRunDoodle().padding(.top, 40)
                     }
 
-                    if !(NavidromeClient.core && YMLayout.wide) {
-                        #if os(iOS)
+                    // SPEC: 乐签 always when Core connected — do not hide for YMLayout.wide.
+                    #if os(iOS)
+                    if NavidromeClient.core && library.connected {
                         YueqianHomeTicket().padding(.horizontal, Theme.margin).padding(.top, 22).motionIn(0.16)
-                        #endif
                     }
-                    if NavidromeClient.core && library.connected && recent.isEmpty && home.data.frequent.isEmpty && home.data.playlists.isEmpty {
-                        NewAccountCard(name: library.user).padding(.horizontal, Theme.margin).padding(.top, 18).motionIn(0.2)
-                    }
-                    if NavidromeClient.core {
-                        PlatformHomeSections()
-                        if !CoreState.platforms(can: "charts").isEmpty {
-                            Button { state.path.append(.charts) } label: {
-                                HStack(spacing: 12) {
-                                    Crayon(shape: WaveShape(), color: Theme.lime).frame(width: 34, height: 14)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("排行").font(.system(size: 17, weight: .bold))
-                                        Text(CoreState.platforms(can: "charts").map { CoreOrigin.label($0.origin) }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
-                                    }
-                                    Spacer(); YMIcon(glyph: .chevron, size: 11, weight: 1.5).opacity(0.5)
-                                }.padding(14).background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.fill(scheme)))
-                            }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 22)
-                        }
-                    }
+                    #endif
                     albumSection("最近添加", newest, sort: "newest", i: 2).id("library")
                     albumSection("最近播放", recent, sort: "recent", i: 3).id("recent")
                     albumSection("常听", frequent, sort: "frequent", i: 4)
@@ -128,6 +111,36 @@ struct HomeLive: View {
                                 }
                             }.padding(.horizontal, Theme.margin)
                         }.motionIn(stagger(8))
+                    }
+                    if NavidromeClient.core {
+                        PlatformHomeSections()
+                        if !CoreState.platforms(can: "charts").isEmpty {
+                            Button { state.path.append(.charts) } label: {
+                                HStack(spacing: 12) {
+                                    Crayon(shape: WaveShape(), color: Theme.lime).frame(width: 34, height: 14)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("排行").font(.system(size: 17, weight: .bold))
+                                        Text(CoreState.platforms(can: "charts").map { CoreOrigin.label($0.origin) }.joined(separator: " · ")).font(.system(size: 12)).opacity(0.6)
+                                    }
+                                    Spacer(); YMIcon(glyph: .chevron, size: 11, weight: 1.5).opacity(0.5)
+                                }.padding(14).background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.fill(scheme)))
+                            }.buttonStyle(.plain).padding(.horizontal, Theme.margin).padding(.top, 22)
+                        }
+                    }
+                    if NavidromeClient.core && library.connected
+                        && newest.isEmpty && recent.isEmpty && frequent.isEmpty && random.isEmpty && playlists.isEmpty && artists.isEmpty
+                        && PlatformStore.shared.dailies.isEmpty && PlatformStore.shared.recommend.isEmpty
+                        && PlatformStore.shared.userPlaylists.isEmpty && PlatformStore.shared.fmOrigins.isEmpty {
+                        VStack(spacing: 10) {
+                            Text("曲库还是空的").font(.system(size: 17, weight: .semibold))
+                            Text("连上网易 / QQ 等平台账号后，每日推荐和我的歌单会出现在这里")
+                                .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).multilineTextAlignment(.center)
+                            Button("去绑定平台") { state.tab = .me }.buttonStyle(SecondaryButtonStyle()).frame(width: 160)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, Theme.margin).padding(.top, 28)
+                    } else if NavidromeClient.core && library.connected && recent.isEmpty && home.data.frequent.isEmpty && home.data.playlists.isEmpty && !library.user.isEmpty {
+                        NewAccountCard(name: library.user).padding(.horizontal, Theme.margin).padding(.top, 18).motionIn(0.2)
                     }
                     Text(library.status).font(.system(size: 12)).foregroundStyle(Theme.secondary(scheme))
                         .padding(.horizontal, Theme.margin).padding(.top, 24)

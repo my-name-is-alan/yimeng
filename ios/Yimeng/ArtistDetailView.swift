@@ -11,6 +11,7 @@ struct ArtistDetailView: View {
     @State private var fallbackTop: [NDSong] = []
     @State private var bioOpen = false
     @State private var failed = false
+    private var originHint: String? { artist.origin ?? (artist.id.contains(":") ? String(artist.id.split(separator: ":")[0]) : nil) }
 
     private var heroURL: URL? { library.coverArtURL(id: artist.coverId ?? "ar-\(artist.id)", size: 800) }
     private var top: [NDSong] { (detail?.top.isEmpty == false ? detail!.top : fallbackTop) }
@@ -27,7 +28,10 @@ struct ArtistDetailView: View {
                                            .init(color: .clear, location: 0.6), .init(color: Theme.base(scheme), location: 1)], startPoint: .top, endPoint: .bottom)
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(artist.name).font(.system(size: 26, weight: .bold)).lineLimit(2)
+                            HStack(spacing: 8) {
+                                Text(artist.name).font(.system(size: 26, weight: .bold)).lineLimit(2)
+                                SourceBadge(origin: originHint)
+                            }
                             Text("\(detail?.albums.count ?? artist.albumCount ?? 0) 张专辑").font(.system(size: 13)).opacity(0.7)
                         }.foregroundStyle(Theme.fg(scheme))
                         Spacer()
@@ -98,7 +102,11 @@ struct ArtistDetailView: View {
                         }.padding(.horizontal, Theme.margin)
                     }
                 }
-                if failed && detail == nil { EmptyState(kind: .network, action: ("重试", { Task { await load() } })) }
+                if failed && detail == nil {
+                    onlineFailBlock
+                } else if detail != nil, top.isEmpty, (detail?.albums.isEmpty ?? true), originHint != nil {
+                    onlineFailBlock
+                }
                 Color.clear.frame(height: 190)
             }
         }
@@ -120,7 +128,23 @@ struct ArtistDetailView: View {
                 fallbackTop = out.isEmpty ? [] : out
                 _ = first
             }
-        } catch { failed = true }
+            // External id with nothing usable → treat as failure (no blank stub page).
+            if originHint != nil, d.top.isEmpty, d.albums.isEmpty, fallbackTop.isEmpty { failed = true; detail = nil }
+        } catch { failed = true; detail = nil }
+    }
+
+
+    @ViewBuilder private var onlineFailBlock: some View {
+        VStack(spacing: 12) {
+            Text("暂时打不开").font(.system(size: 17, weight: .semibold))
+            Text(originHint.map { "这首来自 \(CoreOrigin.label($0))，详情没拿到" } ?? "详情没拿到")
+                .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                Button("返回") { if !state.path.isEmpty { state.path.removeLast() } }.buttonStyle(SecondaryButtonStyle())
+                Button("重试") { Task { await load() } }.buttonStyle(PrimaryButtonStyle())
+            }.frame(maxWidth: 280)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 40).padding(.horizontal, Theme.margin)
     }
 
     private func play(shuffle: Bool) {

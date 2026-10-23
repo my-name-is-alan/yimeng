@@ -210,26 +210,40 @@ struct YueqianPage: View {
 struct YueqianHomeTicket: View {
     @ObservedObject private var store = YueqianStore.shared
     @EnvironmentObject var state: AppState
+    /// SPEC: when Core is connected the entry is always visible (stub OK if card nil).
+    private var showEntry: Bool { store.card != nil || (NavidromeClient.core && LibraryStore.shared.connected) }
     var body: some View {
-        if let c = store.card {
+        if showEntry {
             let pal = store.palette
             let cal = Calendar.current
+            let c = store.card
+            let date = c?.date ?? Date()
+            let isStub = c == nil || c?.song.id == "yueqian:stub"
             Button { state.path.append(.yueqian) } label: {
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        Text("\(cal.component(.month, from: c.date))月").font(.system(size: 12, weight: .semibold))
-                        Text(String(format: "%02d", cal.component(.day, from: c.date))).font(.system(size: 36, weight: .black, design: .rounded))
-                        Text(YueqianCardView.weekday(c.date)).font(.system(size: 10)).opacity(0.6)
+                        Text("\(cal.component(.month, from: date))月").font(.system(size: 12, weight: .semibold))
+                        Text(String(format: "%02d", cal.component(.day, from: date))).font(.system(size: 36, weight: .black, design: .rounded))
+                        Text(YueqianCardView.weekday(date)).font(.system(size: 10)).opacity(0.6)
                     }.frame(width: 78).foregroundStyle(pal.accent)
                     TicketPerforation().stroke(pal.ink.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [3, 4])).frame(width: 14)
                     VStack(alignment: .leading, spacing: 4) {
                         Text("今日乐签").font(.system(size: 11, weight: .bold)).foregroundStyle(pal.accent)
-                        Text("「\(c.quote)」").font(.system(size: 15, weight: .semibold)).lineLimit(2).foregroundStyle(pal.ink)
-                        Text("\(c.song.title) — \(c.song.artist)").font(.system(size: 12)).lineLimit(1).truncationMode(.middle).foregroundStyle(pal.ink.opacity(0.6))
+                        if isStub {
+                            Text("今日乐签 · 点开取签").font(.system(size: 15, weight: .semibold)).lineLimit(2).foregroundStyle(pal.ink)
+                            Text("点开取今日曲签").font(.system(size: 12)).lineLimit(1).foregroundStyle(pal.ink.opacity(0.6))
+                        } else if let c {
+                            Text("「\(c.quote)」").font(.system(size: 15, weight: .semibold)).lineLimit(2).foregroundStyle(pal.ink)
+                            Text("\(c.song.title) — \(c.song.artist)").font(.system(size: 12)).lineLimit(1).truncationMode(.middle).foregroundStyle(pal.ink.opacity(0.6))
+                        }
                     }.padding(.leading, 10)
                     Spacer(minLength: 8)
                     ZStack {
-                        RemoteCover(url: c.coverURL, size: 62, corner: 8)
+                        if let c, !isStub {
+                            RemoteCover(url: c.coverURL, size: 62, corner: 8)
+                        } else {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(hex: 0xe9e2d6)).frame(width: 62, height: 62)
+                        }
                         WobblyFrame(seed: 5, inset: -3).stroke(pal.ink.opacity(0.55), lineWidth: 1.2).frame(width: 62, height: 62)
                     }.rotationEffect(.degrees(4)).padding(.trailing, 14)
                 }

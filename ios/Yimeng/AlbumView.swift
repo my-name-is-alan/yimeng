@@ -89,7 +89,10 @@ struct NDAlbumView: View {
                         .padding(.top, 16).motionIn(0.05, from: .scale)
 
                     VStack(spacing: 4) {
-                        Text(shown.name).font(.system(size: 22, weight: .bold))
+                        HStack(spacing: 8) {
+                            Text(shown.name).font(.system(size: 22, weight: .bold))
+                            SourceBadge(origin: shown.origin ?? (shown.id.contains(":") ? String(shown.id.split(separator: ":")[0]) : nil))
+                        }
                         Button {
                             if let aid = shown.artistId { state.path.append(.ndArtist(NDArtist(id: aid, name: shown.artist, albumCount: nil))) }
                         } label: { Text(shown.artist).font(.system(size: 18)).opacity(0.65) }.buttonStyle(.plain)
@@ -116,7 +119,15 @@ struct NDAlbumView: View {
                     }.padding(.horizontal, Theme.margin).padding(.top, 24).motionIn(0.18)
 
                     if loading {
-                        ProgressView().padding(.top, 40)
+                        DoodleLoader().padding(.top, 40)
+                    } else if isOnlineAlbumFail {
+                        let o = shown.origin ?? (shown.id.contains(":") ? String(shown.id.split(separator: ":")[0]) : nil)
+                        VStack(spacing: 12) {
+                            Text("暂时打不开").font(.system(size: 17, weight: .semibold))
+                            Text(o.map { "这首来自 \(CoreOrigin.label($0))，详情没拿到" } ?? (error ?? "详情没拿到"))
+                                .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).multilineTextAlignment(.center)
+                            Button("返回") { if !state.path.isEmpty { state.path.removeLast() } }.buttonStyle(SecondaryButtonStyle()).frame(width: 160)
+                        }.padding(.top, 32).padding(.horizontal, Theme.margin)
                     } else if let error {
                         Text(error).font(.system(size: 14)).foregroundStyle(.red).padding(.top, 24)
                     } else {

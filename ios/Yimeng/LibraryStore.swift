@@ -21,6 +21,7 @@ struct NDArtist: Identifiable, Hashable, Codable {
     let albumCount: Int?
     var coverId: String? = nil
     var sortLetter: String? = nil
+    var origin: String? = nil
 }
 
 struct NDGenre: Identifiable, Hashable, Codable {

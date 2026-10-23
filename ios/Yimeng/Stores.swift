@@ -112,6 +112,10 @@ extension HomeStore {
         next.random = (h.random ?? []).map(CoreClient.nd)
         next.artists = (h.topArtists ?? []).map(CoreClient.nd)
         next.playlists = (h.playlists ?? []).map(CoreClient.nd)
+        if next.banner.isEmpty {
+            let pool = next.newest + next.recent + next.frequent + next.random
+            next.banner = Array(pool.prefix(5))
+        }
         next.savedAt = Date()
         withAnimation(.smooth(duration: 0.35)) { data = next }; persist()
     }

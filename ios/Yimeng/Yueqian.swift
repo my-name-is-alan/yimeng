@@ -38,7 +38,15 @@ final class YueqianStore: ObservableObject {
             pick = CoreClient.nd(t); origin = p.origin
         }
         if pick == nil { pick = await Self.dayPick() }
-        guard let s = pick else { card = nil; return }
+        guard let s = pick else {
+            // Connected Core with empty library/platform: keep a stub so the home ticket still renders.
+            if NavidromeClient.core && LibraryStore.shared.connected {
+                let stub = NDSong(id: "yueqian:stub", title: "今日乐签", artist: "点开取签", album: nil, albumId: nil, coverId: nil, duration: nil, track: nil)
+                card = Card(song: stub, quote: "今日乐签 · 点开取签", date: Date(), origin: nil, coverURL: nil)
+                cover = nil; palette = .fallback
+            } else { card = nil }
+            return
+        }
         let lines = await LyricsStore.fetch(s).0
         let quote = Self.highlight(lines.map(\.text)) ?? s.album ?? s.title
         let url = LibraryStore.shared.coverArtURL(id: s.coverId ?? s.albumId, size: 600)

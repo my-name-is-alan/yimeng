@@ -39,8 +39,10 @@ extension CoreClient {
         CoreState.remember(cover: a.cover)
         var x = NDArtist(id: a.id, name: a.name, albumCount: a.albumCount, coverId: a.cover?.url)
         x.sortLetter = a.sortLetter
+        x.origin = a.origin ?? splitExternal(a.id)?.origin
         return x
     }
+    nonisolated static func splitExternal(_ id: String) -> (origin: String, native: String)? { CoreClient.splitExternal(id) }
     nonisolated static func nd(_ p: CorePlaylist) -> NDPlaylist {
         CoreState.remember(cover: p.cover)
         var x = NDPlaylist(id: p.id, name: p.name, songCount: p.trackCount, coverId: p.cover?.url ?? p.coverUrl, comment: p.description ?? p.subtitle, owner: p.owner)
@@ -64,6 +66,10 @@ extension CoreClient: LibraryBackend {
         return p.items.map(Self.nd)
     }
     func album(id: String) async throws -> (NDAlbum, [NDSong]) {
+        if let (o, n) = Self.splitExternal(id) {
+            let a = try await onlineAlbum(origin: o, id: n)
+            return (Self.nd(a), (a.tracks ?? []).map(Self.nd))
+        }
         let a: CoreAlbum = try await get("/api/v1/albums/\(Self.path(id))", cache: true)
         return (Self.nd(a), (a.tracks ?? []).map(Self.nd))
     }
@@ -82,9 +88,17 @@ extension CoreClient: LibraryBackend {
         return p.items.map(Self.nd)
     }
     func artistAlbums(_ id: String) async throws -> [NDAlbum] {
+        if let (o, n) = Self.splitExternal(id) {
+            let a = try await onlineArtist(origin: o, id: n)
+            return (a.albums ?? []).map(Self.nd)
+        }
         let p: CorePage<CoreAlbum> = try await page("/api/v1/artists/\(Self.path(id))/albums", [:], offset: 0, limit: 200); return p.items.map(Self.nd)
     }
     func artistTracks(_ id: String, size: Int) async throws -> [NDSong] {
+        if let (o, n) = Self.splitExternal(id) {
+            let a = try await onlineArtist(origin: o, id: n)
+            return Array((a.topTracks ?? []).prefix(size).map(Self.nd))
+        }
         let p: CorePage<CoreTrack> = try await page("/api/v1/artists/\(Self.path(id))/tracks", ["sort": "plays", "order": "desc"], offset: 0, limit: size); return p.items.map(Self.nd)
     }
     func genres() async throws -> [NDGenre] { [] }   // not in the draft

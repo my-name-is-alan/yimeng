@@ -41,7 +41,13 @@ struct SettingsView: View {
                             sources.active.title, chevron: true)
                     }.buttonStyle(.plain)
                     divider
-                    row("server.rack", NavidromeClient.emby ? library.embyProduct : NavidromeClient.core ? (library.coreServerName.isEmpty ? "译梦服务端" : library.coreServerName) : "Navidrome", library.connected ? library.host.replacingOccurrences(of: "https://", with: "") : (library.status.isEmpty || library.status == "待连接译梦服务端" ? "未连接" : library.status))
+                    row("server.rack", NavidromeClient.emby ? library.embyProduct : NavidromeClient.core ? (library.coreServerName.isEmpty ? "译梦服务端" : library.coreServerName) : "Navidrome", {
+                        if !library.connected {
+                            return (library.status.isEmpty || library.status == "待连接译梦服务端") ? "未连接" : library.status
+                        }
+                        if NavidromeClient.core, let n = library.songTotal, n > 0 { return "已连接 · \(n) 首" }
+                        return "已连接"
+                    }())
                     if NavidromeClient.core && library.connected {
                         row("person.badge.key", "账号", library.user.isEmpty ? "设备配对" : library.user)
                         divider
@@ -157,7 +163,13 @@ struct SettingsView: View {
                         YMIcon(glyph: NavidromeClient.core ? .chevron : .more, size: 12, weight: 1.5).opacity(0.6)
                     }
                 }.buttonStyle(.plain)
-                Text(library.connected ? "\(NavidromeClient.emby ? "\(library.embyProduct) · " + (library.embyUserName.isEmpty ? library.user : library.embyUserName) : library.user) @ \(library.host.replacingOccurrences(of: "https://", with: ""))" : "尚未连接音乐来源")
+                Text(library.connected
+                     ? (NavidromeClient.core
+                        ? "\(library.user.isEmpty ? "设备配对" : library.user) · 已连接"
+                        : (NavidromeClient.emby
+                           ? "\(library.embyProduct) · \(library.embyUserName.isEmpty ? library.user : library.embyUserName) · 已连接"
+                           : "\(library.user) · 已连接"))
+                     : "尚未连接音乐来源")
                     .font(.system(size: 13)).foregroundStyle(Theme.secondary(scheme)).lineLimit(1)
             }
             Spacer()
