@@ -26,7 +26,8 @@ struct NowPlayingView: View {
         GeometryReader { g in
             let slot = track.layout.slot(width: g.size.width)
             ZStack(alignment: .topLeading) {
-                DreamField(track: track)
+                // Pause mesh under lyrics so the dim panel does not shimmer/flicker.
+                DreamField(track: track, animated: !state.lyricsMode)
                 if state.lyricsMode {
                     TimelineView(.periodic(from: .now, by: 0.25)) { tl in
                         if player.song != nil {
@@ -106,6 +107,11 @@ struct NowPlayingView: View {
         Group {
             if let ns { art.matchedGeometryEffect(id: "npcover", in: ns, properties: .frame, anchor: .center, isSource: true) } else { art }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            Haptics.tick()
+            withAnimation(.smooth(duration: 0.45)) { state.lyricsMode = true }
+        }
         .modifier(CoverSwipe())
         .offset(x: slot.rect.minX, y: slot.rect.minY)
         .motionIn(0.08, from: .scale)
@@ -162,7 +168,7 @@ struct NowPlayingView: View {
             .background(Circle().fill(Color.white.opacity(0.14)))
     }
 
-    /// Small quiet action row: 歌词 · 音效 · 加到歌单 · 播放列表 · ⋯
+    /// Small quiet action row: 歌词 · 音效 · 加到歌单 · 播放列表 · ⋯ — liquid-glass capsule chrome
     var actionRow: some View {
         HStack {
             act("quote.bubble", on: state.lyricsMode) { withAnimation(.smooth(duration: 0.45)) { state.lyricsMode.toggle() } }
@@ -176,6 +182,9 @@ struct NowPlayingView: View {
             act("ellipsis") { if player.hasRealPlayback { showMore = true } else { showAmbience = true } }
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(GlassCapsule())
     }
 
     private func act(_ icon: String, on: Bool = false, _ action: @escaping () -> Void) -> some View {
@@ -196,6 +205,7 @@ struct NowPlayingView: View {
 struct TimeBar: View {
     let elapsed: TimeInterval; let total: TimeInterval
     var body: some View {
+        let rem = max(0, total - elapsed)
         HStack(spacing: 10) {
             Text(fmtTime(elapsed)).monospacedDigit()
             GeometryReader { g in
@@ -204,9 +214,10 @@ struct TimeBar: View {
                     Capsule().fill(Color.white).frame(width: g.size.width * CGFloat(min(1, elapsed / max(total, 1))))
                 }
             }.frame(height: 3)
-            Text(fmtTime(total)).monospacedDigit()
+            Text("-" + fmtTime(rem)).monospacedDigit()
         }
         .font(.system(size: 12)).opacity(0.85)
+        .environment(\.layoutDirection, .leftToRight)
     }
 }
 
@@ -289,7 +300,7 @@ struct LyricsView: View {
             GeometryReader { g in
                 VStack(alignment: .leading, spacing: 22) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { i, l in
-                        line(l, i: i, d: abs(i - idx), active: i == idx, accent: track.blobs[1])
+                        line(l, i: i, idx: idx, accent: track.blobs[1])
                             .blurIn(stagger(i, base: 0.1, step: 0.06))
                     }
                 }
@@ -306,10 +317,14 @@ struct LyricsView: View {
         .saturation(0.55)
     }
 
-    @ViewBuilder func line(_ l: LyricLine, i: Int, d: Int, active: Bool, accent: Color) -> some View {
+    @ViewBuilder func line(_ l: LyricLine, i: Int, idx: Int, accent: Color) -> some View {
+        let active = i == idx
+        let past = i < idx
+        let d = abs(i - idx)
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Text(l.text).font(.system(size: active ? 24 : 21, weight: .bold))
+                    .foregroundStyle((past || active) ? accent.opacity(past ? 0.9 : 1) : Color.white.opacity(0.4))
                     .background(alignment: .leading) {
                         if active {
                             ZStack(alignment: .bottomLeading) {
@@ -328,8 +343,9 @@ struct LyricsView: View {
                 Text(l.en).font(.system(size: 13)).opacity(0.6)
             }
         }
-        .opacity(active ? 1 : (d == 1 ? 0.55 : 0.4))
+        .opacity(past || active ? 1 : (d == 1 ? 0.7 : 0.45))
         .blur(radius: d >= 3 ? 2.5 : (d == 2 ? 1 : 0))
+        .animation(.smooth(duration: 0.5), value: idx)
     }
 }
 

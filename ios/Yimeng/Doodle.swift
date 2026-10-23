@@ -303,7 +303,7 @@ struct DoodleLayer: View {
 
     var body: some View {
         GeometryReader { g in
-            TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 60)) { tl in
+            TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 30)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate * (calm ? 0.08 : 1)
                 let run = advanceOrbitPhase()
                 // Soft 0…1 beat breath (no hard white flash). Squash so peaks are gentle.

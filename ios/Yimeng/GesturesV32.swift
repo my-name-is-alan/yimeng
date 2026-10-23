@@ -206,7 +206,8 @@ struct CoverSwipe: ViewModifier {
     func body(content: Content) -> some View {
         content
             .offset(x: dx).rotationEffect(.degrees(Double(dx) / 40))
-            .gesture(DragGesture(minimumDistance: 12).onChanged { v in
+            // simultaneous so cover onTapGesture (→ lyrics) is not eaten by the drag.
+            .simultaneousGesture(DragGesture(minimumDistance: 12).onChanged { v in
                 if abs(v.translation.width) > abs(v.translation.height) { dx = v.translation.width }
             }.onEnded { v in
                 let w = v.translation.width

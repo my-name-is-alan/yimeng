@@ -10,7 +10,7 @@ struct DreamField: View {
         ZStack {
             track.base
             if #available(iOS 18.0, macOS 15.0, *) {
-                TimelineView(.animation(minimumInterval: calm ? 1 / 4 : 1 / 30, paused: !animated)) { tl in
+                TimelineView(.animation(minimumInterval: calm ? 1 / 4 : 1 / 12, paused: !animated)) { tl in
                     let t = Float((tl.date.timeIntervalSinceReferenceDate * (calm ? 0.12 : 1)).truncatingRemainder(dividingBy: 600))
                     MeshGradient(width: 3, height: 3, points: Self.points(t), colors: meshColors)
                 }
@@ -24,14 +24,6 @@ struct DreamField: View {
                         Circle().fill(track.blobs[3]).frame(width: w * 0.9).position(x: w * 0.95, y: h * 0.92)
                     }.blur(radius: 70)
                 }
-            }
-            if animated && !calm && PlayerStore.shared.hasRealPlayback {
-                // Background breathing on the beat (doodles + field only; controls/text never move).
-                TimelineView(.animation(minimumInterval: 1 / 30)) { _ in
-                    let p = BeatStore.pulse(serverBPM: track.serverBPM)
-                    RadialGradient(colors: [track.blobs[0].opacity(0.22 * p), .clear], center: .center, startRadius: 20, endRadius: 420)
-                        .blendMode(.screen)
-                }.allowsHitTesting(false)
             }
             // soft haze so text stays legible
             LinearGradient(colors: [.black.opacity(0.10), .clear, .black.opacity(0.28)], startPoint: .top, endPoint: .bottom)

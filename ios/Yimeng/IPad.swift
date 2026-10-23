@@ -8,6 +8,7 @@ struct ScrubBar: View {
     @State private var lastTick = -1
     var body: some View {
         let shown = drag ?? min(1, elapsed / max(total, 1))
+        let rem = max(0, total * (1 - shown))
         HStack(spacing: 10) {
             Text(fmtTime(shown * total)).monospacedDigit()
             GeometryReader { g in
@@ -19,6 +20,7 @@ struct ScrubBar: View {
                 .frame(height: drag == nil ? 3 : 6).frame(maxHeight: .infinity)
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    // Fill grows from leading (left); x maps L→R elapsed fraction.
                     let f = max(0, min(1, Double(v.location.x / max(g.size.width, 1))))
                     if drag == nil { Haptics.tap() }
                     drag = f
@@ -29,9 +31,10 @@ struct ScrubBar: View {
                     Haptics.tap(); drag = nil; lastTick = -1
                 })
             }.frame(height: 22)
-            Text(fmtTime(total)).monospacedDigit()
+            Text("-" + fmtTime(rem)).monospacedDigit()
         }
         .font(.system(size: 12)).opacity(0.85)
+        .environment(\.layoutDirection, .leftToRight)
         .animation(.snappy(duration: 0.2), value: drag == nil)
         .accessibilityElement().accessibilityLabel("播放进度").accessibilityValue(fmtTime(elapsed))
         .accessibilityAdjustableAction { d in PlayerStore.shared.seek(to: elapsed + (d == .increment ? 15 : -15)) }
@@ -170,7 +173,7 @@ struct PadSidebar: View {
             .padding(.leading, 8).padding(.bottom, 18).padding(.top, 8)
             ForEach(Tab.allCases, id: \.self) { t in
                 let on = state.tab == t
-                Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
+                Button { withAnimation(.snappy) { state.path = []; state.tab = t } } label: {
                     HStack(spacing: 12) {
                         ZStack {
                             if on { Crayon(shape: WobblyCircle(), color: Theme.accent(scheme), width: 1.6).frame(width: 34, height: 34) }
@@ -243,7 +246,8 @@ struct PlayerTransport: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 22).frame(height: big ? 72 : 64)
-        .background(Capsule().fill(Color.black.opacity(0.32)).overlay(Capsule().strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)))
+        // Same liquid-glass language as actionRow / tab bar; white play circle stays opaque on top.
+        .background(GlassCapsule())
         .environment(\.colorScheme, .dark)
     }
 }
@@ -269,6 +273,8 @@ struct PadPlayerColumn: View {
                             .frame(width: side, height: side).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .anchorPreference(key: PadCoverAnchor.self, value: .bounds) { $0 }
                             .shadow(color: .black.opacity(0.35), radius: 24, y: 16)
+                            .contentShape(Rectangle())
+                            .onTapGesture { Haptics.tick(); withAnimation(.smooth(duration: 0.35)) { lyrics = true } }
                             .modifier(CoverSwipe())
                             .padding(.top, 20)
                         VStack(spacing: 3) {

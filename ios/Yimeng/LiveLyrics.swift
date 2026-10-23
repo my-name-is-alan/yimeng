@@ -72,7 +72,7 @@ struct LiveLyricsView: View {
                         ScrollView(.vertical, showsIndicators: false) {
                             VStack(alignment: .leading, spacing: 22) {
                                 ForEach(Array(store.lines.enumerated()), id: \.offset) { i, l in
-                                    line(l, ms: ms, d: abs(i - idx), active: i == idx)
+                                    line(l, ms: ms, i: i, idx: idx)
                                         .frame(maxWidth: .infinity, alignment: .leading).id(i)
                                         .contentShape(Rectangle())
                                         .onTapGesture { Haptics.tick(); PlayerStore.shared.seek(to: Double(l.tMs) / 1000 + 0.01) }
@@ -121,14 +121,25 @@ struct LiveLyricsView: View {
         }.buttonStyle(.plain)
     }
 
-    @ViewBuilder func line(_ l: CoreLyricLine, ms: Int, d: Int, active: Bool) -> some View {
+    @ViewBuilder func line(_ l: CoreLyricLine, ms: Int, i: Int, idx: Int) -> some View {
+        let active = i == idx
+        let past = i < idx
+        let d = abs(i - idx)
+        // Past/current → theme accent (slowly advances); future → dim.
+        let fg: Color = (past || active) ? accent.opacity(past ? 0.9 : 1) : Color.primary.opacity(bare ? 0.4 : 0.42)
+        let useWords = (l.words ?? []).isEmpty == false && (active || past)
         VStack(alignment: .leading, spacing: 3) {
             Group {
-                if active, let w = l.words, !w.isEmpty { Text(Self.karaoke(w, ms: ms, accent: accent)) }
-                else { Text(l.text) }
+                if useWords, let w = l.words {
+                    // Word colors come from AttributedString — do not override with foregroundStyle.
+                    Text(Self.karaoke(w, ms: ms, accent: accent, forcePast: past))
+                        .font(fonts.font(size: (active ? 24 : 21) * k))
+                } else {
+                    Text(l.text)
+                        .font(fonts.font(size: (active ? 24 : 21) * k))
+                        .foregroundStyle(fg)
+                }
             }
-            .font(fonts.font(size: (active ? 24 : 21) * k))
-            .foregroundStyle(active && bare ? accent : Color.primary)
             .shadow(color: active && bare ? accent.opacity(0.25) : .clear, radius: 12)
             .background(alignment: .leading) {
                 if active && (l.words ?? []).isEmpty && !bare {
@@ -138,19 +149,29 @@ struct LiveLyricsView: View {
             if showRoma, let r = l.roma, !r.isEmpty { Text(r).font(.system(size: 12 * k)).opacity(0.55) }
             if showTrans, let t = l.trans, !t.isEmpty { Text(t).font(.system(size: 13 * k)).opacity(0.6) }
         }
-        .opacity(active ? 1 : (d == 1 ? 0.55 : 0.4))
+        .opacity(past || active ? 1 : (d == 1 ? 0.7 : 0.45))
         .blur(radius: d >= 3 ? 2.5 : (d == 2 ? 1 : 0))
+        // Only ease on line-index change — animating on ms/80 made every karaoke tick flash.
+        .animation(.smooth(duration: 0.45), value: idx)
     }
 
-    /// Sung words full white, the current word in the accent, the rest dim. Wraps like normal text.
-    static func karaoke(_ words: [CoreLyricWord], ms: Int, accent: Color) -> AttributedString {
+    /// Sung/past = accent; current word = accent; future = dim. Softly advances with playback.
+    static func karaoke(_ words: [CoreLyricWord], ms: Int, accent: Color, forcePast: Bool = false) -> AttributedString {
         var out = AttributedString()
         for w in words {
             var a = AttributedString(w.text)
-            let end = w.tMs + (w.dMs ?? 300)
-            if ms >= end { a.foregroundColor = .white }
-            else if ms >= w.tMs { a.foregroundColor = accent }
-            else { a.foregroundColor = Color.white.opacity(0.42) }
+            if forcePast {
+                a.foregroundColor = accent.opacity(0.9)
+            } else {
+                let end = w.tMs + (w.dMs ?? 300)
+                if ms >= end {
+                    a.foregroundColor = accent          // sung
+                } else if ms >= w.tMs {
+                    a.foregroundColor = accent          // current (whole word; line anim softens jump)
+                } else {
+                    a.foregroundColor = Color.white.opacity(0.4)
+                }
+            }
             out += a
         }
         return out
