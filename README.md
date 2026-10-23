@@ -34,10 +34,6 @@
 
 ## 跨平台 / 多设备
 
-<p align="center">
-  <img src="docs/readme-assets/platforms.png" width="920" alt="iPhone · Android · Mac · Windows" />
-</p>
-
 | 端 | 技术 | 状态 |
 |----|------|------|
 | **iOS / iPad** | SwiftUI | 主力体验：手势、长按菜单、乐签、离线缓存、识曲… |
@@ -47,23 +43,6 @@
 | **Core** | Go | 曲库、播放、元数据、Vault、平台透传 |
 
 多设备接力、会话同步、跨端换源优先级，由 Core 统一调度——在哪台设备点开，队列与进度都能接上。
-
-### 桌面
-
-<p align="center">
-  <img src="docs/readme-assets/shot-mac-home.png" width="880" alt="Mac 首页" /><br/>
-  <sub>Mac · 侧栏导航 + 宽内容 + 底部悬浮迷你播放条</sub>
-</p>
-
-<p align="center">
-  <img src="docs/readme-assets/shot-mac-nowplaying.png" width="880" alt="Mac 全屏播放" /><br/>
-  <sub>Mac · 全屏播放：左歌词 · 右梦境方封面涂鸦框</sub>
-</p>
-
-<p align="center">
-  <img src="docs/readme-assets/shot-win-home.png" width="880" alt="Windows 首页" /><br/>
-  <sub>Windows · 同一桌面骨架</sub>
-</p>
 
 ### 手机
 
