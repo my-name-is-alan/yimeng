@@ -27,6 +27,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -89,6 +90,7 @@ fun YmApp() {
             PlayerPage(
                 track = now!!,
                 onBack = { showPlayer = false },
+                haze = haze,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -297,106 +299,276 @@ private fun MePage(status: String) {
 }
 
 @Composable
-private fun PlayerPage(track: CoreTrack, onBack: () -> Unit, modifier: Modifier = Modifier) {
+private fun PlayerPage(
+    track: CoreTrack,
+    onBack: () -> Unit,
+    haze: HazeState,
+    modifier: Modifier = Modifier,
+) {
     var progress by remember(track.id) { mutableFloatStateOf(0.35f) }
     var liked by remember(track.id) { mutableStateOf(false) }
-    val durationSec = 242
+    var paused by remember { mutableStateOf(false) }
+    val durationSec = 403 // ~6:43 like iOS ref
     val posSec = (progress * durationSec).toInt()
     fun fmt(s: Int) = "%d:%02d".format(s / 60, s % 60)
+
     Box(modifier.background(Base)) {
-        DreamField(DreamMock.cloud, Modifier.fillMaxSize(), realPlayback = true, lastBeatAgoSec = 0.15f)
+        // Cover-color dream blur (CLOUD motif mood)
+        DreamField(
+            DreamMock.cloud,
+            Modifier.fillMaxSize().hazeSource(haze),
+            realPlayback = true,
+            lastBeatAgoSec = 0.15f,
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.28f)))
+
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(top = 12.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Row(
-                    Modifier.clip(RoundedCornerShape(8.dp)).background(Color.White.copy(0.1f)).clickable(onClick = onBack).padding(8.dp, 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            // 1) Top bar: circular chevron-DOWN · title · heart  (no 返回, no queue)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(0.40f))
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    YMIcon(YMGlyph.Back, size = 16.dp, color = Color.White.copy(0.85f))
-                    Spacer(Modifier.width(4.dp))
-                    Text("返回", color = Color.White.copy(0.85f), fontSize = 13.sp)
+                    Canvas(Modifier.size(16.dp)) {
+                        val stroke = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+                        val c = Offset(size.width / 2f, size.height / 2f)
+                        drawPath(
+                            Path().apply {
+                                moveTo(c.x - 5.5.dp.toPx(), c.y - 2.dp.toPx())
+                                lineTo(c.x, c.y + 3.5.dp.toPx())
+                                lineTo(c.x + 5.5.dp.toPx(), c.y - 2.dp.toPx())
+                            },
+                            color = Color.White.copy(0.9f),
+                            style = stroke,
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                YMIcon(
-                    if (liked) YMGlyph.HeartFill else YMGlyph.Heart,
-                    size = 22.dp,
-                    filled = liked,
-                    color = if (liked) Color(0xFFFF6B8A) else Color.White.copy(0.85f),
-                    modifier = Modifier.clickable { liked = !liked },
+                Text(
+                    "译梦 · 梦境 CLOUD",
+                    color = Color.White.copy(0.82f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
                 )
-                Spacer(Modifier.width(16.dp))
-                YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.85f))
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(0.40f))
+                        .clickable { liked = !liked },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    YMIcon(
+                        if (liked) YMGlyph.HeartFill else YMGlyph.Heart,
+                        size = 18.dp,
+                        filled = liked,
+                        color = if (liked) Color(0xFFFF6B8A) else Color.White.copy(0.9f),
+                    )
+                }
             }
-            Spacer(Modifier.height(8.dp))
-            // Cover + DoodlePaths.frame (Cloud motif draws frame around the slot)
-            Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
-                DoodleLayer(DreamMock.cloud, Modifier.fillMaxSize(), intensity = 0.75f)
-                CoverImage(track.coverUrl, Modifier.size(200.dp).clip(RoundedCornerShape(16.dp)), fallback = Color(0xFFFF7A1A))
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(track.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(track.artist, color = Color.White.copy(0.7f), fontSize = 14.sp)
-            Spacer(Modifier.height(16.dp))
-            // Scrubbable progress
+
+            Spacer(Modifier.height(10.dp))
+
+            // 2) Cover + doodle frame ONLY; title/artist below frame
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(28.dp)
-                    .pointerInput(track.id) {
-                        detectTapGestures { offset ->
-                            progress = (offset.x / size.width).coerceIn(0f, 1f)
-                        }
-                    },
+                    .weight(1f),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(0.2f))) {
-                    Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Lime))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(292.dp), contentAlignment = Alignment.Center) {
+                        // Tight doodle frame around cover (frame + clouds + star) — not full-page motif
+                        Canvas(Modifier.fillMaxSize()) {
+                            val pad = 22.dp.toPx()
+                            val cover = size.width - pad * 2
+                            val left = pad
+                            val top = pad
+                            val rc = Rect(left, top, left + cover, top + cover)
+                            val stroke = Stroke(width = 1.7.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+                            val ink = Color.White.copy(0.78f)
+                            val fr = Rect(rc.left - 10f, rc.top - 10f, rc.right + 10f, rc.bottom + 10f)
+                            drawPath(DoodlePaths.frame(fr, seed = 41uL, jitter = 3.2f), ink, style = stroke)
+                            drawPath(DoodlePaths.cloud(Offset(left + cover * 0.52f, top - 10.dp.toPx()), 64.dp.toPx()), ink, style = stroke)
+                            drawPath(DoodlePaths.cloud(Offset(left - 8.dp.toPx(), top + cover * 0.62f), 48.dp.toPx()), ink.copy(0.65f), style = stroke)
+                            drawPath(DoodlePaths.sparkle(Offset(left + cover + 4.dp.toPx(), top + 18.dp.toPx()), 7.dp.toPx()), ink, style = stroke)
+                            drawPath(DoodlePaths.moon(Offset(left + 8.dp.toPx(), top + cover + 2.dp.toPx()), 9.dp.toPx()), ink.copy(0.7f), style = stroke)
+                        }
+                        CoverImage(
+                            track.coverUrl,
+                            Modifier.size(248.dp).clip(RoundedCornerShape(18.dp)),
+                            fallback = Color(0xFFFF7A1A),
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        track.title,
+                        color = Color.White,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(track.artist, color = Color.White.copy(0.65f), fontSize = 14.sp)
+
+                    Spacer(Modifier.height(18.dp))
+
+                    // 3) Thin progress — played = light/white, no lime knob
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(fmt(posSec), color = Color.White.copy(0.45f), fontSize = 11.sp)
+                            Text(fmt(durationSec), color = Color.White.copy(0.45f), fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(16.dp)
+                                .pointerInput(track.id) {
+                                    detectTapGestures { offset ->
+                                        progress = (offset.x / size.width).coerceIn(0f, 1f)
+                                    }
+                                },
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(2.dp)
+                                    .clip(RoundedCornerShape(1.dp))
+                                    .background(Color.White.copy(0.22f)),
+                            ) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth(progress)
+                                        .fillMaxHeight()
+                                        .background(Color.White.copy(0.92f)),
+                                )
+                            }
+                            // Tiny white tip (not a lime knob)
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(progress)
+                                    .wrapContentWidth(Alignment.End),
+                            ) {
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // 4) Secondary doodle-outline row: lyrics · EQ · add · queue · more
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 36.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        YMIcon(YMGlyph.Lyrics, size = 22.dp, color = Color.White.copy(0.85f))
+                        PlayerEqIcon(Modifier.size(22.dp))
+                        PlayerAddListIcon(Modifier.size(22.dp))
+                        YMIcon(YMGlyph.Queue, size = 22.dp, color = Color.White.copy(0.85f))
+                        YMIcon(YMGlyph.More, size = 22.dp, color = Color.White.copy(0.85f))
+                    }
                 }
-                Box(
-                    Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = ((progress * 1000).toInt().coerceIn(0, 1000) / 1000f * 1f).let { /* thumb */ 0.dp })
-                        .fillMaxWidth(progress)
-                        .wrapContentWidth(Alignment.End),
-                ) {
-                    Box(Modifier.size(12.dp).clip(CircleShape).background(Lime))
-                }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(fmt(posSec), color = Color.White.copy(0.5f), fontSize = 11.sp)
-                Text(fmt(durationSec), color = Color.White.copy(0.5f), fontSize = 11.sp)
-            }
-            Spacer(Modifier.height(18.dp))
-            // Prev left · Pause · Next right (glyphs fixed in YMIcons.skip)
-            Row(horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                YMIcon(YMGlyph.Previous, size = 26.dp, filled = true, color = Color.White)
-                YMIcon(YMGlyph.Pause, size = 40.dp, filled = true, color = Color.White)
-                YMIcon(YMGlyph.Next, size = 26.dp, filled = true, color = Color.White)
-            }
-            Spacer(Modifier.height(28.dp))
-            // Lyrics area below cover/controls
-            Column(
-                Modifier
+
+            Spacer(Modifier.height(8.dp))
+
+            // 5) Bottom transport PILL — loop | prev | white play circle | next | 1x
+            GlassCapsule(
+                hazeState = haze,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(0.06f))
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(horizontal = 22.dp)
+                    .height(64.dp),
+                corner = 999.dp,
+                blurRadius = 20.dp,
+                miniPlayerExtra = true,
             ) {
-                Text("歌词", color = Color.White.copy(0.45f), fontSize = 11.sp, modifier = Modifier.align(Alignment.Start))
-                Spacer(Modifier.height(10.dp))
-                Text("这一路走来不容易", color = Color.White.copy(0.55f), fontSize = 14.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("你和我曾并肩前进", color = Lime, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Text("梦还在心中不曾熄灭", color = Color.White.copy(0.55f), fontSize = 14.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("哪怕风雨再大也要唱下去", color = Color.White.copy(0.35f), fontSize = 13.sp)
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    YMIcon(YMGlyph.Repeat, size = 20.dp, color = Color.White.copy(0.85f))
+                    YMIcon(YMGlyph.Previous, size = 22.dp, filled = true, color = Color.White)
+                    Box(
+                        Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .clickable { paused = !paused },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        YMIcon(
+                            if (paused) YMGlyph.Play else YMGlyph.Pause,
+                            size = 22.dp,
+                            filled = true,
+                            color = Color.Black,
+                        )
+                    }
+                    YMIcon(YMGlyph.Next, size = 22.dp, filled = true, color = Color.White)
+                    Text("1x", color = Color.White.copy(0.85f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
-            Spacer(Modifier.height(40.dp))
         }
+    }
+}
+
+@Composable
+private fun PlayerEqIcon(modifier: Modifier = Modifier) {
+    // Three horizontal slider lines (iOS v41 EQ)
+    Canvas(modifier) {
+        val stroke = Stroke(width = 1.7.dp.toPx(), cap = StrokeCap.Round)
+        val c = Color.White.copy(0.85f)
+        val ys = listOf(size.height * 0.28f, size.height * 0.50f, size.height * 0.72f)
+        val ends = listOf(0.72f, 0.90f, 0.58f)
+        ys.zip(ends).forEach { (y, end) ->
+            val x0 = size.width * 0.08f
+            val x1 = size.width * end
+            drawLine(c, Offset(x0, y), Offset(x1, y), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            drawCircle(c, radius = 2.0.dp.toPx(), center = Offset(x1, y), style = Stroke(width = stroke.width))
+        }
+    }
+}
+
+@Composable
+private fun PlayerAddListIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val stroke = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        val c = Color.White.copy(0.85f)
+        // note stem + head
+        val cx = size.width * 0.38f
+        drawLine(c, Offset(cx + 4.dp.toPx(), size.height * 0.18f), Offset(cx + 4.dp.toPx(), size.height * 0.72f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        drawOval(
+            color = c,
+            topLeft = Offset(cx - 5.dp.toPx(), size.height * 0.62f),
+            size = androidx.compose.ui.geometry.Size(10.dp.toPx(), 7.dp.toPx()),
+            style = stroke,
+        )
+        // plus
+        val px = size.width * 0.72f
+        val py = size.height * 0.32f
+        drawLine(c, Offset(px - 4.dp.toPx(), py), Offset(px + 4.dp.toPx(), py), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        drawLine(c, Offset(px, py - 4.dp.toPx()), Offset(px, py + 4.dp.toPx()), strokeWidth = stroke.width, cap = StrokeCap.Round)
     }
 }
 
