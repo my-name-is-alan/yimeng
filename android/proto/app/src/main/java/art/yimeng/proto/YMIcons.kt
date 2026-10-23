@@ -23,9 +23,9 @@ import kotlin.math.max
 import kotlin.math.sin
 
 /**
- * Port of iOS YMIcons.swift @ 06f2059 (feat/ios-navidrome).
+ * Port of iOS YMIcons.swift (.r2-staging / feat/ios-navidrome handoff).
  * Unit-square 0…1 path tables + YMIcon crayon second-pass + YMBrandMark (梦境环).
- * Do not invent glyphs not in the source file.
+ * Paths match iOS exactly; Eq/AddList are clean SF-silhouette extensions (no fake wobble).
  */
 
 enum class YMGlyph {
@@ -141,86 +141,67 @@ object YMIconPaths {
         moveTo(0.78f, 0.18f); lineTo(0.90f, 0.30f); lineTo(0.78f, 0.42f)
     }
 
-    /** Dual-arrow repeat — soft hand arcs, not Lucide chevrons. */
+    /** iOS YMIcons.loop — open arc + arrowhead (+ optional "1"). */
     private fun loop(one: Boolean): Path = Path().apply {
-        // top sweep →
-        moveTo(0.68f, 0.20f)
-        quadraticTo(0.90f, 0.22f, 0.86f, 0.38f)
-        quadraticTo(0.55f, 0.36f, 0.22f, 0.38f)
-        quadraticTo(0.10f, 0.40f, 0.12f, 0.52f)
-        // arrow head (slightly askew)
-        moveTo(0.74f, 0.14f)
-        lineTo(0.90f, 0.34f)
-        lineTo(0.68f, 0.36f)
-        // bottom sweep ←
-        moveTo(0.32f, 0.80f)
-        quadraticTo(0.10f, 0.78f, 0.14f, 0.62f)
-        quadraticTo(0.45f, 0.64f, 0.78f, 0.62f)
-        quadraticTo(0.90f, 0.60f, 0.88f, 0.48f)
-        moveTo(0.26f, 0.86f)
-        lineTo(0.10f, 0.66f)
-        lineTo(0.32f, 0.64f)
+        val start = Math.toRadians(-40.0)
+        val end = Math.toRadians(220.0)
+        val n = 24
+        for (i in 0..n) {
+            val t = i / n.toFloat()
+            val a = start + (end - start) * t
+            val x = 0.50f + cos(a).toFloat() * 0.32f
+            val y = 0.50f + sin(a).toFloat() * 0.32f
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        moveTo(0.72f, 0.18f); lineTo(0.86f, 0.32f); lineTo(0.68f, 0.36f)
         if (one) {
-            moveTo(0.46f, 0.42f); lineTo(0.52f, 0.42f); lineTo(0.52f, 0.58f)
+            moveTo(0.46f, 0.38f); lineTo(0.52f, 0.38f); lineTo(0.52f, 0.68f)
         }
     }
 
     private fun arrow(): Path = Path().apply {
-        doodleLine(0.18f, 0.50f, 0.78f, 0.50f, 0.015f)
+        moveTo(0.18f, 0.50f); lineTo(0.78f, 0.50f)
         moveTo(0.62f, 0.32f); lineTo(0.82f, 0.50f); lineTo(0.62f, 0.68f)
     }
 
     /**
-     * Lyrics — speech bubble with text lines (target-cover-v3 silhouette)
-     * drawn as imperfect crayon strokes, not Lucide rounded-rect.
+     * Lyrics — speech bubble (SF quote.bubble / target-cover-v3).
+     * Clean rounded path + text lines; crayon feel from YMIcon ghost pass, not fake wobble.
      */
     private fun quote(): Path = Path().apply {
-        // bubble outline — wobbly rounded rect + tail
-        moveTo(0.20f, 0.24f)
-        quadraticTo(0.50f, 0.18f, 0.80f, 0.24f)
-        quadraticTo(0.92f, 0.28f, 0.90f, 0.42f)
-        quadraticTo(0.92f, 0.56f, 0.78f, 0.62f)
-        lineTo(0.44f, 0.62f)
-        // tail (hand-drawn triangle)
-        quadraticTo(0.34f, 0.72f, 0.26f, 0.84f)
-        quadraticTo(0.30f, 0.70f, 0.32f, 0.62f)
-        lineTo(0.20f, 0.62f)
-        quadraticTo(0.08f, 0.58f, 0.10f, 0.42f)
-        quadraticTo(0.08f, 0.28f, 0.20f, 0.24f)
-        close()
-        // text lines — slight bow
-        doodleLine(0.26f, 0.36f, 0.70f, 0.35f, 0.012f)
-        doodleLine(0.26f, 0.48f, 0.62f, 0.49f, -0.010f)
+        // rounded bubble body (unit square of Lucide message-square)
+        addRoundRect(RoundRect(0.10f, 0.12f, 0.90f, 0.62f, CornerRadius(0.10f, 0.10f)))
+        // tail
+        moveTo(0.22f, 0.62f)
+        lineTo(0.14f, 0.86f)
+        lineTo(0.38f, 0.62f)
+        // text lines
+        moveTo(0.28f, 0.30f); lineTo(0.72f, 0.30f)
+        moveTo(0.28f, 0.44f); lineTo(0.60f, 0.44f)
     }
 
-    /** Queue — bulleted list with bowed crayon lines. */
+    /** Queue — iOS YMIcons.list (bullet + line ×3). */
     private fun list(): Path = Path().apply {
-        val ys = floatArrayOf(0.28f, 0.50f, 0.72f)
-        val ends = floatArrayOf(0.86f, 0.80f, 0.84f)
-        val bumps = floatArrayOf(0.014f, -0.012f, 0.010f)
-        for (i in ys.indices) {
-            val y = ys[i]
-            // imperfect dots (slightly oval / offset)
-            val ox = if (i == 1) 0.01f else 0f
-            addOval(Rect(0.15f + ox, y - 0.045f, 0.27f + ox, y + 0.055f))
-            doodleLine(0.36f, y, ends[i], y + (if (i == 2) 0.01f else -0.005f * i), bumps[i])
+        for (y in floatArrayOf(0.28f, 0.50f, 0.72f)) {
+            addOval(Rect(0.16f, y - 0.05f, 0.26f, y + 0.05f))
+            moveTo(0.36f, y); lineTo(0.84f, y)
         }
     }
 
-    /** More — three uneven crayon dots. */
+    /** More — iOS YMIcons.dots. */
     private fun dots(): Path = Path().apply {
-        addOval(Rect(0.18f, 0.40f, 0.34f, 0.58f))
-        addOval(Rect(0.42f, 0.38f, 0.58f, 0.56f))
-        addOval(Rect(0.66f, 0.42f, 0.82f, 0.58f))
+        for (x in floatArrayOf(0.22f, 0.45f, 0.68f)) {
+            addOval(Rect(x, 0.42f, x + 0.14f, 0.56f))
+        }
     }
 
     private fun heart(fill: Boolean): Path = Path().apply {
-        // Asymmetric lobes — hand-drawn feel
-        moveTo(0.50f, 0.84f)
-        cubicTo(0.18f, 0.70f, 0.06f, 0.50f, 0.16f, 0.36f)
-        cubicTo(0.22f, 0.18f, 0.40f, 0.14f, 0.50f, 0.30f)
-        cubicTo(0.58f, 0.12f, 0.84f, 0.16f, 0.86f, 0.38f)
-        cubicTo(0.94f, 0.54f, 0.78f, 0.70f, 0.50f, 0.84f)
+        // iOS YMIcons.heart
+        moveTo(0.50f, 0.82f)
+        cubicTo(0.20f, 0.68f, 0.08f, 0.52f, 0.14f, 0.38f)
+        cubicTo(0.18f, 0.18f, 0.38f, 0.16f, 0.50f, 0.28f)
+        cubicTo(0.62f, 0.16f, 0.82f, 0.18f, 0.86f, 0.38f)
+        cubicTo(0.92f, 0.52f, 0.80f, 0.68f, 0.50f, 0.82f)
         close()
         @Suppress("UNUSED_EXPRESSION") fill
     }
@@ -228,13 +209,13 @@ object YMIconPaths {
     private fun star(): Path = DoodlePaths.sparkle(Offset(0.5f, 0.5f), 0.36f)
 
     private fun download(): Path = Path().apply {
-        doodleLine(0.50f, 0.14f, 0.50f, 0.62f, 0.012f)
+        moveTo(0.50f, 0.14f); lineTo(0.50f, 0.62f)
         moveTo(0.32f, 0.46f); lineTo(0.50f, 0.66f); lineTo(0.68f, 0.46f)
-        doodleLine(0.22f, 0.78f, 0.78f, 0.78f, -0.01f)
+        moveTo(0.22f, 0.78f); lineTo(0.78f, 0.78f)
     }
 
     private fun share(): Path = Path().apply {
-        doodleLine(0.50f, 0.70f, 0.50f, 0.18f, 0.01f)
+        moveTo(0.50f, 0.70f); lineTo(0.50f, 0.18f)
         moveTo(0.32f, 0.34f); lineTo(0.50f, 0.14f); lineTo(0.68f, 0.34f)
         moveTo(0.22f, 0.48f); lineTo(0.22f, 0.84f); lineTo(0.78f, 0.84f); lineTo(0.78f, 0.48f)
     }
@@ -252,65 +233,54 @@ object YMIconPaths {
     private fun chevron(left: Boolean): Path {
         val f = if (left) 1f else -1f
         return Path().apply {
-            // Soft bow instead of sharp V
-            moveTo(0.5f + 0.20f * f, 0.22f)
-            quadraticTo(0.5f - 0.06f * f, 0.50f, 0.5f + 0.20f * f, 0.78f)
+            // iOS YMIcons.chevron
+            moveTo(0.5f + 0.18f * f, 0.22f)
+            lineTo(0.5f - 0.18f * f, 0.50f)
+            lineTo(0.5f + 0.18f * f, 0.78f)
         }
     }
 
     private fun xmark(): Path = Path().apply {
-        doodleLine(0.26f, 0.26f, 0.74f, 0.74f, 0.012f)
-        doodleLine(0.74f, 0.26f, 0.26f, 0.74f, -0.010f)
+        moveTo(0.26f, 0.26f); lineTo(0.74f, 0.74f)
+        moveTo(0.74f, 0.26f); lineTo(0.26f, 0.74f)
     }
 
     private fun wave(): Path = Path().apply {
+        // iOS YMIcons.wave
         val xs = floatArrayOf(0.18f, 0.32f, 0.46f, 0.60f, 0.74f)
         val hs = floatArrayOf(0.22f, 0.42f, 0.62f, 0.38f, 0.26f)
-        val bumps = floatArrayOf(0.012f, -0.010f, 0.014f, -0.008f, 0.010f)
         for (i in xs.indices) {
-            doodleLine(xs[i], 0.5f - hs[i] / 2, xs[i] + 0.01f * (i % 2), 0.5f + hs[i] / 2, bumps[i])
+            moveTo(xs[i], 0.5f - hs[i] / 2f)
+            lineTo(xs[i], 0.5f + hs[i] / 2f)
         }
     }
 
-    /** Three vertical EQ faders — crooked crayon rails + imperfect knobs. */
+    /**
+     * EQ — Android extension (iOS NowPlaying uses SF slider.horizontal.3).
+     * Clean vertical faders matching target-cover-v3; no wobble helper.
+     */
     private fun eq(): Path = Path().apply {
         val xs = floatArrayOf(0.26f, 0.50f, 0.74f)
         val knobs = floatArrayOf(0.44f, 0.32f, 0.52f)
-        val tops = floatArrayOf(0.14f, 0.18f, 0.16f)
-        val bots = floatArrayOf(0.86f, 0.82f, 0.84f)
-        val bumps = floatArrayOf(0.016f, -0.014f, 0.012f)
         for (i in xs.indices) {
             val x = xs[i]
-            doodleLine(x, tops[i], x + 0.012f * (if (i == 1) -1 else 1), bots[i], bumps[i])
-            // knobs slightly oval / uneven
-            val kr = if (i == 1) 0.075f else 0.065f
-            addOval(Rect(x - kr, knobs[i] - kr * 0.9f, x + kr * 1.05f, knobs[i] + kr * 1.1f))
+            moveTo(x, 0.14f); lineTo(x, 0.86f)
+            addOval(Rect(x - 0.07f, knobs[i] - 0.07f, x + 0.07f, knobs[i] + 0.07f))
         }
     }
 
-    /** Add-to-playlist — bowed list lines + askew plus. */
+    /**
+     * Add-to-playlist — Android extension (iOS SF text.badge.plus).
+     * Clean list lines + plus; crayon feel from YMIcon ghost pass only.
+     */
     private fun addList(): Path = Path().apply {
-        doodleLine(0.12f, 0.28f, 0.54f, 0.30f, 0.014f)
-        doodleLine(0.12f, 0.50f, 0.50f, 0.48f, -0.012f)
-        doodleLine(0.12f, 0.70f, 0.46f, 0.72f, 0.010f)
-        // plus — slightly off-axis
-        doodleLine(0.66f, 0.38f, 0.90f, 0.36f, 0.008f)
-        doodleLine(0.78f, 0.24f, 0.80f, 0.50f, -0.010f)
+        moveTo(0.12f, 0.28f); lineTo(0.54f, 0.28f)
+        moveTo(0.12f, 0.50f); lineTo(0.50f, 0.50f)
+        moveTo(0.12f, 0.72f); lineTo(0.46f, 0.72f)
+        moveTo(0.66f, 0.38f); lineTo(0.90f, 0.38f)
+        moveTo(0.78f, 0.26f); lineTo(0.78f, 0.50f)
     }
 
-    /** Wobbly stroke helper — mid control bump perpendicular to the segment. */
-    private fun Path.doodleLine(x0: Float, y0: Float, x1: Float, y1: Float, bump: Float) {
-        val mx = (x0 + x1) / 2f
-        val my = (y0 + y1) / 2f
-        val dx = x1 - x0
-        val dy = y1 - y0
-        val len = max(0.001f, kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat())
-        // bump is already unit-space perpendicular offset (~0.01–0.02); do not amplify
-        val nx = -dy / len * bump
-        val ny = dx / len * bump
-        moveTo(x0, y0)
-        quadraticTo(mx + nx, my + ny, x1, y1)
-    }
 
     /** Scale unit-square path into pixel size. */
     fun scaled(g: YMGlyph, sizePx: Float): Path {

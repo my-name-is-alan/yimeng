@@ -338,13 +338,14 @@ private fun PlayerPage(
             intensity = 0.75f,
         )
 
+        // skel6c: Cover(weight=1) + chrome at bottom — never Spacer(weight) above transport
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                // HTML .c pad 20 / bottom ~34 including home — nav inset already applied
-                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 10.dp),
+                // bottom 10dp after nav inset ≈ 8–16dp above gesture bar
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 2.dp), // skel6c: navBars already = safe; keep ≤16dp total
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PlayerTopBar(liked = liked, onBack = onBack, onLike = { liked = !liked })
@@ -357,10 +358,16 @@ private fun PlayerPage(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             } else {
-                // Cover mode — top-anchored; cover slightly tighter so chrome packs (skel6b)
-                Spacer(Modifier.height(12.dp))
-                PlayerCoverWithDoodle(track.coverUrl)
-                Spacer(Modifier.height(14.dp))
+                // Remaining height goes to cover (centered); chrome packs below with no flex gap
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlayerCoverWithDoodle(track.coverUrl)
+                }
                 Text(
                     track.title,
                     color = Color.White,
@@ -380,7 +387,7 @@ private fun PlayerPage(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -388,22 +395,22 @@ private fun PlayerPage(
                     QualityPill("FLAC 24/96", accentDot = true)
                     QualityPill("Hi-Res", mutedFill = true)
                 }
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     "舞台 · 夜晚 · ${dream.bpm} BPM",
                     color = Color.White.copy(0.50f),
                     fontSize = 12.sp,
                 )
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(12.dp))
                 PlayerProgress(progress, posSec, durationSec, ::fmt) { progress = it }
             }
 
-            // Secondary 5 keys — tight under progress (HTML .sec mt 16)
+            // Secondary 5 keys — 12–16dp under progress
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 18.dp)
-                    .padding(top = 10.dp),
+                    .padding(top = 14.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -432,11 +439,10 @@ private fun PlayerPage(
                 YMIcon(YMGlyph.More, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
             }
 
-            // v41/skel6b: 五键紧贴进度下、运输条紧贴五键下 — fixed tight gap, never weight(1f)
-            if (!lyricsMode) Spacer(Modifier.height(16.dp))
-            else Spacer(Modifier.height(10.dp))
+            // ≤16dp between five keys and transport capsule
+            Spacer(Modifier.height(if (!lyricsMode) 14.dp else 10.dp))
 
-            // Transport: solid black 32% + white 8% 0.5dp stroke — NO glass (§8 / §6.1)
+            // Transport pinned as last child (no weight above) — solid black 32%, NO glass
             PlayerTransportCapsule(paused = paused, onToggle = { paused = !paused })
         }
     }
@@ -528,7 +534,7 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
     val pulse = kotlin.math.exp(-7.0 * 0.12).toFloat()
     val beatScale = 1f + 0.04f * 0.75f * pulse
 
-    Box(Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(280.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sx = size.width / 350f
             val sy = size.height / 350f
@@ -573,7 +579,7 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
         CoverImage(
             coverUrl,
             Modifier
-                .size(278.dp)
+                .size(258.dp)
                 .drawBehind {
                     drawIntoCanvas { canvas ->
                         val paint = Paint().asFrameworkPaint().apply {
@@ -700,8 +706,8 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(76.dp)
-            .clip(RoundedCornerShape(38.dp))
+            .height(64.dp)
+            .clip(RoundedCornerShape(32.dp))
             .background(Color.Black.copy(0.32f))
             .border(1.dp, Color.White.copy(0.10f), RoundedCornerShape(38.dp)),
     ) {
@@ -714,7 +720,7 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
             YMIcon(YMGlyph.Previous, size = 30.dp, filled = true, color = Color.White)
             Box(
                 Modifier
-                    .size(60.dp)
+                    .size(52.dp)
                     .clip(CircleShape)
                     .background(Color.White)
                     .clickable(onClick = onToggle),
@@ -722,7 +728,7 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
             ) {
                 YMIcon(
                     if (paused) YMGlyph.Play else YMGlyph.Pause,
-                    size = 26.dp,
+                    size = 22.dp,
                     filled = true,
                     color = Color.Black,
                 )
