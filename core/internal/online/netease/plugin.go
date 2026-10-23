@@ -40,7 +40,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		ID: origin, Name: "网易云音乐", Version: "1.0.0", Homepage: "https://music.163.com",
 		Description: "搜索、歌词、排行榜、每日推荐、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
-			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM, online.CapHotSearch},
+			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM, online.CapHotSearch, online.CapArtistAlbums},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword, online.LoginSMS},
 		QRChannels:   []online.QRChannel{{ID: "app", Label: "网易云 App 扫码", App: "网易云音乐 App", Hint: "请使用 网易云音乐 App 扫码（不是微信/QQ）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
@@ -464,6 +464,33 @@ func (p *Plugin) Artist(ctx context.Context, id string) (online.Artist, error) {
 	a := mapArtist(r.Artist)
 	a.TopTracks = mapSongs(r.HotSongs, nil)
 	return a, nil
+}
+
+func (p *Plugin) ArtistAlbums(ctx context.Context, id string, offset, limit int) (online.ArtistAlbumList, error) {
+	if _, err := parseIDs([]string{id}); err != nil {
+		return online.ArtistAlbumList{}, err
+	}
+	if limit <= 0 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var r struct {
+		Artist    neArtist  `json:"artist"`
+		HotAlbums []neAlbum `json:"hotAlbums"`
+		More      bool      `json:"more"`
+	}
+	if err := p.weapi(ctx, "/api/artist/albums/"+id, map[string]any{
+		"limit": limit, "offset": offset, "total": true,
+	}, &r); err != nil {
+		return online.ArtistAlbumList{}, err
+	}
+	out := online.ArtistAlbumList{Total: r.Artist.AlbumSize, Items: make([]online.Album, 0, len(r.HotAlbums))}
+	for _, a := range r.HotAlbums {
+		out.Items = append(out.Items, mapAlbum(a))
+	}
+	return out, nil
 }
 
 const maxPlaylistTracks = 1000

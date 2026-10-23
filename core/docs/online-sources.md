@@ -19,6 +19,8 @@ assertions and declared in `Manifest.Capabilities`:
 | `Discovery` | `Charts`, `RecommendTracks`, `RecommendPlaylists`, `DiscoverPlaylists` | `charts`, `recommend`, `discover` |
 | `UserLibrary` | `UserPlaylists` (includes the platform "liked songs" list, `kind:"liked"`) | `user_playlists` |
 | `Streamer` | `Resolve(nativeID, quality) → Stream` | `stream` |
+| `HotSearcher` | `HotSearch()` | `hot_search` |
+| `ArtistAlbumer` | `ArtistAlbums(id, offset, limit)` | `artist_albums` |
 
 DTOs are platform-neutral: `Track`, `Album`, `Artist`, `Playlist`, `Lyrics`
 and `Account`. Ids are `"<plugin id>:<native id>"` (e.g. `netease:186016`).
@@ -149,6 +151,7 @@ All routes require a device token. Mutations of plugin state require the admin r
 | `GET /api/playlists?scope=mine|recommend|discover|charts[&origin=]` | external playlists grouped by platform; no scope = local playlists |
 | `GET /api/charts[?origin=]` | charts grouped by platform |
 | `GET /api/online/{origin}/search/hot` | hot search keywords `{origin, items:[{keyword, score?, url?}]}` |
+| `GET /api/online/{origin}/artists/{id}/albums` | artist albums `{origin, id, items:[Album], total, offset, limit, next}` (offset/limit; NetEase+QQ) |
 | `GET /api/online/{origin}/{tracks|albums|artists|playlists}/{id}` | detail; playlists return `{playlist, counts{full,preview,unavailable,local}}` |
 | `POST /api/online/{origin}/playlists/{id}/clone` | `{name?, prefer_local?=true, skip_unavailable?}` → local static playlist (local copies substituted) |
 | `GET /api/online/favorites[?origin=]` | each account's cloud "liked songs" |
@@ -175,7 +178,7 @@ Protocol knowledge comes from MIT sources (see `NOTICE`), re-implemented in Go.
   - cookie (must contain `MUSIC_U`, validated via account)
   - phone and email with MD5 password
   - refresh and account status
-- Catalog: cloudsearch, `v3/song/detail`, album, artist, lyric (+ translation), `v6/playlist/detail` (fetches missing `trackIds`).
+- Catalog: cloudsearch, `v3/song/detail`, album, artist, artist albums (`/artist/albums`), lyric (+ translation), `v6/playlist/detail` (fetches missing `trackIds`).
 - Discovery: toplist, recommend songs and resources (logged in), personalized and top playlists (anonymous).
 - User: `user/playlist` (specialType 5 = liked).
 - Stream: `song/enhance/player/url/v1` with level `standard | exhigh | lossless | hires`. Entitlement comes from `privilege` and `freeTrialInfo`.
@@ -197,7 +200,7 @@ Protocol knowledge from MIT sources (see `NOTICE`) and our own live probes; AGPL
 
 - **Transport:** `u.y.qq.com/cgi-bin/musicu.fcg` batched requests. Most modules use the web comm (`ct:24, platform:yqq.json`); the vkey module requires ct 24. Search (`music.search.SearchCgiService.DoSearchForQQMusicDesktop`) needs the desktop comm (`ct:"19", cv:"1859"`) without remoteplace/grp, and each batched sub-response is decoded separately.
 - **Login (our own implementation):** `xlogin` (pt_login_sig) → `ptqrshow` (PNG + qrsig, sent to the UI as a data URL) → poll `ptqrlogin` with `ptqrtoken = hash33(qrsig)` (66 waiting, 67 scanned, 65 expired, 0 ok) → follow `check_sig` → `p_skey` → `graph.qq.com/oauth2.0/authorize` (g_tk from p_skey, client_id 100497308) → code → `QQConnectLogin.LoginServer.QQLogin` → `musicid/musickey`. The intermediate QQ cookies live in a throwaway jar; only uin/qm_keyst/refresh keys plus the device guid reach the Vault. Cookie login (`uin` + `qm_keyst`), refresh (`music.login.LoginServer.Login`), account (`GetLoginUserInfo` + VIP query). Password login is not supported.
-- **Catalog:** search (song/album/singer/playlist), track detail, album, artist, diss playlists (`pl-`), toplists (`top-`), lyrics (`GetPlayLyricInfo`, plain LRC), charts, recommend (radio 99 when logged in, else new songs), hot recommend playlists, playlist plaza by tag, user playlists (dirId 201 = liked).
+- **Catalog:** search (song/album/singer/playlist), track detail, album, artist, artist albums (`AlbumListServer.GetAlbumList`), diss playlists (`pl-`), toplists (`top-`), lyrics (`GetPlayLyricInfo`, plain LRC), charts, recommend (radio 99 when logged in, else new songs), hot recommend playlists, playlist plaza by tag, user playlists (dirId 201 = liked).
 - **Stream:** vkey ladder F000 (FLAC) / M800 (320k) / M500 (128k) / C400 (AAC) capped by the quality setting; an empty `purl` means denied. Paid songs fall back to the official trial file `RS02…mp3` with `try_begin/try_end`; otherwise unavailable. No decryption of any format.
 - Tests: `qq/qq_test.go` with trimmed live fixtures (hash33/gtk vectors included). Smoke: `go run ./cmd/qq-smoke`.
 

@@ -18,6 +18,7 @@ import (
 //	GET  /api/v1/online/{origin}/recommend/playlists
 //	GET  /api/v1/online/{origin}/user/playlists?type=created|collected
 //	GET  /api/v1/online/{origin}/search/hot
+//	GET  /api/v1/online/{origin}/artists/{id}/albums
 
 func (d Deps) platformErr(w http.ResponseWriter, what string, err error) {
 	if errors.Is(err, online.ErrNeedsLogin) {
@@ -131,4 +132,38 @@ func (d Deps) platformSub(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeErr(w, http.StatusNotFound, "not_found", "unknown platform resource")
 	}
+}
+
+func (d Deps) onlineArtistAlbums(w http.ResponseWriter, r *http.Request) {
+	o := r.PathValue("origin")
+	id := online.FullID(o, r.PathValue("id"))
+	offset, limit := intQ(r, "offset"), intQ(r, "limit")
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	page, err := d.onlineFor(r.Context()).ArtistAlbums(r.Context(), id, offset, limit)
+	if err != nil {
+		d.platformErr(w, "artist albums", err)
+		return
+	}
+	if page.Items == nil {
+		page.Items = []online.Album{}
+	}
+	d.decorateOnlineAlbums(page.Items)
+	next := false
+	if page.Total > 0 {
+		next = offset+len(page.Items) < page.Total
+	} else if len(page.Items) >= limit {
+		next = true
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"origin": o, "id": id, "items": page.Items,
+		"total": page.Total, "offset": offset, "limit": limit, "next": next,
+	})
 }

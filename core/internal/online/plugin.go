@@ -41,6 +41,7 @@ const (
 	CapStream        Capability = "stream"
 	CapFM            Capability = "fm"
 	CapHotSearch     Capability = "hot_search"
+	CapArtistAlbums  Capability = "artist_albums"
 )
 
 // LoginMethod values: "qr", "cookie", "password".
@@ -323,6 +324,17 @@ type Catalog interface {
 // HotSearcher is optional: platform search-box hot keywords (no login usually).
 type HotSearcher interface {
 	HotSearch(ctx context.Context) ([]HotKeyword, error)
+}
+
+// ArtistAlbumList is one page of an artist's albums (Total 0 if upstream omits it).
+type ArtistAlbumList struct {
+	Items []Album `json:"items"`
+	Total int     `json:"total"`
+}
+
+// ArtistAlbumer is optional: paginated albums for an artist (no login usually).
+type ArtistAlbumer interface {
+	ArtistAlbums(ctx context.Context, nativeID string, offset, limit int) (ArtistAlbumList, error)
 }
 
 type Discovery interface {

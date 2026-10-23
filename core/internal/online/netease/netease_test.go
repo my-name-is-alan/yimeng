@@ -83,6 +83,7 @@ func newFake() *fake {
 		"/api/w/login":                         "login_wrong.json",
 		"/api/login/token/refresh":             "login_ok.json",
 		"/api/search/hot":                       "search_hot_detail.json",
+		"/api/artist/albums/6452":               "artist_albums.json",
 	}}
 }
 
@@ -335,5 +336,23 @@ func TestHotSearch(t *testing.T) {
 	}
 	if len(items) < 2 || items[0].Keyword != "我不难过" || items[0].Score != 3 {
 		t.Fatalf("items %+v", items)
+	}
+}
+
+func TestArtistAlbums(t *testing.T) {
+	p, _, _ := newPlugin(t)
+	var _ online.ArtistAlbumer = p
+	if !p.Manifest().Has(online.CapArtistAlbums) {
+		t.Fatal("missing CapArtistAlbums")
+	}
+	page, err := p.ArtistAlbums(context.Background(), "6452", 0, 30)
+	if err != nil {
+		t.Fatalf("albums %v", err)
+	}
+	if page.Total != 40 || len(page.Items) != 2 || page.Items[0].ID != "netease:18905" || page.Items[0].Title != "叶惠美" || page.Items[0].Year != 2003 || page.Items[0].TrackCount != 11 {
+		t.Fatalf("page %+v", page)
+	}
+	if page.Items[1].Title != "七里香" || page.Items[1].CoverURL == "" {
+		t.Fatalf("second %+v", page.Items[1])
 	}
 }

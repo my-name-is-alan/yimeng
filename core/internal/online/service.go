@@ -475,6 +475,35 @@ func (s *Service) DiscoverPlaylists(ctx context.Context, origin, cat string, off
 }
 
 
+func (s *Service) ArtistAlbums(ctx context.Context, id string, offset, limit int) (ArtistAlbumList, error) {
+	o, n, err := split(id)
+	if err != nil {
+		return ArtistAlbumList{}, err
+	}
+	p, _, err := s.plugin(o)
+	if err != nil {
+		return ArtistAlbumList{}, err
+	}
+	a, ok := p.(ArtistAlbumer)
+	if !ok {
+		return ArtistAlbumList{}, ErrNotSupported
+	}
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	v, err := cached(ctx, s.Cache, Key(o, "artist-albums", fmt.Sprintf("%s:%d:%d", n, offset, limit)), TTLArtist, func(ctx context.Context) (ArtistAlbumList, error) {
+		return a.ArtistAlbums(ctx, n, offset, limit)
+	})
+	s.after(ctx, o, err)
+	return v, err
+}
+
 func (s *Service) HotSearch(ctx context.Context, origin string) ([]HotKeyword, error) {
 	p, _, err := s.plugin(origin)
 	if err != nil {

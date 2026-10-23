@@ -34,7 +34,7 @@ type gwPlugin struct {
 
 func (p *gwPlugin) Manifest() online.Manifest {
 	return online.Manifest{ID: "gw", Name: "测试平台", Version: "t",
-		Capabilities: []online.Capability{online.CapSearch, online.CapCharts, online.CapRecommend, online.CapUserPlaylists, online.CapStream, online.CapLyrics, online.CapHotSearch},
+		Capabilities: []online.Capability{online.CapSearch, online.CapCharts, online.CapRecommend, online.CapUserPlaylists, online.CapStream, online.CapLyrics, online.CapHotSearch, online.CapArtistAlbums},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie},
 		QRChannels:   []online.QRChannel{{ID: "app", Label: "App 扫码", App: "测试 App", Hint: "请使用 测试 App 扫码"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh}}
@@ -88,6 +88,20 @@ func (p *gwPlugin) Charts(ctx context.Context) ([]online.Playlist, error) {
 }
 func (p *gwPlugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
 	return []online.HotKeyword{{Keyword: "热搜词", Score: 42, URL: "https://example/hot"}}, nil
+}
+func (p *gwPlugin) ArtistAlbums(ctx context.Context, id string, offset, limit int) (online.ArtistAlbumList, error) {
+	items := []online.Album{
+		{ID: "gw:al1", Origin: "gw", Title: "专辑一", TrackCount: 10, CoverURL: "https://img.example/a1.jpg"},
+		{ID: "gw:al2", Origin: "gw", Title: "专辑二", TrackCount: 8, CoverURL: "https://img.example/a2.jpg"},
+	}
+	if offset > len(items) {
+	offset = len(items)
+	}
+	end := offset + limit
+	if limit <= 0 || end > len(items) {
+		end = len(items)
+	}
+	return online.ArtistAlbumList{Items: items[offset:end], Total: len(items)}, nil
 }
 func (p *gwPlugin) RecommendTracks(ctx context.Context) ([]online.Track, error) {
 	if p.env.HTTP.Cookie("S") == "" {
@@ -616,6 +630,34 @@ func TestOnlineHotSearch(t *testing.T) {
 	// disabled plugin
 	e.do("PUT", "/api/plugins/gw", `{"enabled":false}`, tok)
 	if res, body := e.do("GET", "/api/online/gw/search/hot", "", tok); res.StatusCode != 409 || !strings.Contains(string(body), "plugin_disabled") {
+		t.Fatalf("disabled %d %s", res.StatusCode, body)
+	}
+}
+
+func TestOnlineArtistAlbums(t *testing.T) {
+	e := onlineReady(t)
+	tok := e.token
+	res, body := e.do("GET", "/api/v1/online/gw/artists/a1/albums?limit=10&offset=0", "", tok)
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d %s", res.StatusCode, body)
+	}
+	var out struct {
+		Origin string         `json:"origin"`
+		ID     string         `json:"id"`
+		Items  []online.Album `json:"items"`
+		Total  int            `json:"total"`
+		Offset int            `json:"offset"`
+		Limit  int            `json:"limit"`
+		Next   bool           `json:"next"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil || out.Origin != "gw" || out.ID != "gw:a1" || out.Total != 2 || len(out.Items) != 2 || out.Items[0].Title != "专辑一" || out.Limit != 10 || out.Next {
+		t.Fatalf("body %s", body)
+	}
+	if res, _ := e.do("GET", "/api/online/unknown/artists/a1/albums", "", tok); res.StatusCode != 404 {
+		t.Fatalf("unknown origin %d", res.StatusCode)
+	}
+	e.do("PUT", "/api/plugins/gw", `{"enabled":false}`, tok)
+	if res, body := e.do("GET", "/api/online/gw/artists/a1/albums", "", tok); res.StatusCode != 409 || !strings.Contains(string(body), "plugin_disabled") {
 		t.Fatalf("disabled %d %s", res.StatusCode, body)
 	}
 }

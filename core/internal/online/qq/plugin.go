@@ -34,7 +34,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		ID: origin, Name: "QQ音乐", Version: "1.0.0", Homepage: "https://y.qq.com",
 		Description: "搜索、歌词、排行榜、推荐、歌单广场、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
-			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapHotSearch},
+			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapHotSearch, online.CapArtistAlbums},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie},
 		QRChannels:   []online.QRChannel{{ID: "qq", Label: "QQ 扫码", App: "手机 QQ", Hint: "请使用 QQ 扫码（手机 QQ App，不是 QQ音乐 或 微信）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless},
@@ -312,6 +312,53 @@ func (p *Plugin) Artist(ctx context.Context, id string) (online.Artist, error) {
 	}
 	ar.TopTracks = mapSongs(songs, p.vip())
 	return ar, nil
+}
+
+func (p *Plugin) ArtistAlbums(ctx context.Context, id string, offset, limit int) (online.ArtistAlbumList, error) {
+	mid := strings.TrimPrefix(id, "artist-")
+	if err := validMid(mid); err != nil {
+		return online.ArtistAlbumList{}, err
+	}
+	if limit <= 0 {
+		limit = 30
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var d struct {
+		Total     int `json:"total"`
+		AlbumList []struct {
+			AlbumMid    string `json:"albumMid"`
+			AlbumName   string `json:"albumName"`
+			PublishDate string `json:"publishDate"`
+			TotalNum    int    `json:"totalNum"`
+			SingerName  string `json:"singerName"`
+		} `json:"albumList"`
+	}
+	// order 0 = latest (by publish date) — natural for an artist albums tab.
+	if err := p.one(ctx, "music.musichallAlbum.AlbumListServer", "GetAlbumList",
+		map[string]any{"singerMid": mid, "order": 0, "number": limit, "begin": offset}, &d); err != nil {
+		return online.ArtistAlbumList{}, err
+	}
+	out := online.ArtistAlbumList{Total: d.Total, Items: make([]online.Album, 0, len(d.AlbumList))}
+	for _, a := range d.AlbumList {
+		if a.AlbumMid == "" || a.AlbumName == "" {
+			continue
+		}
+		al := online.Album{
+			ID: fid("album-" + a.AlbumMid), Origin: origin, Title: a.AlbumName,
+			CoverURL: albumCover(a.AlbumMid, 500), TrackCount: a.TotalNum,
+		}
+		if a.SingerName != "" {
+			al.Artists = []online.Ref{{ID: fid("artist-" + mid), Name: a.SingerName}}
+			al.ArtistName = a.SingerName
+		}
+		if len(a.PublishDate) >= 4 {
+			al.Year, _ = strconv.Atoi(a.PublishDate[:4])
+		}
+		out.Items = append(out.Items, al)
+	}
+	return out, nil
 }
 
 func (p *Plugin) Playlist(ctx context.Context, id string) (online.Playlist, error) {

@@ -63,6 +63,7 @@ var Policies = map[string]Policy{
 	"user-playlists": {10 * time.Minute, 7 * 24 * time.Hour, 5 * time.Minute},
 	"discover":       {time.Hour, 7 * 24 * time.Hour, 10 * time.Minute},
 	"hot-search":     {10 * time.Minute, time.Hour, 5 * time.Minute},
+	"artist-albums":  {TTLArtist, 30 * 24 * time.Hour, 6 * time.Hour},
 }
 
 // DefaultPolicy applies to kinds without an entry.

@@ -139,6 +139,7 @@ func newPlugin(t *testing.T) (*Plugin, *fake, *online.Client) {
 		"musichall.song_list_server.GetSingerSongList":        "singer",
 		"newsong.NewSongServer.get_new_song_info":             "newsongs",
 		"music.musicsearch.HotkeyService.GetHotkeyForQQMusicMobile": "hotkey",
+		"music.musichallAlbum.AlbumListServer.GetAlbumList":         "singer_albums",
 	}}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
@@ -152,7 +153,7 @@ func newPlugin(t *testing.T) (*Plugin, *fake, *online.Client) {
 
 func TestManifestAndInterfaces(t *testing.T) {
 	p, _, _ := newPlugin(t)
-	if m := p.Manifest(); m.Skeleton || !m.Has(online.CapStream) || !m.Has(online.CapHotSearch) {
+	if m := p.Manifest(); m.Skeleton || !m.Has(online.CapStream) || !m.Has(online.CapHotSearch) || !m.Has(online.CapArtistAlbums) {
 		t.Fatal(m)
 	}
 	var _ online.Authenticator = p
@@ -160,6 +161,7 @@ func TestManifestAndInterfaces(t *testing.T) {
 	var _ online.Discovery = p
 	var _ online.UserLibrary = p
 	var _ online.HotSearcher = p
+	var _ online.ArtistAlbumer = p
 	var _ online.Streamer = p
 }
 
@@ -374,5 +376,19 @@ func TestHotSearch(t *testing.T) {
 	}
 	if items[1].URL == "" {
 		t.Fatalf("expected jump_url %+v", items[1])
+	}
+}
+
+func TestArtistAlbums(t *testing.T) {
+	p, _, _ := newPlugin(t)
+	page, err := p.ArtistAlbums(context.Background(), "artist-0025NhlN2yWrP4", 0, 30)
+	if err != nil {
+		t.Fatalf("albums %v", err)
+	}
+	if page.Total != 2 || len(page.Items) != 2 || page.Items[0].ID != "qq:album-000MkMni19ClKG" || page.Items[0].Title != "叶惠美" || page.Items[0].Year != 2003 || page.Items[0].TrackCount != 11 {
+		t.Fatalf("page %+v", page)
+	}
+	if page.Items[0].ArtistName != "周杰伦" || !strings.HasPrefix(page.Items[0].CoverURL, "https://y.gtimg.cn/") {
+		t.Fatalf("cover/artist %+v", page.Items[0])
 	}
 }

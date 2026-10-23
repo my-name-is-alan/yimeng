@@ -2393,6 +2393,19 @@ paths:
         "200": { description: "{origin, items:[HotKeyword]}" }
         "404": { description: unknown_plugin or not_supported }
         "409": { description: plugin_disabled }
+  /api/v1/online/{origin}/artists/{id}/albums:
+    parameters:
+      - { name: origin, in: path, required: true, schema: { type: string, enum: [netease, qq, kugou] } }
+      - { name: id, in: path, required: true, schema: { type: string }, description: "Native artist id (e.g. NetEase 6452, QQ artist-0025NhlN2yWrP4)" }
+      - { $ref: "#/components/parameters/Limit" }
+      - { $ref: "#/components/parameters/Offset" }
+    get:
+      tags: [online]
+      summary: Artist album list from the platform plugin (paginated). {origin, id, items:[Album], total, offset, limit, next}. 404 unknown_plugin / not_supported; 409 plugin_disabled. Register before /online/{origin}/{kind}/{id}.
+      responses:
+        "200": { description: "{origin, id, items:[Album], total, offset, limit, next}" }
+        "404": { description: unknown_plugin or not_supported }
+        "409": { description: plugin_disabled }
   # ---- P1: sessions, 一起听 rooms (D48) ----
   /api/v1/sessions:
     get:
