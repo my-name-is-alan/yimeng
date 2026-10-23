@@ -93,9 +93,9 @@ func (d Deps) coverV1(w http.ResponseWriter, r *http.Request) {
 func (d Deps) coverMeta(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	src, err := d.resolveCover(r.Context(), id)
-	if err != nil && d.Online != nil && d.Covers != nil && library.IsExternalID(id) {
+	if err != nil && d.onlineFor(r.Context()) != nil && d.Covers != nil && library.IsExternalID(id) {
 		// online track: meta of the platform cover; url stays the platform CDN URL
-		if t, terr := d.Online.Track(r.Context(), id); terr == nil && t.CoverURL != "" {
+		if t, terr := d.onlineFor(r.Context()).Track(r.Context(), id); terr == nil && t.CoverURL != "" {
 			if lp, rerr := d.Covers.Remote(r.Context(), t.CoverURL); rerr == nil {
 				if m, merr := d.Covers.Meta(lp); merr == nil {
 					w.Header().Set("Cache-Control", "private, max-age=86400")
@@ -276,6 +276,16 @@ func (d Deps) decorateOnlinePlaylists(ps []online.Playlist) {
 // markEntitlement flags online snapshots that are preview-only or taken
 // down upstream (D51); playback still auto-switches (D50).
 func (d Deps) markEntitlement(ctx context.Context, ts []library.Track) {
+	if d.Accounts != nil {
+		for i := range ts {
+			if library.IsExternalID(ts[i].ID) {
+				ts[i].Entitlement = ""
+				ts[i].Playable = true
+				ts[i].Preview = false
+			}
+		}
+		return
+	}
 	src, ok := d.OnlineLib.(interface {
 		ExternalStatus(context.Context, []string) (map[string]string, error)
 	})

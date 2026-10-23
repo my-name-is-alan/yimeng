@@ -26,6 +26,8 @@ type LibraryPort interface {
 
 // Service is the platform-neutral facade used by the gateway.
 type Service struct {
+	Resolver   func(context.Context, string, Quality, bool) (Resolution, error)
+	Isolated   bool     // never publish account-dependent verdicts to the global catalog
 	remembered sync.Map // track id -> rememberMemo (perf: skip rewriting unchanged DTOs)
 
 	Reg   *Registry
@@ -138,7 +140,7 @@ func (s *Service) Search(ctx context.Context, q string, limit int, only []string
 			cctx, cancel := withTimeout(ctx, 6*time.Second)
 			defer cancel()
 			r, err := cached(cctx, s.Cache, Key(id, "search", fmt.Sprintf("%d:%s", limit, strings.ToLower(q))), TTLSearch, func(ctx context.Context) (SearchResult, error) {
-				return c.Search(cctx, q, limit)
+				return c.Search(ctx, q, limit)
 			})
 			s.after(ctx, id, err)
 			if err != nil {
@@ -448,6 +450,9 @@ func (s *Service) RecommendTracks(ctx context.Context, origin string) ([]Track, 
 }
 
 func (s *Service) RecommendPlaylists(ctx context.Context, origin string) ([]Playlist, error) {
+	if s.Isolated && !s.Reg.LoggedIn(origin) {
+		return nil, ErrNeedsLogin
+	}
 	d, err := s.discovery(origin)
 	if err != nil {
 		return nil, err
@@ -490,6 +495,7 @@ func (s *Service) UserPlaylists(ctx context.Context, origin string) ([]Playlist,
 
 // Resolution is what plays for a requested track. URL stays in Core.
 type Resolution struct {
+	permit   *streamPermit
 	TrackID  string `json:"track_id"`
 	PlayID   string `json:"play_id"`
 	Origin   string `json:"origin"`
@@ -542,6 +548,9 @@ func (s *Service) resolveOne(ctx context.Context, id string, q Quality) (Stream,
 // another platform the user is logged into with full entitlement; otherwise
 // the original result (preview segment or unavailable). Never anything else.
 func (s *Service) Resolve(ctx context.Context, id string, q Quality, fresh bool) (Resolution, error) {
+	if s.Resolver != nil {
+		return s.Resolver(ctx, id, q, fresh)
+	}
 	key := id + "|" + string(q) + "|" + switchFrom(ctx).key()
 	if !fresh {
 		s.mu.Lock()
@@ -760,6 +769,9 @@ type statusSink interface {
 }
 
 func (s *Service) setStatus(ctx context.Context, st map[string]string) {
+	if s.Isolated {
+		return
+	}
 	if sink, ok := s.Lib.(statusSink); ok && len(st) > 0 {
 		_ = sink.SetExternalStatus(ctx, st)
 	}
@@ -794,6 +806,13 @@ func (s *Service) verdict(id string, e Entitlement) {
 }
 
 func (s *Service) applyVerdicts(ts []Track) {
+	if s.Isolated {
+		for i := range ts {
+			ts[i].Playable = EntUnknown
+			ts[i].Preview = false
+		}
+		return
+	}
 	for i := range ts {
 		if v, ok := s.verdicts.Load(ts[i].ID); ok {
 			ve := v.(verdictEntry)

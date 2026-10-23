@@ -71,14 +71,22 @@ type instance struct {
 // Registry owns plugin instances, their settings (plugin_settings table) and
 // their sessions (Vault entries "plugin.<id>").
 type Registry struct {
-	db    *sql.DB
-	vault vault.Vault
-	log   *slog.Logger
-	hc    *http.Client
+	namespace string // empty only for legacy/server configuration registry
+	db        *sql.DB
+	vault     vault.Vault
+	log       *slog.Logger
+	hc        *http.Client
 
 	mu    sync.Mutex
 	inst  map[string]*instance
 	order []string
+}
+
+func (r *Registry) storageID(id string) string {
+	if r.namespace == "" {
+		return id
+	}
+	return r.namespace + "." + id
 }
 
 func NewRegistry(db *sql.DB, v vault.Vault, log *slog.Logger, hc *http.Client) *Registry {
@@ -155,6 +163,26 @@ func (r *Registry) load(ctx context.Context, id string) error {
 	acct := ""
 	if loggedIn {
 		acct = r.defaultAccount(ctx, id)
+	}
+	if r.namespace != "" {
+		acct = r.defaultAccount(ctx, id)
+		jar := deviceFields(client.Cookies())
+		loggedIn = false
+		if acct != "" {
+			if saved, err := r.vault.Get(ctx, accountVaultKey(id, acct)); err == nil {
+				for k, v := range saved.Fields {
+					jar[k] = v
+				}
+				method = LoginMethod(saved.Method)
+				loggedIn = hasSession(saved.Fields)
+			}
+		}
+		client.ReplaceCookies(jar)
+		client.TakeDirty()
+		p, err = in.factory(Env{HTTP: client, Config: cfg})
+		if err != nil {
+			return err
+		}
 	}
 	r.mu.Lock()
 	in.plugin, in.client, in.enabled, in.config, in.method, in.loggedIn, in.acctID = p, client, enabled, cfg, method, loggedIn, acct
@@ -493,8 +521,7 @@ func (r *Registry) loggedIn(ctx context.Context, in *instance, m LoginMethod, ac
 	if err := r.vault.Put(ctx, vaultKey(in.manifest.ID), vault.Credential{Method: vault.LoginMethod(m), Fields: in.client.Cookies()}); err != nil {
 		return err
 	}
-	r.saveAccount(ctx, in, acc, m)
-	return nil
+	return r.saveAccount(ctx, in, acc, m)
 }
 
 func (r *Registry) StartQR(ctx context.Context, id string) (QRChallenge, error) {

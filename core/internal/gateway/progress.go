@@ -85,6 +85,9 @@ type scopedEvent struct {
 
 // eventFor unwraps a user-scoped event for dev; ok=false hides it.
 func eventFor(dev auth.Device, data any) (any, bool) {
+	if e, ok := data.(privatePluginEvent); ok {
+		return e.Data, dev.UserID != "" && dev.UserID == e.User
+	}
 	if ae, ok := data.(secalert.Event); ok { // admins + the affected account
 		if dev.Admin || (ae.UserID != "" && ae.UserID == dev.UserID) {
 			return ae.Alert, true

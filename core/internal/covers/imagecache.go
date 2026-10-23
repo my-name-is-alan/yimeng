@@ -99,8 +99,8 @@ func (c *Cache) st() *state {
 
 func dirSize(dir string) int64 {
 	var n int64
-	filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && !strings.HasSuffix(p, ".tmp") {
 			if fi, err := d.Info(); err == nil {
 				n += fi.Size()
 			}
@@ -321,16 +321,10 @@ func (c *Cache) download(ctx context.Context, u, out string) (string, error) {
 		os.Remove(tmp)
 		return "", ErrRemote
 	}
-	var old int64
-	if fi, err := os.Stat(out); err == nil {
-		old = fi.Size()
-	}
-	if err := os.Rename(tmp, out); err != nil {
+	if err := c.publishImage(tmp, out); err != nil {
 		os.Remove(tmp)
 		return "", err
 	}
-	c.st().bytes.Add(n - old)
-	c.touch(out)
 	return out, nil
 }
 
@@ -369,24 +363,42 @@ func (c *Cache) touch(p string) {
 	s.mu.Unlock()
 }
 
-func (c *Cache) noteWrite(p string) {
-	if fi, err := os.Stat(p); err == nil {
-		c.st().bytes.Add(fi.Size())
+// publishImage serializes the final rename and its byte accounting with eviction.
+// Encoding/downloads stay outside this lock; temporary files are not cache entries.
+func (c *Cache) publishImage(tmp, out string) error {
+	s := c.st()
+	s.evictMu.Lock()
+	defer s.evictMu.Unlock()
+	var old int64
+	if fi, err := os.Stat(out); err == nil {
+		old = fi.Size()
 	}
-	c.touch(p)
+	fi, err := os.Stat(tmp)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, out); err != nil {
+		return err
+	}
+	s.bytes.Add(fi.Size() - old)
+	c.touch(out)
+	return nil
 }
 
 // evictIfNeeded removes least-recently-used files until the cache is under
 // 90 % of MaxBytes. URL and alias records are tiny and kept.
 func (c *Cache) evictIfNeeded() {
 	s := c.st()
-	if c.MaxBytes <= 0 || s.bytes.Load() <= c.MaxBytes {
+	if c.MaxBytes <= 0 {
 		return
 	}
-	if !s.evictMu.TryLock() {
-		return
-	}
+	// A skipped pass can miss a write made after the active eviction's scan.
+	// Waiting also makes an explicit eviction call a completion barrier.
+	s.evictMu.Lock()
 	defer s.evictMu.Unlock()
+	if s.bytes.Load() <= c.MaxBytes {
+		return
+	}
 	type ent struct {
 		p    string
 		size int64
@@ -395,7 +407,7 @@ func (c *Cache) evictIfNeeded() {
 	var all []ent
 	var total int64
 	filepath.WalkDir(c.Dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil || d.IsDir() || strings.HasSuffix(p, ".tmp") {
 			return nil
 		}
 		fi, err := d.Info()
@@ -435,9 +447,11 @@ func (c *Cache) evictIfNeeded() {
 // ImageStats walks the cache and returns counters.
 func (c *Cache) ImageStats() Stats {
 	s := c.st()
+	s.evictMu.Lock()
+	defer s.evictMu.Unlock()
 	st := Stats{MaxBytes: c.MaxBytes, TTLHours: int(c.TTL / time.Hour)}
 	filepath.WalkDir(c.Dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil || d.IsDir() || strings.HasSuffix(p, ".tmp") {
 			return nil
 		}
 		if fi, err := d.Info(); err == nil {

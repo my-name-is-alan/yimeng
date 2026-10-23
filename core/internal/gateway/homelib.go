@@ -131,10 +131,10 @@ func (d Deps) homeLibrary(ctx context.Context) map[string]any {
 			out["playlists"] = l
 		}
 	}
-	if d.Online != nil {
+	if d.onlineFor(ctx) != nil {
 		var os []string
-		for _, id := range d.Online.Reg.EnabledIDs() {
-			if st, err := d.Online.Reg.Status(ctx, id); err == nil && hasCap(st.Manifest.Capabilities, online.CapCharts) {
+		for _, id := range d.onlineFor(ctx).Reg.EnabledIDs() {
+			if st, err := d.onlineFor(ctx).Reg.Status(ctx, id); err == nil && hasCap(st.Manifest.Capabilities, online.CapCharts) {
 				os = append(os, id)
 			}
 		}

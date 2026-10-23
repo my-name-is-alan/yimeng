@@ -587,7 +587,7 @@ func (s *Scanner) safeFile(p string, allowCache bool) (string, error) {
 	if err != nil {
 		return "", ErrNotFound
 	}
-	bases := append([]string{}, s.opts.Roots...)
+	bases := s.Roots()
 	if allowCache && s.opts.CoverDir != "" {
 		bases = append(bases, s.opts.CoverDir)
 	}

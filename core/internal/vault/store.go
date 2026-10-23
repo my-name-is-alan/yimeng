@@ -27,10 +27,12 @@ var ErrDecrypt = errors.New("vault: cannot decrypt entry (wrong master key or ta
 // LoadOrCreateKey returns the master key. Precedence:
 //  1. envKey (base64, e.g. from YIMENG_VAULT_KEY / a Docker secret) — never written to disk;
 //  2. the key file at path (base64 text, must be 32 bytes);
-//  3. otherwise a new random key is generated and written to path with 0600
-//     (directory 0700), refusing to overwrite an existing file.
+//  3. otherwise a new random key is generated, refusing to overwrite a file.
+//     Unix uses 0600 (new directory 0700); Windows uses a protected DACL for
+//     the current user and LocalSystem, not emulated POSIX mode bits.
 //
-// A key file readable by group/others is tightened to 0600 and reported in warn.
+// Loose key-file permissions are tightened and reported in warn. Failure to
+// establish private permissions is an error, not a silently accepted warning.
 func LoadOrCreateKey(path, envKey string) (key []byte, warn string, err error) {
 	if envKey != "" {
 		k, err := base64.StdEncoding.DecodeString(strings.TrimSpace(envKey))
@@ -44,12 +46,9 @@ func LoadOrCreateKey(path, envKey string) (key []byte, warn string, err error) {
 		if err != nil || len(k) != KeySize {
 			return nil, "", fmt.Errorf("vault: %s is not a valid master key", path)
 		}
-		if st, err := os.Stat(path); err == nil && st.Mode().Perm()&0o077 != 0 {
-			if err := os.Chmod(path, 0o600); err == nil {
-				warn = fmt.Sprintf("master key %s was accessible by other users; permissions reset to 0600", path)
-			} else {
-				warn = fmt.Sprintf("master key %s is accessible by other users (chmod failed: %v)", path, err)
-			}
+		warn, err = secureKeyFile(path)
+		if err != nil {
+			return nil, "", fmt.Errorf("vault: secure master key: %w", err)
 		}
 		return k, warn, nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -62,7 +61,7 @@ func LoadOrCreateKey(path, envKey string) (key []byte, warn string, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, "", err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := createKeyFile(path)
 	if err != nil {
 		return nil, "", fmt.Errorf("vault: create master key: %w", err)
 	}

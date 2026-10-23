@@ -345,7 +345,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 		onlineCache.MaxBytes = int64(mb) << 20
 	}
 	onlineSvc := online.NewService(plugins, scanner, onlineCache, log)
-	scanner.SetExternalResolver(onlineSvc.Materialize)
+	accountMgr, err := online.NewAccounts(ctx, onlineSvc)
+	if err != nil {
+		return fmt.Errorf("platform account isolation: %w", err)
+	}
+	publicOnline, err := accountMgr.Public(ctx)
+	if err != nil {
+		return err
+	}
+	scanner.SetExternalResolver(accountMgr.Materialize)
 	go func() {
 		t := time.NewTicker(time.Hour)
 		defer t.Stop()
@@ -355,7 +363,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 				return
 			case <-t.C:
 				onlineCache.Prune(ctx)
-				onlineSvc.RefreshHot(ctx)
+				if public, err := accountMgr.Public(ctx); err == nil {
+					public.RefreshHot(ctx)
+				}
 			}
 		}
 	}()
@@ -460,6 +470,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	srv := &http.Server{
 		Addr: cfg.Bind,
 		Handler: gateway.NewRouter(gateway.Deps{
+			Accounts: accountMgr, OnlinePublic: publicOnline,
 			Library:  &app.Library{Scanner: scanner, BG: ctx},
 			Playback: orch,
 			Hub:      hub,

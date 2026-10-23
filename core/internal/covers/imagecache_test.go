@@ -3,6 +3,7 @@ package covers
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -182,4 +183,49 @@ func TestLRUEviction(t *testing.T) {
 		t.Fatal("clear")
 	}
 	_ = strings.TrimSpace
+}
+
+func TestCachePublishAccountingAndConcurrentEviction(t *testing.T) {
+	c := &Cache{Dir: t.TempDir(), MaxBytes: 8192}
+	s := c.st() // snapshot before any files are published
+	write := func(id string, size int) error {
+		tmp := filepath.Join(c.Dir, id+".tmp")
+		if err := os.WriteFile(tmp, bytes.Repeat([]byte{1}, size), 0o600); err != nil {
+			return err
+		}
+		return c.publishImage(tmp, filepath.Join(c.Dir, id+".png"))
+	}
+	if err := write("same", 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := write("same", 2000); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.bytes.Load(); n != 2000 {
+		t.Fatalf("replacement double counted: %d", n)
+	}
+	if err := os.WriteFile(filepath.Join(c.Dir, "pending.tmp"), make([]byte, 16384), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if stats := c.ImageStats(); stats.Bytes != 2000 || stats.Files != 1 {
+		t.Fatalf("unpublished bytes counted: %+v", stats)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := write(fmt.Sprint(i), 3000); err != nil {
+				t.Error(err)
+			}
+			c.evictIfNeeded()
+			c.ImageStats()
+		}()
+	}
+	wg.Wait()
+	c.evictIfNeeded()
+	stats := c.ImageStats()
+	if stats.Bytes > c.MaxBytes || stats.Evictions == 0 || s.bytes.Load() != stats.Bytes {
+		t.Fatalf("inconsistent eviction/accounting: %+v counted=%d", stats, s.bytes.Load())
+	}
 }

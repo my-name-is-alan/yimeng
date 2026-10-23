@@ -40,6 +40,10 @@ func (d Deps) sourceDTO(r *http.Request, s playback.StreamSource) sourceDTO {
 	dto := sourceDTO{
 		ID: s.ID(), Health: s.Health(r.Context()), LoginMethods: s.LoginMethods(),
 	}
+	dev, _ := DeviceFrom(r.Context())
+	if d.Accounts != nil && !dev.Admin {
+		return dto
+	}
 	if info, err := s.Account(r.Context()); err == nil {
 		dto.Account = &info
 		dto.Linked = true

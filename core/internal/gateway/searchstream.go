@@ -50,15 +50,15 @@ func (d Deps) searchStream(w http.ResponseWriter, r *http.Request, p library.Lis
 	d.decorateTracks(ctx, res.Tracks)
 	w.WriteHeader(http.StatusOK)
 	send("local", res)
-	if d.Online != nil && r.URL.Query().Get("online") != "0" {
-		origins := d.Online.Reg.EnabledIDs()
+	if d.onlineFor(r.Context()) != nil && r.URL.Query().Get("online") != "0" {
+		origins := d.onlineFor(r.Context()).Reg.EnabledIDs()
 		if o := r.URL.Query().Get("origins"); o != "" {
 			origins = strings.Split(o, ",")
 		}
 		ch := make(chan any, len(origins))
 		for _, o := range origins {
 			go func(o string) {
-				rs := d.Online.Search(ctx, p.Q, p.Limit, []string{o})
+				rs := d.onlineFor(r.Context()).Search(ctx, p.Q, p.Limit, []string{o})
 				if len(rs) == 0 {
 					ch <- map[string]any{"origin": o, "error": "not_enabled"}
 					return

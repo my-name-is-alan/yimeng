@@ -162,7 +162,7 @@ func (d Deps) rankedLyrics(w http.ResponseWriter, r *http.Request) (rank.Query, 
 		return q, nil, false
 	}
 	tid := r.URL.Query().Get("track_id")
-	own := library.IsExternalID(tid) && d.Online != nil
+	own := library.IsExternalID(tid) && d.onlineFor(r.Context()) != nil
 	key := lyricsKey(q)
 	if own {
 		key += "|" + tid
@@ -315,8 +315,8 @@ func (d Deps) fillLyricsQuery(r *http.Request) {
 		set(t.Title, t.ArtistName, t.AlbumTitle, t.DurationMs)
 		return
 	}
-	if d.Online != nil && library.IsExternalID(id) {
-		if t, err := d.Online.Track(r.Context(), id); err == nil {
+	if d.onlineFor(r.Context()) != nil && library.IsExternalID(id) {
+		if t, err := d.onlineFor(r.Context()).Track(r.Context(), id); err == nil {
 			al := ""
 			if t.Album != nil {
 				al = t.Album.Name
@@ -385,7 +385,7 @@ func firstNonEmpty(ss ...string) string {
 // ownLyricsCandidate is the platform's own lyrics for an online track id:
 // same recording, so it carries the track's own metadata and duration.
 func (d Deps) ownLyricsCandidate(ctx context.Context, q rank.Query, id string) []providers.Candidate {
-	l, err := d.Online.Lyrics(ctx, id)
+	l, err := d.onlineFor(ctx).Lyrics(ctx, id)
 	if err != nil || (strings.TrimSpace(l.LRC) == "" && len(l.Words) == 0) {
 		return nil
 	}

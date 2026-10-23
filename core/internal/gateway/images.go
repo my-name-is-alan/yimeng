@@ -116,8 +116,8 @@ func (d Deps) remoteArtistImage(ctx context.Context, id string) string {
 		if u, ok := d.Covers.Aliased(alias); ok {
 			return u
 		}
-		if d.Online != nil {
-			if a, err := d.Online.Artist(ctx, id); err == nil && a.PictureURL != "" {
+		if d.onlineFor(ctx) != nil {
+			if a, err := d.onlineFor(ctx).Artist(ctx, id); err == nil && a.PictureURL != "" {
 				d.Covers.Alias(alias, a.PictureURL)
 				return a.PictureURL
 			}
@@ -293,8 +293,8 @@ func (d Deps) artistAlias(ctx context.Context, id string) (string, bool) {
 }
 
 func (d Deps) subsonicArtistInfo(ctx context.Context, id string) (bio, img string) {
-	if library.IsExternalID(id) && d.Online != nil {
-		if a, err := d.Online.Artist(ctx, id); err == nil {
+	if library.IsExternalID(id) && d.onlineFor(ctx) != nil {
+		if a, err := d.onlineFor(ctx).Artist(ctx, id); err == nil {
 			bio = a.Description
 		}
 	}

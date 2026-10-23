@@ -1,3 +1,5 @@
+import { player } from "./player.js";
+import { sharedStreamsSection } from "./platformaccounts.js";
 // Admin pages: dashboard, devices, settings (roots, providers, transcoding, backups, sources), logs.
 import { get, post, put, patch, del, qs, api, onEvent, wsState, store, avatarURL } from "./api.js";
 import { h, icon, fmtBytes, fmtNum, fmtLong, fmtTime, fmtAgo, fmtUptime, empty, toast, errToast, confirmDlg, promptDlg, dialog, strengthMeter, pwIssues } from "./ui.js";
@@ -232,7 +234,8 @@ export async function users(main) {
 // ── account (change own password) ──
 function accountSection(sec) {
   const me = state.me || {};
-  if (!me.user_id) return sec("账号", "当前浏览器是通过配对码连接的设备，没有关联账号。退出后可用用户名和密码登录。");
+  const logout = h("button", { class: "btn", onclick: async () => { player.selectUser(""); try { await post("/auth/logout"); } catch {} store.token = ""; location.reload(); } }, icon("logout"), "退出译梦账号");
+  if (!me.user_id) return sec("账号", "当前浏览器是通过配对码连接的设备，没有关联账号。退出后可用用户名和密码登录。", logout);
   const old = h("input", { class: "input", type: "password", autocomplete: "current-password" });
   const nw = h("input", { class: "input", type: "password", autocomplete: "new-password" });
   const nw2 = h("input", { class: "input", type: "password", autocomplete: "new-password" });
@@ -248,7 +251,7 @@ function accountSection(sec) {
       if (nw.value !== nw2.value) return toast("两次输入的新密码不一致", "err");
       try { await post("/auth/password", { old_password: old.value, new_password: nw.value }); toast("密码已修改"); old.value = nw.value = nw2.value = ""; }
       catch (e) { e.status === 403 ? toast("当前密码错误", "err") : errToast(e); }
-    } }, icon("key"), "修改密码")));
+    } }, icon("key"), "修改密码"), logout));
 }
 
 // ── settings ──
@@ -385,7 +388,7 @@ export async function settings(main) {
   const modeSec = sec("使用方式", "仅在线模式下会隐藏本地曲库相关页面；本地曲库为空时也会自动隐藏。", h("div", { class: "row" }, modeSeg));
   const plugSec = pluginsSection(sec, reload);
   const local = !localHidden();
-  main.replaceChildren(head("设置"), adminGate() || "", accountSection(sec), await sourceSwitchSec(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, imgSec, tcSec, bkSec, srcSec, lookSec);
+  main.replaceChildren(head("设置"), accountSection(sec), sharedStreamsSection(sec), await playbackSec(sec), await lastfmSec(sec), modeSec, plugSec, ...(local ? [rootsSec] : []), liveSec || "", ...(local ? [scanSec] : []), provSec, ...(local ? [splitSec] : []), cacheSec, imgSec, tcSec, bkSec, srcSec, lookSec);
 }
 export { applyTheme };
 
@@ -444,7 +447,7 @@ function platformCacheSec(sec, st, reload) {
       h("span", { class: "spacer" }), h("button", { class: "btn sm ghost", onclick: () => clear(o) }, icon("trash"), "清除")),
     h("div", { class: "chips" }, ks.sort((a, b) => b.bytes - a.bytes).map((k) => h("button", { class: "badge", title: `新鲜 ${k.fresh} · 过期待刷新 ${k.stale} · 点击清除`, onclick: () => clear(o, k.kind) },
       `${KIND_LABEL[k.kind] || k.kind} ${fmtNum(k.entries)}`)))));
-  return sec("平台缓存", "所有网易云 / QQ / 酷狗请求都经过 Core 的统一缓存：按类型设置有效期，过期后先返回旧数据再后台刷新，并发请求合并，平台风控冷却期间只用缓存。",
+  return sec("平台缓存", "所有网易云 / QQ / 酷狗请求都经过 Core 的统一缓存：按类型设置有效期，个人缓存按用户与会话隔离；过期后先返回旧数据再后台刷新，同一身份的并发请求合并，平台风控冷却期间只用缓存。",
     kv([["条目", fmtNum(st.entries)], ["占用", `${fmtBytes(st.bytes)} / ${fmtBytes(st.max_bytes)}`], ["命中率（本次启动）", ratio],
       ["命中 / 旧数据 / 合并 / 未命中", `${fmtNum(c.hits || 0)} / ${fmtNum(c.stale_served || 0)} / ${fmtNum(c.coalesced || 0)} / ${fmtNum(c.misses || 0)}`],
       ["不可用缓存命中", fmtNum(c.negative_hits || 0)], ["上游失败（用旧数据兜底）", `${fmtNum(c.errors || 0)}（${fmtNum(c.stale_on_error || 0)}）`], ["LRU 淘汰", fmtNum(c.evicted || 0)]]),

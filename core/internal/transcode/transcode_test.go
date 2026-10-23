@@ -92,7 +92,10 @@ func TestTranscodeProgressiveThenCached(t *testing.T) {
 				return
 			}
 			defer rc.Close()
-			outs[i], _ = io.ReadAll(rc)
+			outs[i], err = io.ReadAll(rc)
+			if err != nil {
+				t.Error(err)
+			}
 		}()
 	}
 	wg.Wait()
@@ -155,8 +158,13 @@ func TestEvictLRU(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		io.Copy(io.Discard, rc)
-		rc.Close()
+		if _, err := io.Copy(io.Discard, rc); err != nil {
+			rc.Close()
+			t.Fatal(err)
+		}
+		if err := rc.Close(); err != nil {
+			t.Fatal(err)
+		}
 		for i := 0; i < 200; i++ {
 			if _, ok := tr.Cached(src, p); ok {
 				return
@@ -191,5 +199,59 @@ func TestConcurrencyLimitHonoursContext(t *testing.T) {
 	defer cancel()
 	if _, err := tr.Open(ctx, src, Profile{Format: "flac"}); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
+	}
+}
+
+// Exercise the file sharing contract without requiring ffmpeg or a timing race.
+func TestProgressiveFileAllowsRenameAndDelete(t *testing.T) {
+	dir := t.TempDir()
+	part := filepath.Join(dir, "audio.part")
+	final := filepath.Join(dir, "audio.mp3")
+	want := []byte("audio bytes still readable after rename")
+	if err := os.WriteFile(part, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := openTranscodeFile(part)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := os.Rename(part, final); err != nil {
+		t.Fatalf("rename with progressive reader: %v", err)
+	}
+	got, err := io.ReadAll(f)
+	if err != nil || string(got) != string(want) {
+		t.Fatalf("drain renamed file: %q %v", got, err)
+	}
+	if err := os.Remove(final); err != nil {
+		t.Fatalf("delete with progressive reader: %v", err)
+	}
+}
+
+func TestFailedCachePublishRemovesPartialFile(t *testing.T) {
+	tr, src := fixture(t, 0)
+	p := Profile{Format: "flac"}
+	final := tr.finalPath(Key(src, p), p)
+	// A directory in place of the cache file makes publication fail after ffmpeg succeeds.
+	if err := os.MkdirAll(final, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	rc, err := tr.Open(context.Background(), src, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, readErr := io.Copy(io.Discard, rc)
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if readErr == nil {
+		t.Fatal("cache publication failure was reported as clean EOF")
+	}
+	entries, err := os.ReadDir(filepath.Join(tr.dir, "tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("failed publication left temporary files: %v", entries)
 	}
 }

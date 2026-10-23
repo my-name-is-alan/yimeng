@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -46,9 +47,10 @@ func (s *Scanner) SetLibraryRoots(ctx context.Context, roots []string) error {
 	seen := map[string]bool{}
 	for _, r := range roots {
 		r = strings.TrimSpace(r)
-		if r == "" || !strings.HasPrefix(r, "/") {
+		if r == "" || !filepath.IsAbs(r) {
 			return fmt.Errorf("%w: roots must be absolute paths", ErrBadInput)
 		}
+		r = filepath.Clean(r)
 		if seen[r] {
 			continue
 		}
@@ -56,11 +58,16 @@ func (s *Scanner) SetLibraryRoots(ctx context.Context, roots []string) error {
 		clean = append(clean, r)
 	}
 	b, _ := jsonMarshal(clean)
+	// Serialize persistence with publication, so concurrent settings updates
+	// cannot leave the database and the in-memory snapshot in different orders.
+	s.rootsMu.Lock()
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO settings(key, value) VALUES ('library.roots', ?)
 		ON CONFLICT(key) DO UPDATE SET value=excluded.value`, string(b)); err != nil {
+		s.rootsMu.Unlock()
 		return err
 	}
 	s.opts.Roots = clean
+	s.rootsMu.Unlock()
 	if s.opts.OnRootsChanged != nil {
 		go s.opts.OnRootsChanged()
 	}

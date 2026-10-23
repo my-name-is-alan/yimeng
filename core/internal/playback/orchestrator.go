@@ -361,7 +361,13 @@ func (o *Orchestrator) position(s *session) int64 {
 // mutate runs f on the loaded session inside a transaction, persists, and broadcasts.
 func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool, f func(s *session) error) (State, error) {
 	o.mu.Lock()
-	defer o.mu.Unlock()
+	var listened *Listen
+	defer func() {
+		o.mu.Unlock()
+		if listened != nil && o.OnListened != nil {
+			o.OnListened(*listened)
+		}
+	}()
 	tx, err := o.db.BeginTx(ctx, nil)
 	if err != nil {
 		return State{}, err
@@ -449,9 +455,11 @@ func (o *Orchestrator) mutate(ctx context.Context, pid string, queueChanged bool
 				}
 			}
 			prev.At = o.now()
-			o.OnListened(*prev)
+			listened = prev
 		}
 	}
+	// Publish under the mutation lock to retain commit/event ordering; the
+	// potentially slow or re-entrant callback runs afterwards, outside it.
 	o.hub.Publish("player.state", st)
 	if queueChanged {
 		o.hub.Publish("queue.updated", q)

@@ -22,7 +22,11 @@ func TestAdminDevicesRootsOverridesAlbums(t *testing.T) {
 		t.Fatalf("%s", body)
 	}
 	root := e.sc.Roots()[0]
-	if res, body = e.do("PUT", "/api/settings/library-roots", `{"roots":["`+root+`"]}`, e.token); res.StatusCode != 200 {
+	rootBody, err := json.Marshal(map[string]any{"roots": []string{root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, body = e.do("PUT", "/api/settings/library-roots", string(rootBody), e.token); res.StatusCode != 200 {
 		t.Fatalf("%d %s", res.StatusCode, body)
 	}
 	if res, _ = e.do("PUT", "/api/settings/library-roots", `{"roots":["relative"]}`, e.token); res.StatusCode != 400 {

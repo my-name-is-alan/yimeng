@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/secalert"
 	"github.com/my-name-is-alan/yimeng/core/internal/subsonic"
 	"github.com/my-name-is-alan/yimeng/core/internal/vault"
+	"image"
 	"io"
 	"log/slog"
 	"net/http"
@@ -332,8 +334,19 @@ func TestCoverThumbnail(t *testing.T) {
 	}
 	id := albums.Items[0].ID
 	res, body := e.do("GET", "/api/albums/"+id+"/cover?size=64&format=webp", "", e.token)
-	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "image/webp" || len(body) < 50 {
+	wantType, wantFormat := "image/jpeg", "jpeg"
+	if covers.WebPEncodingAvailable() {
+		wantType, wantFormat = "image/webp", "webp"
+	}
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != wantType || len(body) < 50 {
 		t.Fatalf("%d %s len=%d", res.StatusCode, res.Header.Get("Content-Type"), len(body))
+	}
+	img, format, err := image.Decode(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if format != wantFormat || max(img.Bounds().Dx(), img.Bounds().Dy()) > 64 || img.Bounds().Empty() {
+		t.Fatalf("format=%s bounds=%v", format, img.Bounds())
 	}
 	if res, _ := e.do("GET", "/api/albums/"+id+"/cover?size=0", "", e.token); res.StatusCode != 400 {
 		t.Fatal("bad size")

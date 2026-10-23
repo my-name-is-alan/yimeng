@@ -44,8 +44,8 @@ func (d Deps) trackDream(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
-	if d.Online != nil && library.IsExternalID(id) {
-		t, err := d.Online.Track(r.Context(), id)
+	if d.onlineFor(r.Context()) != nil && library.IsExternalID(id) {
+		t, err := d.onlineFor(r.Context()).Track(r.Context(), id)
 		if err != nil {
 			d.platformErr(w, "track", err)
 			return

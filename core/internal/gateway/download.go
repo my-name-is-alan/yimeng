@@ -20,6 +20,10 @@ import (
 // Query format/bitrate mirrors /api/stream; originals are the default.
 func (d Deps) download(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if d.Accounts != nil && library.IsExternalID(id) {
+		d.streamExternal(w, r, id)
+		return
+	}
 	f, err := d.Library.TrackFile(r.Context(), id)
 	if errors.Is(err, library.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "file not found")

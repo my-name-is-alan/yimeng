@@ -8,7 +8,7 @@ import (
 )
 
 // APIVersion is the app API contract version (bumped on breaking changes).
-const APIVersion = "1.3" // v1 minor; bumped for additive changes (D59 versioning policy)
+const APIVersion = "1.4" // v1 minor; bumped for additive changes (D59 versioning policy)
 
 type platformStatus struct {
 	Origin       string   `json:"origin"`
@@ -26,15 +26,24 @@ type platformStatus struct {
 func (d Deps) serverInfo(w http.ResponseWriter, r *http.Request) {
 	authed := false
 	if h := r.Header.Get("Authorization"); len(h) > 7 && strings.EqualFold(h[:7], "bearer ") && d.Auth != nil {
-		_, err := d.Auth.Authenticate(r.Context(), strings.TrimSpace(h[7:]))
+		dev, err := d.Auth.Authenticate(r.Context(), strings.TrimSpace(h[7:]))
 		authed = err == nil
+		if authed && d.Accounts != nil && dev.UserID != "" {
+			ctx, release, err := d.Accounts.Acquire(withDevice(r.Context(), dev), false)
+			if err != nil {
+				d.onlineErr(w, "account info", err)
+				return
+			}
+			defer release()
+			r = r.WithContext(ctx)
+		}
 	}
 	name := d.ServerName
 	if name == "" {
 		name = "Yimeng"
 	}
 	features := map[string]bool{
-		"online_sources": d.Online != nil && len(d.Online.Reg.EnabledIDs()) > 0,
+		"online_sources": d.onlineFor(r.Context()) != nil && len(d.onlineFor(r.Context()).Reg.EnabledIDs()) > 0,
 		"dream_metadata": true, // cover colours + platform/genre tags only (no audio analysis)
 		"lyrics":         true,
 		"word_lyrics":    true, // merged lyrics carry words[] when a source has word timing
@@ -42,14 +51,14 @@ func (d Deps) serverInfo(w http.ResponseWriter, r *http.Request) {
 		"events":         true, // /ws and SSE /api/v1/events
 		"signed_urls":    d.Auth != nil,
 		"progress_sync":  d.UserData != nil,
-		"charts":         d.Online != nil,
+		"charts":         d.onlineFor(r.Context()) != nil,
 		"ws":             true,
 		"sse":            true,
 	}
 	plats := []platformStatus{}
-	if d.Online != nil {
-		for _, id := range d.Online.Reg.IDs() {
-			st, err := d.Online.Reg.Status(r.Context(), id)
+	if d.onlineFor(r.Context()) != nil {
+		for _, id := range d.onlineFor(r.Context()).Reg.IDs() {
+			st, err := d.onlineFor(r.Context()).Reg.Status(r.Context(), id)
 			if err != nil {
 				continue
 			}

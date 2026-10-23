@@ -586,3 +586,13 @@ input[type=file]::file-selector-button { border: 0; border-radius: 999px; backgr
 /* account avatars (D58) */
 .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex: none; background: var(--fill); }
 .avatar.ph { display: inline-grid; place-items: center; font-weight: 700; font-size: 14px; color: var(--fg-2); }
+
+/* Account controls must wrap rather than squeeze platform names on mobile. */
+.plugin-row, .platform-account-row { flex-wrap: wrap; gap: 10px; }
+.plugin-row > .grow, .platform-account-row > .grow { flex: 1 1 200px; min-width: 0; }
+.plugin-row > .src-logo { flex: 0 0 44px; }
+[data-grant] .s { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .plugin-row > .grow, .platform-account-row > .grow { flex-basis: calc(100% - 64px); }
+  .plugin-row > label { margin-left: auto; }
+}

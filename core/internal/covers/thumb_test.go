@@ -31,7 +31,23 @@ func TestThumb(t *testing.T) {
 		t.Fatal("cache miss")
 	}
 	p3, ct, err := c.Thumb(src, 100, "webp")
-	if err != nil || ct != "image/webp" || p3 == p1 {
+	wantType, wantFormat := "image/jpeg", "jpeg"
+	if WebPEncodingAvailable() {
+		wantType, wantFormat = "image/webp", "webp"
+	}
+	if err != nil || ct != wantType || (p3 == p1) == WebPEncodingAvailable() {
 		t.Fatal(err, ct)
+	}
+	f, err = os.Open(p3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	decoded, format, err := image.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if format != wantFormat || decoded.Bounds().Dx() != 100 || decoded.Bounds().Dy() != 50 {
+		t.Fatalf("encoded thumbnail: format=%s bounds=%v", format, decoded.Bounds())
 	}
 }

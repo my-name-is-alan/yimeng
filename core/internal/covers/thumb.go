@@ -29,6 +29,10 @@ const (
 
 var allowed = map[string]bool{"jpeg": true, "jpg": true, "webp": true, "png": true}
 
+// WebPEncodingAvailable reports this build's encoder capability. WebP decoding
+// is always available; CGO-free builds encode JPEG when WebP is requested.
+func WebPEncodingAvailable() bool { return webpEncoder }
+
 type Cache struct {
 	Dir        string
 	MaxBytes   int64         // LRU cap for the whole cache dir (0 = unlimited)
@@ -98,11 +102,10 @@ func (c *Cache) Thumb(src string, size int, format string) (path, contentType st
 		return "", "", err
 	}
 	f.Close()
-	if err := os.Rename(tmp, out); err != nil {
+	if err := c.publishImage(tmp, out); err != nil {
 		os.Remove(tmp)
 		return "", "", err
 	}
-	c.noteWrite(out)
 	go c.evictIfNeeded()
 	return out, mimeOf(format), nil
 }

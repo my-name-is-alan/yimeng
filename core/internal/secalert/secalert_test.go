@@ -15,6 +15,11 @@ func TestNewIPAndLockout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := d.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, err := db.Migrate(context.Background(), d, migrations.FS); err != nil {
 		t.Fatal(err)
 	}

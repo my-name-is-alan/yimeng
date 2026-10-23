@@ -255,3 +255,30 @@ export interface MergedLyricLine { t_ms: number; text: string; trans?: string; r
 export interface LyricsSources { text?: string; words?: string; trans?: string; roma?: string }
 export interface TrackDream { track_id: string; colors: string[] | null; blurhash: string | null; tags: string[]; bpm: number | null }
 export interface ApiError { error: string; code: string; message: string }
+
+// API 1.4: personal platform sessions + pinned, stream-only grants.
+export interface StreamGrant {
+  id: string;
+  /** Only included for the granting administrator. */
+  provider_user_id?: string;
+  consumer_user_id: string;
+  platform: string;
+  /** Only included for the granting administrator; never credentials. */
+  account_id?: string;
+  label: string;
+  revision: number;
+  revoked: boolean;
+  available: boolean;
+  unavailable_reason?: string;
+}
+export interface PlatformBindings {
+  stream_mode: "own" | "shared_required";
+  grants: StreamGrant[];
+  legacy_claim_required: boolean;
+}
+export interface CreateStreamGrant {
+  consumer_user_id: string;
+  platform: string;
+  account_id: string;
+  label?: string;
+}

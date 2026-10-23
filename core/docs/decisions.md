@@ -588,3 +588,16 @@ web pages; caching per account (images are not user data; isolation is unaffecte
   (`/eapi/music/audio/match`). Platform login stays server-wide (D57).
 - **Safety:** multipart `audio` sniffed by magic bytes; ≤15 s / ≤2 MiB; 10 req/min per
   account; ffmpeg via argv only with timeout; audio never written to the library DB.
+
+## D63 — Personal platform accounts and pinned shared streaming (2026-10-23)
+
+Supersedes the server-wide platform-session parts of D49/D57. Core user identity
+selects the personal Registry, Vault namespace and private catalog cache. Existing
+plugin session URLs now operate on the caller's own accounts; global plugin
+configuration remains administrator-only. Member playback requires an explicit
+stream-only grant to one concrete account owned by an administrator, with no
+implicit fallback. Switching the donor's personal default does not change the grant.
+All audio entry points validate grants, including cache hits, signed URLs, Range,
+downloads and Subsonic. Revocation cancels registered active streams. Platform
+feedback/history belongs to the listener, not the donor. See account-isolation.md
+for schema 28 migration, settings UI, API 1.4 and verification limits.

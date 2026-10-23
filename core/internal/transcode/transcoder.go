@@ -195,9 +195,9 @@ func (t *Transcoder) Open(ctx context.Context, s Source, p Profile) (io.ReadClos
 	}
 	j.readers++
 	t.mu.Unlock()
-	f, err := os.Open(j.part)
+	f, err := openTranscodeFile(j.part)
 	if errors.Is(err, fs.ErrNotExist) { // finished and moved between lookup and open
-		f, err = os.Open(t.finalPath(key, p))
+		f, err = openTranscodeFile(t.finalPath(key, p))
 	}
 	if err != nil {
 		t.release(key, j)
@@ -233,7 +233,8 @@ func (t *Transcoder) start(key string, s Source, p Profile) (*job, error) {
 			if err = os.MkdirAll(filepath.Dir(final), 0o750); err == nil {
 				err = os.Rename(part, final) // open readers keep their fd
 			}
-		} else {
+		}
+		if err != nil {
 			msg := strings.TrimSpace(stderr.String())
 			if len(msg) > 300 {
 				msg = msg[:300]
@@ -330,8 +331,9 @@ func (r *tail) Close() error {
 		return nil
 	}
 	r.closed = true
+	err := r.f.Close()
 	r.t.release(r.key, r.j)
-	return r.f.Close()
+	return err
 }
 
 // evict removes least-recently-used cached files until the cache fits.

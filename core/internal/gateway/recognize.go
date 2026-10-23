@@ -85,11 +85,11 @@ func (d Deps) recognize(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusTooManyRequests, "rate_limited", "最多每分钟 10 次识曲")
 		return
 	}
-	if d.Online == nil {
+	if d.onlineFor(r.Context()) == nil {
 		writeErr(w, http.StatusServiceUnavailable, "unavailable", "online plugins not configured")
 		return
 	}
-	p, _, err := d.Online.Reg.Enabled("netease")
+	p, _, err := d.onlineFor(r.Context()).Reg.Enabled("netease")
 	if err != nil {
 		writeErr(w, http.StatusConflict, "not_logged_in", "请先在设置中登录网易云音乐")
 		return

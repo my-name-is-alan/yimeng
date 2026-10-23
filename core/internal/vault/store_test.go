@@ -94,30 +94,23 @@ func TestLoadOrCreateKey(t *testing.T) {
 	if err != nil || len(k1) != KeySize || warn == "" {
 		t.Fatal(err)
 	}
-	st, _ := os.Stat(p)
-	if st.Mode().Perm() != 0o600 {
-		t.Fatalf("perm %v", st.Mode().Perm())
-	}
-	if dst, _ := os.Stat(filepath.Dir(p)); dst.Mode().Perm() != 0o700 {
-		t.Fatalf("dir perm %v", dst.Mode().Perm())
-	}
+	assertKeyPermissions(t, p)
 	k2, warn, err := LoadOrCreateKey(p, "")
 	if err != nil || !bytes.Equal(k1, k2) || warn != "" {
 		t.Fatal("reload differs")
 	}
-	os.Chmod(p, 0o644)
-	if _, warn, _ := LoadOrCreateKey(p, ""); warn == "" {
-		t.Fatal("loose perms not reported")
+	loosenKeyPermissions(t, p)
+	if _, warn, err := LoadOrCreateKey(p, ""); err != nil || warn == "" {
+		t.Fatalf("loose permissions not repaired: %q %v", warn, err)
 	}
-	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
-		t.Fatal("perms not fixed")
-	}
+	assertKeyPermissions(t, p)
 	envKey := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, KeySize))
-	k3, _, err := LoadOrCreateKey(filepath.Join(t.TempDir(), "never"), envKey)
+	envPath := filepath.Join(t.TempDir(), "never")
+	k3, _, err := LoadOrCreateKey(envPath, envKey)
 	if err != nil || k3[0] != 1 {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(p), "never")); err == nil {
+	if _, err := os.Stat(envPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("env key written to disk")
 	}
 	if _, _, err := LoadOrCreateKey(p, "bm90LWEta2V5"); err == nil {

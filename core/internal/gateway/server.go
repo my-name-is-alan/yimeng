@@ -62,6 +62,8 @@ type LibraryUseCases interface {
 }
 
 type Deps struct {
+	Accounts     *online.Accounts
+	OnlinePublic *online.Service
 	// Rooms holds 一起听 rooms (nil = package default).
 	Rooms    *Rooms
 	Library  LibraryUseCases
@@ -132,6 +134,7 @@ func NewRouter(d Deps) http.Handler {
 	d.mountWebUI(mux)
 	d.mountWebAdminAPI(mux)
 	d.mountOnline(mux)
+	d.mountAccountIsolation(mux)
 	mux.HandleFunc("GET /api/settings/mode", d.getMode)
 	mux.HandleFunc("PUT /api/settings/mode", d.adminOnly(d.putMode))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -306,6 +309,7 @@ func NewRouter(d Deps) http.Handler {
 	if d.Subsonic != nil {
 		d.Subsonic.Stream = d.stream
 		d.Subsonic.WithDevice = withDevice
+		d.Subsonic.ScopeRequest = d.scopeOnline
 		d.Subsonic.ClientIP = clientIP
 		d.Subsonic.Decorate = d.markEntitlement
 		d.Subsonic.ArtistInfo = d.subsonicArtistInfo
@@ -353,7 +357,7 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/developer/credentials", d.createCredential)
 	mux.HandleFunc("DELETE /api/developer/credentials/{id}", d.revokeCredential)
 
-	h := securityHeaders(d.requireAuth(mux))
+	h := securityHeaders(d.requireAuth(d.scopeOnline(mux)))
 	h = apiVersionHeader(h)
 	h = compress(h)
 	h = d.cors(h)

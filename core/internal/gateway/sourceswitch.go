@@ -38,8 +38,8 @@ func (d Deps) switchCtx(ctx context.Context) context.Context {
 func (d Deps) getSourceSwitch(w http.ResponseWriter, r *http.Request) {
 	p := d.switchPrefs(r.Context())
 	avail := []string{}
-	if d.Online != nil {
-		for _, id := range d.Online.Reg.EnabledIDs() {
+	if d.onlineFor(r.Context()) != nil {
+		for _, id := range d.onlineFor(r.Context()).Reg.EnabledIDs() {
 			avail = append(avail, id)
 		}
 	}
@@ -71,7 +71,7 @@ func (d Deps) putSourceSwitch(w http.ResponseWriter, r *http.Request) {
 			if id == "" || id == library.OriginLocal || len(id) > 32 || seen[id] {
 				continue
 			}
-			if d.Online != nil && !slices.Contains(d.Online.Reg.IDs(), id) {
+			if d.onlineFor(r.Context()) != nil && !slices.Contains(d.onlineFor(r.Context()).Reg.IDs(), id) {
 				writeErr(w, http.StatusBadRequest, "unknown_platform", "unknown platform: "+id)
 				return
 			}
@@ -91,11 +91,11 @@ func (d Deps) putSourceSwitch(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/tracks/{id}/alternatives — the same song on other platforms.
 func (d Deps) trackAlternatives(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if d.Online == nil || !library.IsExternalID(id) {
+	if d.onlineFor(r.Context()) == nil || !library.IsExternalID(id) {
 		writeJSON(w, http.StatusOK, map[string]any{"items": []online.Alternative{}})
 		return
 	}
-	alts, err := d.Online.Alternatives(d.switchCtx(r.Context()), id)
+	alts, err := d.onlineFor(r.Context()).Alternatives(d.switchCtx(r.Context()), id)
 	if err != nil {
 		d.platformErr(w, "alternatives", err)
 		return
@@ -106,13 +106,13 @@ func (d Deps) trackAlternatives(w http.ResponseWriter, r *http.Request) {
 // alternativesFor is embedded in online track detail when the track is not
 // fully playable on its own platform (or ?alternatives=1).
 func (d Deps) alternativesFor(r *http.Request, id string, playable online.Entitlement) []online.Alternative {
-	if d.Online == nil || !library.IsExternalID(id) {
+	if d.onlineFor(r.Context()) == nil || !library.IsExternalID(id) {
 		return nil
 	}
 	if playable == online.EntFull && r.URL.Query().Get("alternatives") != "1" {
 		return nil
 	}
-	alts, err := d.Online.Alternatives(d.switchCtx(r.Context()), id)
+	alts, err := d.onlineFor(r.Context()).Alternatives(d.switchCtx(r.Context()), id)
 	if err != nil {
 		return nil
 	}

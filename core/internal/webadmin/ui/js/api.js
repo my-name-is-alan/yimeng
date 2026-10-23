@@ -23,12 +23,12 @@ export async function api(path, { method = "GET", body, raw, headers = {}, signa
     h["Content-Type"] = "application/json"; b = JSON.stringify(body);
   }
   const res = await fetch(`/api/v1${path}`, { method, headers: h, body: b, signal });
-  if (res.status === 401 && !path.startsWith("/pair") && !path.startsWith("/auth/")) unauth.forEach((f) => f());
-  if (raw) { if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null)); return res; }
+  const authFailed = (data) => { if (res.status === 401 && !path.startsWith("/pair") && !path.startsWith("/auth/") && data?.code !== "plugin_login_required" && data?.error !== "plugin_login_required") unauth.forEach((f) => f()); };
+  if (raw) { if (!res.ok) { const data = await res.json().catch(() => null); authFailed(data); throw new ApiError(res.status, data); } return res; }
   if (res.status === 204) return null;
   const ct = res.headers.get("content-type") || "";
   const data = ct.includes("json") ? await res.json().catch(() => null) : await res.text();
-  if (!res.ok) throw new ApiError(res.status, data);
+  if (!res.ok) { authFailed(data); throw new ApiError(res.status, data); }
   return data;
 }
 export const get = (p, o) => api(p, o);

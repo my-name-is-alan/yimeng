@@ -54,27 +54,29 @@ func sessionOnly(m map[string]string) map[string]string {
 }
 
 // saveAccount records the active session as a saved account and makes it the default.
-func (r *Registry) saveAccount(ctx context.Context, in *instance, acc Account, m LoginMethod) {
+func (r *Registry) saveAccount(ctx context.Context, in *instance, acc Account, m LoginMethod) error {
 	id := in.manifest.ID
 	acct := accountID(acc)
 	now := time.Now().UnixMilli()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		r.log.Error("plugin account save", "plugin", id, "err", err)
-		return
+		return err
 	}
 	defer tx.Rollback()
-	tx.ExecContext(ctx, `UPDATE plugin_accounts SET is_default=0 WHERE plugin_id=?`, id)
+	if _, err := tx.ExecContext(ctx, `UPDATE plugin_accounts SET is_default=0 WHERE plugin_id=?`, r.storageID(id)); err != nil {
+		return err
+	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO plugin_accounts(plugin_id, account_id, nickname, avatar, vip, tier, method, is_default, added_at, used_at)
 		VALUES (?,?,?,?,?,?,?,1,?,?) ON CONFLICT(plugin_id, account_id) DO UPDATE SET nickname=excluded.nickname, avatar=excluded.avatar,
 		vip=excluded.vip, tier=excluded.tier, method=CASE WHEN excluded.method<>'' THEN excluded.method ELSE plugin_accounts.method END,
-		is_default=1, used_at=excluded.used_at`, id, acct, acc.Nickname, acc.Avatar, acc.VIP, acc.Tier, string(m), now, now)
+		is_default=1, used_at=excluded.used_at`, r.storageID(id), acct, acc.Nickname, acc.Avatar, acc.VIP, acc.Tier, string(m), now, now)
 	if err == nil {
 		err = tx.Commit()
 	}
 	if err != nil {
 		r.log.Error("plugin account save", "plugin", id, "err", err)
-		return
+		return err
 	}
 	r.mu.Lock()
 	in.acctID = acct
@@ -82,8 +84,10 @@ func (r *Registry) saveAccount(ctx context.Context, in *instance, acc Account, m
 	if r.vault != nil {
 		if err := r.vault.Put(ctx, accountVaultKey(id, acct), vault.Credential{Method: vault.LoginMethod(m), Fields: sessionOnly(in.client.Cookies())}); err != nil {
 			r.log.Error("plugin account vault", "plugin", id, "err", err)
+			return err
 		}
 	}
+	return nil
 }
 
 // updateAccountInfo refreshes display fields of the active account.
@@ -93,16 +97,18 @@ func (r *Registry) updateAccountInfo(ctx context.Context, in *instance, acc Acco
 	r.mu.Unlock()
 	if acct == "" {
 		// session from before multi-account support: register it now
-		r.saveAccount(ctx, in, acc, method)
+		if err := r.saveAccount(ctx, in, acc, method); err != nil {
+			r.log.Error("register account", "err", err)
+		}
 		return
 	}
 	r.db.ExecContext(ctx, `UPDATE plugin_accounts SET nickname=?, avatar=?, vip=?, tier=? WHERE plugin_id=? AND account_id=?`,
-		acc.Nickname, acc.Avatar, acc.VIP, acc.Tier, in.manifest.ID, acct)
+		acc.Nickname, acc.Avatar, acc.VIP, acc.Tier, r.storageID(in.manifest.ID), acct)
 }
 
 func (r *Registry) defaultAccount(ctx context.Context, id string) string {
 	var acct string
-	r.db.QueryRowContext(ctx, `SELECT account_id FROM plugin_accounts WHERE plugin_id=? AND is_default=1`, id).Scan(&acct)
+	r.db.QueryRowContext(ctx, `SELECT account_id FROM plugin_accounts WHERE plugin_id=? AND is_default=1`, r.storageID(id)).Scan(&acct)
 	return acct
 }
 
@@ -112,7 +118,7 @@ func (r *Registry) Accounts(ctx context.Context, id string) ([]AccountEntry, err
 		return nil, err
 	}
 	rows, err := r.db.QueryContext(ctx, `SELECT account_id, nickname, avatar, vip, tier, method, is_default, added_at
-		FROM plugin_accounts WHERE plugin_id=? ORDER BY is_default DESC, used_at DESC`, id)
+		FROM plugin_accounts WHERE plugin_id=? ORDER BY is_default DESC, used_at DESC`, r.storageID(id))
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +149,7 @@ func (r *Registry) SwitchAccount(ctx context.Context, id, acct string) (Status, 
 		return Status{}, ErrNotSupported
 	}
 	var method string
-	if err := r.db.QueryRowContext(ctx, `SELECT method FROM plugin_accounts WHERE plugin_id=? AND account_id=?`, id, acct).Scan(&method); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT method FROM plugin_accounts WHERE plugin_id=? AND account_id=?`, r.storageID(id), acct).Scan(&method); err != nil {
 		return Status{}, ErrUnknownAccount
 	}
 	c, err := r.vault.Get(ctx, accountVaultKey(id, acct))
@@ -164,7 +170,7 @@ func (r *Registry) SwitchAccount(ctx context.Context, id, acct string) (Status, 
 		return Status{}, err
 	}
 	now := time.Now().UnixMilli()
-	if _, err := r.db.ExecContext(ctx, `UPDATE plugin_accounts SET is_default=(account_id=?), used_at=CASE WHEN account_id=? THEN ? ELSE used_at END WHERE plugin_id=?`, acct, acct, now, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `UPDATE plugin_accounts SET is_default=(account_id=?), used_at=CASE WHEN account_id=? THEN ? ELSE used_at END WHERE plugin_id=?`, acct, acct, now, r.storageID(id)); err != nil {
 		return Status{}, err
 	}
 	r.mu.Lock()
@@ -185,7 +191,7 @@ func (r *Registry) RemoveAccount(ctx context.Context, id, acct string) (Status, 
 	if err != nil {
 		return Status{}, err
 	}
-	res, err := r.db.ExecContext(ctx, `DELETE FROM plugin_accounts WHERE plugin_id=? AND account_id=?`, id, acct)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM plugin_accounts WHERE plugin_id=? AND account_id=?`, r.storageID(id), acct)
 	if err != nil {
 		return Status{}, err
 	}
@@ -207,7 +213,7 @@ func (r *Registry) RemoveAccount(ctx context.Context, id, acct string) (Status, 
 		return Status{}, err
 	}
 	var next string
-	err = r.db.QueryRowContext(ctx, `SELECT account_id FROM plugin_accounts WHERE plugin_id=? ORDER BY used_at DESC LIMIT 1`, id).Scan(&next)
+	err = r.db.QueryRowContext(ctx, `SELECT account_id FROM plugin_accounts WHERE plugin_id=? ORDER BY used_at DESC LIMIT 1`, r.storageID(id)).Scan(&next)
 	if errors.Is(err, sql.ErrNoRows) || next == "" {
 		return r.status(in), nil
 	}

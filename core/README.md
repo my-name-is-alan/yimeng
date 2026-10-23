@@ -38,7 +38,7 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - HTTPS / 代理 / 限流：`YIMENG_TLS_CERT`+`YIMENG_TLS_KEY`；`YIMENG_TRUSTED_PROXIES`（CIDR，信任后才读 X-Forwarded-For）；`YIMENG_RATE_LIMIT`（默认 50 req/s/客户端）与 `YIMENG_GLOBAL_RATE_LIMIT`；超限 429 + Retry-After。
 - 离线下载：`GET /api/tracks/{id}/download`（`Content-Disposition: attachment`；可选 `format`/`bitrate` 转码后整文件下载）。
 - Subsonic：`/rest/*.view`（默认开，`YIMENG_SUBSONIC=false` 关）；密码=配对设备 token（`ymd_…`）；不支持 t/s token+salt。
-- 流媒体账号：`GET /api/sources`；登录/登出/同步为 admin（凭据仅进 Vault，永不下发）。网易云/QQ/Apple 现为 stub（可存 cookie，播放 API 未接）。
+- 流媒体账号：`GET /api/sources`；登录/登出/同步为 admin（凭据仅进 Vault，永不下发）。Apple 在该旧接口仍为占位；网易云/QQ/酷狗使用 `/api/plugins` 的个人账号体系，见下文。
 - 格式：本地库索引 AIFF/AIF、APE、DSF、DFF（纯 Go 探测时长/采样率；标签靠 dhowden/tag 能读的部分）。
 - 搜索：拼音/首字母（`search_text`，go-pinyin）+ 原字段子串；`q=zhou` 可命中「周杰伦」。
 - 配置热更新：SIGHUP 重载日志级别、限流、mDNS、providers 等（bind/db/vault 不重载）。
@@ -53,4 +53,30 @@ curl -H "Authorization: Bearer $T" -H 'Range: bytes=0-' localhost:8741/api/strea
 - 迁移：`migrations/NNNN_*.sql` 嵌入二进制，启动时按版本执行（`schema_migrations`）。
 - 部署：`make dist`（linux amd64/arm64 静态二进制）、`make docker`（buildx 多架构），`compose.example.yaml`。
 
+## 多用户平台账号与共享取流（API 1.4）
+
+每个译梦用户独立登录自己的网易云/QQ/酷狗账号，获取个人收藏、歌单、推荐和 FM。
+成员播放固定使用管理员授权的具体账号；未授权或失效不会自动换号。
+管理员在「设置 → 音源插件 → 账号 → 授权取流」选择成员；撤销入口位于「播放来源与共享授权」。
+升级到 schema 28 不会自动开启共享；单管理员自动接收旧平台账号，多管理员需确认认领。
+详细迁移、权限、测试与限制见 [账号隔离说明](docs/account-isolation.md)。
+
 详见 ../docs/core-architecture.md
+
+## Windows 本地开发与测试
+
+Windows 不指定 TOML 时使用 `%USERPROFILE%\Music` 为音乐目录，
+`%LOCALAPPDATA%\Yimeng` 保存数据库、缓存和 Vault。NAS/Linux 默认目录不变。
+`configs/default.toml` 是 NAS 配置，Windows 使用它时需通过环境变量覆盖目录。
+
+无 CGO 构建支持 WebP 解码，但 WebP 缩略图请求会返回 JPEG，响应 Content-Type 和文件内容保持一致。
+Windows 主密钥文件使用禁止继承的 ACL，仅允许当前运行用户和 LocalSystem；Unix 使用 0600。
+
+```powershell
+$env:CGO_ENABLED = '0'
+go test ./... -count=1
+go vet ./...
+```
+
+开启 CGO 或运行 `-race` 需要可用的 C 编译器；不能仅设置 CGO_ENABLED 就认为已验证。
+详见 [Windows 测试说明](docs/windows-testing.md)。

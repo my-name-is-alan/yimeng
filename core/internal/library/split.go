@@ -155,19 +155,22 @@ func (s *Scanner) LoadSettings(ctx context.Context) error {
 	err := s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, SettingArtistSplit).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		s.split.Store(defaultSplitter)
-		return nil
-	}
-	if err != nil {
+	} else if err != nil {
 		return err
+	} else {
+		c := DefaultSplitConfig()
+		if err := json.Unmarshal([]byte(v), &c); err != nil {
+			return fmt.Errorf("settings %s: %w", SettingArtistSplit, err)
+		}
+		if err := c.Validate(); err != nil {
+			return err
+		}
+		s.split.Store(NewSplitter(c))
 	}
-	c := DefaultSplitConfig()
-	if err := json.Unmarshal([]byte(v), &c); err != nil {
-		return fmt.Errorf("settings %s: %w", SettingArtistSplit, err)
-	}
-	if err := c.Validate(); err != nil {
-		return err
-	}
-	s.split.Store(NewSplitter(c))
+	// Roots are independent of artist splitting; load them even if the
+	// administrator has never saved an artist-split preference.
+	s.rootsMu.Lock()
+	defer s.rootsMu.Unlock()
 	var rootsJSON string
 	err = s.db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key='library.roots'`).Scan(&rootsJSON)
 	if err == nil {

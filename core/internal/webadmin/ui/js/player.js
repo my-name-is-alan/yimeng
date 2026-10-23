@@ -3,7 +3,8 @@
 import { get, post, streamURL, coverURL, imgURL } from "./api.js";
 import { h, icon, cover, fmtDur, setRangeFill, $, toast, isLocal, NOT_LOCAL_MSG } from "./ui.js";
 
-const SKEY = "yimeng.player";
+let SKEY = ""; // never load an unowned legacy queue into another account
+localStorage.removeItem("yimeng.player");
 // Two elements for gapless playback (D53): `audio` is the active one, `spare`
 // preloads the next track and is swapped in when the current one ends.
 const mkAudio = () => { const a = new Audio(); a.preload = "auto"; return a; };
@@ -24,6 +25,11 @@ export function gainFor(t) {
 }
 
 export const player = {
+  selectUser(uid) {
+    const key = uid ? `yimeng.player.${encodeURIComponent(uid)}` : "";
+    if (key === SKEY) return false;
+    this.save(); SKEY = ""; this.clear(); SKEY = key; return true;
+  },
   queue: [], order: [], pos: -1, shuffle: false, repeat: "off", volume: 1, muted: false,
   lyrics: null, lyricsFor: null, listeners: new Set(), listened: 0, lastTick: 0, scrobbled: false,
   ent: null, loadSeq: 0, skips: 0, // ent: /online/resolve result for online tracks
@@ -84,7 +90,7 @@ export const player = {
     if (p < this.pos) this.pos--;
     this.emit("queue");
   },
-  clear() { audio.pause(); audio.removeAttribute("src"); this.queue = []; this.order = []; this.pos = -1; this.emit("track"); },
+  clear() { this.loadSeq++; dropPreload(); audio.pause(); audio.removeAttribute("src"); audio.load(); this.queue = []; this.order = []; this.pos = -1; this.lyrics = null; this.lyricsFor = null; this.ent = null; this.listened = 0; this.scrobbled = true; if ("mediaSession" in navigator) navigator.mediaSession.metadata = null; this.emit("track"); },
   buildOrder(start = 0) {
     const n = this.queue.length;
     this.order = [...Array(n).keys()];
@@ -168,12 +174,14 @@ export const player = {
       artwork: artURL(t, 512) ? [{ src: artURL(t, 512), sizes: "512x512" }] : [] });
   },
   save() {
+    if (!SKEY) return;
     try {
       localStorage.setItem(SKEY, JSON.stringify({ queue: this.queue.slice(0, 3000), order: this.order.slice(0, 3000), pos: this.pos,
         shuffle: this.shuffle, repeat: this.repeat, volume: this.volume, at: Math.round(audio.currentTime * 1000) }));
     } catch {}
   },
   restore() {
+    if (!SKEY) return;
     try {
       const s = JSON.parse(localStorage.getItem(SKEY) || "null"); if (!s?.queue?.length) return;
       Object.assign(this, { queue: s.queue, order: s.order, pos: s.pos, shuffle: !!s.shuffle, repeat: s.repeat || "off", volume: s.volume ?? 1 });

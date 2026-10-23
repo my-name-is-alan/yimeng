@@ -35,6 +35,7 @@ type Playlists interface {
 
 // Handler serves /rest/* Subsonic endpoints.
 type Handler struct {
+	ScopeRequest  func(http.Handler) http.Handler
 	Auth          *auth.Service
 	Library       Catalog
 	Playlists     Playlists

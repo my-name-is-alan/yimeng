@@ -1,3 +1,4 @@
+import { grantStreamAccount } from "./platformaccounts.js";
 // Online sources (音源插件): plugin settings, online home sections, charts,
 // external album/artist/playlist pages, first-run mode wizard.
 // Credentials are posted straight to Core; nothing secret is kept in the page.
@@ -46,7 +47,7 @@ export function modeWizard(onDone) {
 const LOGIN = { qr: "扫码登录", sms: "短信验证码", cookie: "Cookie", password: "账号密码" };
 export function pluginsSection(sec, reload) {
   const box = h("div", { class: "stack" }, h("div", { class: "skel", style: { height: "64px" } }));
-  const s = sec("音源插件", "每个在线平台都是一个插件：启用、登录、设置音质与请求频率。账号凭据只保存在 Core 的加密 Vault 中，从不下发到网页或客户端。非会员账号仅能播放平台提供的试听片段。", box);
+  const s = sec("音源插件", "每个用户独立登录自己的平台账号，用于收藏、歌单和推荐。成员取流只使用管理员明确授权的指定账号。凭据加密保存在 Core，永不下发。平台开关与全局设置仅管理员可改。", box);
   const render = async () => {
     try {
       const r = await get("/plugins?check=1");
@@ -71,13 +72,13 @@ function pluginRow(p, rerender) {
     : h("span", { class: "muted" }, "未登录 · 可匿名浏览与试听");
   const cool = p.cooldown_until ? h("span", { class: "badge warn", title: "触发平台风控，自动退避中" }, `退避至 ${new Date(p.cooldown_until).toLocaleTimeString("zh-CN", { hour12: false })}`) : null;
   const btns = [];
-  if (admin && p.enabled) {
+  if (p.enabled && (!meta || admin)) {
     if (p.logged_in) {
       btns.push(h("button", { class: "btn sm", onclick: () => pluginAccounts(p, rerender) }, icon("artist"), `账号${p.accounts?.length > 1 ? ` (${p.accounts.length})` : ""}`));
       btns.push(h("button", { class: "btn sm", onclick: async () => { try { await post(`/plugins/${m.id}/refresh`); toast("会话已刷新"); rerender(); } catch (e) { errToast(e); } } }, icon("refresh"), "刷新"));
       btns.push(h("button", { class: "btn sm danger", onclick: async () => { if (await confirmDlg("退出登录", `清除 ${m.name} 的登录会话？`, "退出", true)) { try { await del(`/plugins/${m.id}/session`); rerender(); } catch (e) { errToast(e); } } } }, "退出"));
     } else if (m.login_methods?.length) btns.push(h("button", { class: "btn sm primary", onclick: () => pluginLogin(p, rerender) }, icon("key"), "登录"));
-    btns.push(h("button", { class: "btn sm", onclick: () => pluginConfig(p, rerender) }, icon("settings"), "设置"));
+    if (admin) btns.push(h("button", { class: "btn sm", onclick: () => pluginConfig(p, rerender) }, icon("settings"), "设置"));
   }
   return h("div", { class: "li plugin-row", "data-plugin": m.id },
     h("div", { class: "src-logo", style: { background: { netease: "#e60026", qq: "#31c27c", kugou: "#2b8af7", spotify: "#1db954" }[m.id] || "#555" } }, { netease: "网", qq: "Q", kugou: "酷", spotify: "S" }[m.id] || m.name[0]),
@@ -91,15 +92,16 @@ function pluginRow(p, rerender) {
 function pluginAccounts(p, done) {
   const m = p.manifest;
   const list = h("div", { class: "stack" });
-  const render = (accs, active) => list.replaceChildren(...(accs.length ? accs.map((a) => h("div", { class: "li", style: { gap: "10px" } },
+  const render = (accs, active) => list.replaceChildren(...(accs.length ? accs.map((a) => h("div", { class: "li platform-account-row", style: { gap: "10px" } },
     a.avatar_preview ? h("img", { src: `${a.avatar_preview}?size=120`, alt: "", referrerpolicy: "no-referrer", style: { width: "32px", height: "32px", borderRadius: "50%" } }) : h("div", { class: "src-logo", style: { width: "32px", height: "32px" } }, (a.nickname || "?")[0]),
     h("div", { class: "grow" }, h("div", { class: "t" }, a.nickname || a.id, " ", a.id === active ? h("span", { class: "badge ok" }, "默认") : null, " ", h("span", { class: `badge ${a.vip ? "ok" : ""}` }, a.vip ? (a.tier || "会员") : "非会员")),
       h("div", { class: "s muted" }, `${LOGIN[a.method] || a.method || ""} · 添加于 ${new Date(a.added_at).toLocaleDateString("zh-CN")}`)),
     a.id === active ? null : h("button", { class: "btn sm", onclick: async () => { try { const st = await post(`/plugins/${m.id}/accounts/${encodeURIComponent(a.id)}/default`); toast(`已切换到 ${a.nickname || a.id}`); render(st.accounts || [], st.active_account); done(); } catch (e) { errToast(e); } } }, "设为默认"),
+    isAdmin() && m.capabilities?.includes("stream") ? h("button", { class: "btn sm", onclick: () => grantStreamAccount(p, a, done) }, "授权取流") : null,
     h("button", { class: "btn sm danger", onclick: async () => { if (!(await confirmDlg("移除账号", `移除 ${a.nickname || a.id}？其登录会话会从 Vault 删除。`, "移除", true))) return; try { const st = await del(`/plugins/${m.id}/accounts/${encodeURIComponent(a.id)}`); render(st?.accounts || [], st?.active_account); done(); } catch (e) { errToast(e); } } }, "移除")))
     : [h("p", { class: "muted" }, "没有已保存的账号")]));
   render(p.accounts || [], p.active_account);
-  const d = dialog({ title: `${m.name} · 账号`, body: [h("p", { class: "muted", style: { margin: 0, fontSize: "13px" } }, "可保存多个账号，播放与浏览使用「默认」账号。每个账号的凭据单独保存在 Vault 中。"), list],
+  const d = dialog({ title: `${m.name} · 账号`, body: [h("p", { class: "muted", style: { margin: 0, fontSize: "13px" } }, "这些账号只属于当前译梦用户。「默认」账号用于个人收藏和推荐；成员播放使用管理员指定共享账号。切换默认账号不会替换已有共享授权。"), list],
     foot: [h("button", { class: "btn", onclick: () => d.close() }, "关闭"), h("button", { class: "btn primary", onclick: () => { d.close(); pluginLogin(p, done); } }, icon("plus"), "添加账号")] });
 }
 const qName = (q) => ({ standard: "标准", high: "极高", lossless: "无损", hires: "Hi-Res" }[q] || q || "–");

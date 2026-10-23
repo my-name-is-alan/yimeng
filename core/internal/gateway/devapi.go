@@ -16,6 +16,9 @@ import (
 // "" when API keys may not call it at all.
 func scopeFor(r *http.Request) string {
 	p := r.URL.Path
+	if strings.HasPrefix(p, "/api/admin/stream-grants") || strings.HasPrefix(p, "/api/admin/platform-legacy") || (strings.HasPrefix(p, "/api/plugins/") && (strings.Contains(p, "/login") || strings.Contains(p, "/accounts") || strings.HasSuffix(p, "/session") || strings.HasSuffix(p, "/refresh"))) {
+		return ""
+	}
 	switch {
 	// credential management, sessions and secrets: never via API keys
 	case strings.HasPrefix(p, "/api/developer/"), strings.HasPrefix(p, "/api/auth/"), strings.HasPrefix(p, "/api/pair"),

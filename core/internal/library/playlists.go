@@ -633,7 +633,7 @@ func (s *Scanner) matchEntry(ctx context.Context, entry, extinf string) string {
 				return id
 			}
 		} else {
-			for _, root := range s.opts.Roots {
+			for _, root := range s.Roots() {
 				if id := s.trackForPath(ctx, filepath.Join(root, p)); id != "" {
 					return id
 				}

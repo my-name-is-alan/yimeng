@@ -18,6 +18,7 @@ import (
 	"github.com/my-name-is-alan/yimeng/core/internal/library"
 	"github.com/my-name-is-alan/yimeng/core/internal/lyrics"
 	"github.com/my-name-is-alan/yimeng/core/internal/online"
+	"github.com/my-name-is-alan/yimeng/core/internal/owner"
 	"github.com/my-name-is-alan/yimeng/core/internal/transcode"
 )
 
@@ -49,15 +50,15 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/plugins", d.listPlugins)
 	mux.HandleFunc("GET /api/plugins/{id}", d.getPlugin)
 	mux.HandleFunc("PUT /api/plugins/{id}", d.adminOnly(d.putPlugin))
-	mux.HandleFunc("POST /api/plugins/{id}/login", d.adminOnly(d.pluginLogin))
-	mux.HandleFunc("POST /api/plugins/{id}/login/qr", d.adminOnly(d.pluginQR))
-	mux.HandleFunc("POST /api/plugins/{id}/login/sms", d.adminOnly(d.pluginSMS))
-	mux.HandleFunc("GET /api/plugins/{id}/login/qr/{key}", d.adminOnly(d.pluginQRPoll))
-	mux.HandleFunc("POST /api/plugins/{id}/refresh", d.adminOnly(d.pluginRefresh))
-	mux.HandleFunc("DELETE /api/plugins/{id}/session", d.adminOnly(d.pluginLogout))
-	mux.HandleFunc("GET /api/plugins/{id}/accounts", d.adminOnly(d.pluginAccounts))
-	mux.HandleFunc("POST /api/plugins/{id}/accounts/{acct}/default", d.adminOnly(d.pluginAccountDefault))
-	mux.HandleFunc("DELETE /api/plugins/{id}/accounts/{acct}", d.adminOnly(d.pluginAccountRemove))
+	mux.HandleFunc("POST /api/plugins/{id}/login", d.personalOnly(d.pluginLogin))
+	mux.HandleFunc("POST /api/plugins/{id}/login/qr", d.personalOnly(d.pluginQR))
+	mux.HandleFunc("POST /api/plugins/{id}/login/sms", d.personalOnly(d.pluginSMS))
+	mux.HandleFunc("GET /api/plugins/{id}/login/qr/{key}", d.personalOnly(d.pluginQRPoll))
+	mux.HandleFunc("POST /api/plugins/{id}/refresh", d.personalOnly(d.pluginRefresh))
+	mux.HandleFunc("DELETE /api/plugins/{id}/session", d.personalOnly(d.pluginLogout))
+	mux.HandleFunc("GET /api/plugins/{id}/accounts", d.personalOnly(d.pluginAccounts))
+	mux.HandleFunc("POST /api/plugins/{id}/accounts/{acct}/default", d.personalOnly(d.pluginAccountDefault))
+	mux.HandleFunc("DELETE /api/plugins/{id}/accounts/{acct}", d.personalOnly(d.pluginAccountRemove))
 
 	mux.HandleFunc("GET /api/home", d.home)
 	mux.HandleFunc("GET /api/online/{origin}/{sub}", d.platformSub) // daily | fm
@@ -72,6 +73,10 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 }
 
 func (d Deps) onlineErr(w http.ResponseWriter, what string, err error) {
+	if status, code, msg, ok := isolationError(err); ok {
+		writeErr(w, status, code, msg)
+		return
+	}
 	switch {
 	case errors.Is(err, online.ErrUnknown):
 		writeErr(w, http.StatusNotFound, "unknown_plugin", err.Error())
@@ -97,8 +102,13 @@ func (d Deps) onlineErr(w http.ResponseWriter, what string, err error) {
 // ---- plugin management -------------------------------------------------
 
 func (d Deps) listPlugins(w http.ResponseWriter, r *http.Request) {
-	items := d.Online.Reg.List(r.Context(), r.URL.Query().Get("check") == "1")
+	items := d.onlineFor(r.Context()).Reg.List(r.Context(), r.URL.Query().Get("check") == "1")
 	for i := range items {
+		if dev, ok := DeviceFrom(r.Context()); d.Accounts != nil && ok && dev.Admin && len(items[i].Manifest.Capabilities) == 0 {
+			if global, err := d.Online.Reg.Status(r.Context(), items[i].Manifest.ID); err == nil {
+				items[i] = global
+			}
+		}
 		d.decorateStatus(&items[i])
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -119,7 +129,7 @@ func (d Deps) decorateStatus(st *online.Status) {
 }
 
 func (d Deps) getPlugin(w http.ResponseWriter, r *http.Request) {
-	st, err := d.Online.Reg.Status(r.Context(), r.PathValue("id"))
+	st, err := d.onlineFor(r.Context()).Reg.Status(r.Context(), r.PathValue("id"))
 	if err != nil {
 		d.onlineErr(w, "plugin", err)
 		return
@@ -146,6 +156,18 @@ func (d Deps) putPlugin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_config", err.Error())
 		return
 	}
+	if d.Accounts != nil {
+		if err := d.Accounts.ConfigChanged(); err != nil {
+			d.internal(w, "platform config", err)
+			return
+		}
+		st.Account = nil
+		st.Accounts = nil
+		st.ActiveAccount = ""
+		st.LoggedIn = false
+		st.LoginMethod = ""
+		st.LastError = ""
+	}
 	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
 	writeJSON(w, http.StatusOK, st)
 }
@@ -171,19 +193,19 @@ func (d Deps) pluginLogin(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid_body", "cookie required")
 			return
 		}
-		_, err = d.Online.Reg.LoginCookie(r.Context(), id, b.Cookie)
+		_, err = d.onlineFor(r.Context()).Reg.LoginCookie(r.Context(), id, b.Cookie)
 	case "password":
 		if b.Username == "" || b.Password == "" {
 			writeErr(w, http.StatusBadRequest, "invalid_body", "username and password required")
 			return
 		}
-		_, err = d.Online.Reg.LoginPassword(r.Context(), id, b.Username, b.Password)
+		_, err = d.onlineFor(r.Context()).Reg.LoginPassword(r.Context(), id, b.Username, b.Password)
 	case "sms":
 		if b.Phone == "" || b.Code == "" {
 			writeErr(w, http.StatusBadRequest, "invalid_body", "phone and code required")
 			return
 		}
-		_, err = d.Online.Reg.LoginSMS(r.Context(), id, b.Phone, b.Code)
+		_, err = d.onlineFor(r.Context()).Reg.LoginSMS(r.Context(), id, b.Phone, b.Code)
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid_body", "method must be cookie, password or sms (QR: POST …/login/qr)")
 		return
@@ -203,7 +225,7 @@ func (d Deps) pluginSMS(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_body", "phone required")
 		return
 	}
-	if err := d.Online.Reg.SendSMS(r.Context(), r.PathValue("id"), strings.TrimSpace(b.Phone)); err != nil {
+	if err := d.onlineFor(r.Context()).Reg.SendSMS(r.Context(), r.PathValue("id"), strings.TrimSpace(b.Phone)); err != nil {
 		d.onlineErr(w, "plugin sms", err)
 		return
 	}
@@ -211,12 +233,12 @@ func (d Deps) pluginSMS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) pluginDone(w http.ResponseWriter, r *http.Request, id string) {
-	st, err := d.Online.Reg.Status(r.Context(), id)
+	st, err := d.onlineFor(r.Context()).Reg.Status(r.Context(), id)
 	if err != nil {
 		d.onlineErr(w, "plugin", err)
 		return
 	}
-	d.Hub.Publish("plugin.updated", map[string]any{"id": id})
+	d.pluginEvent(r.Context(), id)
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -231,7 +253,7 @@ func (d Deps) pluginQR(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if b.Channel != "" {
-		st, err := d.Online.Reg.Status(r.Context(), r.PathValue("id"))
+		st, err := d.onlineFor(r.Context()).Reg.Status(r.Context(), r.PathValue("id"))
 		if err != nil {
 			d.onlineErr(w, "qr", err)
 			return
@@ -245,28 +267,35 @@ func (d Deps) pluginQR(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ch, err := d.Online.Reg.StartQR(r.Context(), r.PathValue("id"))
+	ch, err := d.onlineFor(r.Context()).Reg.StartQR(r.Context(), r.PathValue("id"))
 	if err != nil {
 		d.onlineErr(w, "qr", err)
 		return
+	}
+	if d.Accounts != nil {
+		d.Accounts.RememberQR(owner.From(r.Context()).ID, r.PathValue("id"), ch.Key, ch.ExpiresAt)
 	}
 	writeJSON(w, http.StatusOK, ch)
 }
 
 func (d Deps) pluginQRPoll(w http.ResponseWriter, r *http.Request) {
-	p, err := d.Online.Reg.PollQR(r.Context(), r.PathValue("id"), r.PathValue("key"))
+	if d.Accounts != nil && !d.Accounts.OwnQR(owner.From(r.Context()).ID, r.PathValue("id"), r.PathValue("key")) {
+		writeErr(w, 404, "qr_not_found", "QR challenge not found or expired")
+		return
+	}
+	p, err := d.onlineFor(r.Context()).Reg.PollQR(r.Context(), r.PathValue("id"), r.PathValue("key"))
 	if err != nil {
 		d.onlineErr(w, "qr poll", err)
 		return
 	}
 	if p.Status == online.QRConfirmed {
-		d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+		d.pluginEvent(r.Context(), r.PathValue("id"))
 	}
 	writeJSON(w, http.StatusOK, p)
 }
 
 func (d Deps) pluginRefresh(w http.ResponseWriter, r *http.Request) {
-	st, err := d.Online.Reg.Refresh(r.Context(), r.PathValue("id"))
+	st, err := d.onlineFor(r.Context()).Reg.Refresh(r.Context(), r.PathValue("id"))
 	if err != nil {
 		d.onlineErr(w, "refresh", err)
 		return
@@ -275,16 +304,16 @@ func (d Deps) pluginRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) pluginLogout(w http.ResponseWriter, r *http.Request) {
-	if err := d.Online.Reg.Logout(r.Context(), r.PathValue("id")); err != nil {
+	if err := d.onlineFor(r.Context()).Reg.Logout(r.Context(), r.PathValue("id")); err != nil {
 		d.onlineErr(w, "logout", err)
 		return
 	}
-	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+	d.pluginEvent(r.Context(), r.PathValue("id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (d Deps) pluginAccounts(w http.ResponseWriter, r *http.Request) {
-	accs, err := d.Online.Reg.Accounts(r.Context(), r.PathValue("id"))
+	accs, err := d.onlineFor(r.Context()).Reg.Accounts(r.Context(), r.PathValue("id"))
 	if err != nil {
 		d.onlineErr(w, "accounts", err)
 		return
@@ -304,24 +333,24 @@ func (d Deps) accountErr(w http.ResponseWriter, op string, err error) {
 }
 
 func (d Deps) pluginAccountDefault(w http.ResponseWriter, r *http.Request) {
-	st, err := d.Online.Reg.SwitchAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
+	st, err := d.onlineFor(r.Context()).Reg.SwitchAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
 	if err != nil {
 		d.accountErr(w, "switch account", err)
 		return
 	}
-	d.Online.FlushPlugin(r.PathValue("id"))
-	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+	d.onlineFor(r.Context()).FlushPlugin(r.PathValue("id"))
+	d.pluginEvent(r.Context(), r.PathValue("id"))
 	writeJSON(w, http.StatusOK, st)
 }
 
 func (d Deps) pluginAccountRemove(w http.ResponseWriter, r *http.Request) {
-	st, err := d.Online.Reg.RemoveAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
+	st, err := d.onlineFor(r.Context()).Reg.RemoveAccount(r.Context(), r.PathValue("id"), r.PathValue("acct"))
 	if err != nil {
 		d.accountErr(w, "remove account", err)
 		return
 	}
-	d.Online.FlushPlugin(r.PathValue("id"))
-	d.Hub.Publish("plugin.updated", map[string]any{"id": r.PathValue("id")})
+	d.onlineFor(r.Context()).FlushPlugin(r.PathValue("id"))
+	d.pluginEvent(r.Context(), r.PathValue("id"))
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -338,8 +367,8 @@ func (d Deps) getMode(w http.ResponseWriter, r *http.Request) {
 		n, _ := d.OnlineLib.LocalTrackCount(r.Context())
 		out["mode"], out["local_tracks"] = m, n
 	}
-	if d.Online != nil {
-		if ids := d.Online.Reg.EnabledIDs(); ids != nil {
+	if d.onlineFor(r.Context()) != nil {
+		if ids := d.onlineFor(r.Context()).Reg.EnabledIDs(); ids != nil {
 			out["online_enabled"] = ids
 		}
 	}
@@ -405,10 +434,10 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 		secs = append(secs, s)
 		mu.Unlock()
 	}
-	for i, id := range d.Online.Reg.EnabledIDs() {
-		st, _ := d.Online.Reg.Status(ctx, id)
+	for i, id := range d.onlineFor(r.Context()).Reg.EnabledIDs() {
+		st, _ := d.onlineFor(r.Context()).Reg.Status(ctx, id)
 		name := st.Manifest.Name
-		logged := d.Online.Reg.LoggedIn(id)
+		logged := d.onlineFor(r.Context()).Reg.LoggedIn(id)
 		has := func(c online.Capability) bool {
 			for _, x := range st.Manifest.Capabilities {
 				if x == c {
@@ -433,25 +462,25 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 		}
 		if logged && has(online.CapRecommend) {
 			run(base+1, homeSection{ID: id + ".daily", Title: name + " · 每日推荐", Origin: id, Kind: "tracks"}, func(s *homeSection) (err error) {
-				s.Tracks, err = d.Online.RecommendTracks(ctx, id)
+				s.Tracks, err = d.onlineFor(r.Context()).RecommendTracks(ctx, id)
 				return
 			})
 		}
 		if logged && has(online.CapUserPlaylists) {
 			run(base+2, homeSection{ID: id + ".mine", Title: name + " · 我的歌单", Origin: id, Kind: "playlists"}, func(s *homeSection) (err error) {
-				s.Playlists, err = d.Online.UserPlaylists(ctx, id)
+				s.Playlists, err = d.onlineFor(r.Context()).UserPlaylists(ctx, id)
 				return
 			})
 		}
 		if has(online.CapRecommend) {
 			run(base+3, homeSection{ID: id + ".playlists", Title: name + " · 推荐歌单", Origin: id, Kind: "playlists"}, func(s *homeSection) (err error) {
-				s.Playlists, err = d.Online.RecommendPlaylists(ctx, id)
+				s.Playlists, err = d.onlineFor(r.Context()).RecommendPlaylists(ctx, id)
 				return
 			})
 		}
 		if has(online.CapCharts) {
 			run(base+4, homeSection{ID: id + ".charts", Title: name + " · 排行榜", Origin: id, Kind: "playlists"}, func(s *homeSection) (err error) {
-				s.Playlists, err = d.Online.Charts(ctx, id)
+				s.Playlists, err = d.onlineFor(r.Context()).Charts(ctx, id)
 				if len(s.Playlists) > 8 {
 					s.Playlists = s.Playlists[:8]
 				}
@@ -494,7 +523,7 @@ func sortSections(s []homeSection, order map[string]int) {
 }
 
 func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
-	origins := d.Online.Reg.EnabledIDs()
+	origins := d.onlineFor(r.Context()).Reg.EnabledIDs()
 	if o := r.URL.Query().Get("origin"); o != "" {
 		origins = []string{o}
 	}
@@ -509,7 +538,7 @@ func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			items, err := d.Online.Charts(r.Context(), o)
+			items, err := d.onlineFor(r.Context()).Charts(r.Context(), o)
 			out[i] = group{Origin: o, Items: items}
 			if err != nil {
 				out[i].Error = errCode(err)
@@ -520,7 +549,7 @@ func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
-	resp := map[string]any{"items": out, "origins": d.Online.Reg.EnabledIDs()}
+	resp := map[string]any{"items": out, "origins": d.onlineFor(r.Context()).Reg.EnabledIDs()}
 	// App shape: ?origin=x → "charts" is that platform's list.
 	charts := []online.Playlist{}
 	for i := range out {
@@ -536,10 +565,10 @@ func (d Deps) charts(w http.ResponseWriter, r *http.Request) {
 // listPlaylistScope serves /api/playlists?scope=mine|recommend|discover:
 // external playlists grouped by platform ("local" scope = classic list).
 func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope string) bool {
-	if scope == "" || scope == "local" || (d.Online == nil && scope != "all") {
+	if scope == "" || scope == "local" || (d.onlineFor(r.Context()) == nil && scope != "all") {
 		return false
 	}
-	if d.Online == nil { // all = local only
+	if d.onlineFor(r.Context()) == nil { // all = local only
 		return false
 	}
 	platform := scope
@@ -547,7 +576,7 @@ func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope st
 		platform = "mine"
 	}
 	q := r.URL.Query()
-	origins := d.Online.Reg.EnabledIDs()
+	origins := d.onlineFor(r.Context()).Reg.EnabledIDs()
 	if o := q.Get("origin"); o != "" {
 		origins = []string{o}
 	}
@@ -566,13 +595,13 @@ func (d Deps) listPlaylistScope(w http.ResponseWriter, r *http.Request, scope st
 			var err error
 			switch platform {
 			case "mine":
-				items, err = d.Online.UserPlaylists(r.Context(), o)
+				items, err = d.onlineFor(r.Context()).UserPlaylists(r.Context(), o)
 			case "recommend":
-				items, err = d.Online.RecommendPlaylists(r.Context(), o)
+				items, err = d.onlineFor(r.Context()).RecommendPlaylists(r.Context(), o)
 			case "discover":
-				items, err = d.Online.DiscoverPlaylists(r.Context(), o, q.Get("category"), intQ(r, "offset"), intQ(r, "limit"))
+				items, err = d.onlineFor(r.Context()).DiscoverPlaylists(r.Context(), o, q.Get("category"), intQ(r, "offset"), intQ(r, "limit"))
 			case "charts":
-				items, err = d.Online.Charts(r.Context(), o)
+				items, err = d.onlineFor(r.Context()).Charts(r.Context(), o)
 			default:
 				err = online.ErrBadInput
 			}
@@ -623,23 +652,23 @@ func (d Deps) onlineItem(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch r.PathValue("kind") {
 	case "tracks":
-		v, err = d.Online.Track(ctx, id)
+		v, err = d.onlineFor(r.Context()).Track(ctx, id)
 	case "albums":
 		var a online.Album
-		a, err = d.Online.Album(ctx, id)
+		a, err = d.onlineFor(r.Context()).Album(ctx, id)
 		a.Cover = d.onlineCover(a.CoverURL)
 		d.decorateOnlineTracks(a.Tracks)
 		v = a
 	case "artists":
 		var a online.Artist
-		a, err = d.Online.Artist(ctx, id)
+		a, err = d.onlineFor(r.Context()).Artist(ctx, id)
 		as := []online.Artist{a}
 		d.decorateOnlineArtists(as)
 		d.decorateOnlineTracks(as[0].TopTracks)
 		v = as[0]
 	case "playlists":
 		var p online.Playlist
-		p, err = d.Online.Playlist(ctx, id)
+		p, err = d.onlineFor(r.Context()).Playlist(ctx, id)
 		if err == nil {
 			d.decorateOnlinePlaylist(&p)
 			v = playlistView(p)
@@ -691,7 +720,7 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	p, err := d.Online.Playlist(r.Context(), online.FullID(r.PathValue("origin"), r.PathValue("id")))
+	p, err := d.onlineFor(r.Context()).Playlist(r.Context(), online.FullID(r.PathValue("origin"), r.PathValue("id")))
 	if err != nil {
 		d.onlineErr(w, "clone", err)
 		return
@@ -770,7 +799,7 @@ func (d Deps) clonePlaylist(w http.ResponseWriter, r *http.Request) {
 
 // cloudFavorites returns the platform "liked songs" playlist of each logged-in account.
 func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
-	origins := d.Online.Reg.EnabledIDs()
+	origins := d.onlineFor(r.Context()).Reg.EnabledIDs()
 	if o := r.URL.Query().Get("origin"); o != "" {
 		origins = []string{o}
 	}
@@ -782,12 +811,12 @@ func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
 	var out []group
 	for _, o := range origins {
 		g := group{Origin: o}
-		if !d.Online.Reg.LoggedIn(o) {
+		if !d.onlineFor(r.Context()).Reg.LoggedIn(o) {
 			g.Error = "plugin_login_required"
 			out = append(out, g)
 			continue
 		}
-		pls, err := d.Online.UserPlaylists(r.Context(), o)
+		pls, err := d.onlineFor(r.Context()).UserPlaylists(r.Context(), o)
 		if err != nil {
 			g.Error = errCode(err)
 			out = append(out, g)
@@ -795,7 +824,7 @@ func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, p := range pls {
 			if p.Kind == "liked" {
-				full, err := d.Online.Playlist(r.Context(), p.ID)
+				full, err := d.onlineFor(r.Context()).Playlist(r.Context(), p.ID)
 				if err != nil {
 					g.Error = errCode(err)
 				} else {
@@ -835,7 +864,7 @@ func (d Deps) onlineResolve(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"track_id": id, "play_id": id, "origin": "local", "local": true, "entitlement": "full", "stream_url": "/api/stream/" + url.PathEscape(id)})
 		return
 	}
-	res, err := d.Online.Resolve(d.switchCtx(r.Context()), id, qualityQ(r), r.URL.Query().Get("fresh") == "1")
+	res, err := d.onlineFor(r.Context()).Resolve(d.switchCtx(r.Context()), id, qualityQ(r), r.URL.Query().Get("fresh") == "1")
 	if err != nil {
 		d.onlineErr(w, "resolve", err)
 		return
@@ -850,12 +879,12 @@ func (d Deps) onlineResolve(w http.ResponseWriter, r *http.Request) {
 // disk; previews stream only the segment the platform returned. Upstream
 // URLs and cookies never reach the client.
 func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) bool {
-	if d.Online == nil || !library.IsExternalID(id) {
+	if d.onlineFor(r.Context()) == nil || !library.IsExternalID(id) {
 		return false
 	}
 	q := qualityQ(r)
 	for attempt := 0; attempt < 2; attempt++ {
-		res, err := d.Online.Resolve(d.switchCtx(r.Context()), id, q, attempt > 0)
+		res, err := d.onlineFor(r.Context()).Resolve(d.switchCtx(r.Context()), id, q, attempt > 0)
 		if err != nil {
 			d.onlineErr(w, "resolve", err)
 			return true
@@ -891,10 +920,19 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 		if !prof.IsOriginal() {
 			method = http.MethodGet
 		}
+		if d.Accounts != nil {
+			ctx, closeStream, err := d.Accounts.Guard(r.Context(), res)
+			if err != nil {
+				d.onlineErr(w, "stream grant", err)
+				return true
+			}
+			defer closeStream()
+			r = r.WithContext(ctx)
+		}
 		resp, status := d.fetchUpstream(r, method, res, prof.IsOriginal())
 		if resp == nil {
 			if status == http.StatusForbidden && attempt == 0 {
-				d.Online.Invalidate(id)
+				d.onlineFor(r.Context()).Invalidate(id)
 				continue // URL expired / host refused: re-resolve once
 			}
 			writeErr(w, http.StatusBadGateway, "upstream_rejected", fmt.Sprintf("音源服务器拒绝了请求（HTTP %d）。可能是登录失效或该曲目暂不可播放，请稍后重试或重新登录平台账号。", status))
@@ -919,6 +957,9 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 			}
 		}
 		h.Set("Cache-Control", "private, no-store")
+		if strings.HasSuffix(r.URL.Path, "/download") {
+			h.Set("Content-Disposition", contentDisposition(downloadFilename(library.Track{ID: id}, res.Format)))
+		}
 		h.Set("X-Yimeng-Entitlement", string(res.Entitlement))
 		h.Set("X-Yimeng-Play-Id", res.PlayID)
 		if res.Fallback != "" {
@@ -930,7 +971,9 @@ func (d Deps) streamExternal(w http.ResponseWriter, r *http.Request, id string) 
 		}
 		w.WriteHeader(resp.StatusCode)
 		if r.Method != http.MethodHead {
-			io.Copy(w, resp.Body)
+			if _, err := io.Copy(w, resp.Body); err != nil {
+				panic(http.ErrAbortHandler)
+			}
 		}
 		return true
 	}
@@ -1080,10 +1123,10 @@ func (d Deps) pipeExternal(w http.ResponseWriter, r *http.Request, body io.Reade
 }
 
 func (d Deps) externalLyrics(w http.ResponseWriter, r *http.Request, id string) bool {
-	if d.Online == nil || !library.IsExternalID(id) {
+	if d.onlineFor(r.Context()) == nil || !library.IsExternalID(id) {
 		return false
 	}
-	l, err := d.Online.Lyrics(r.Context(), id)
+	l, err := d.onlineFor(r.Context()).Lyrics(r.Context(), id)
 	if err != nil {
 		d.onlineErr(w, "lyrics", err)
 		return true
@@ -1111,22 +1154,22 @@ func translation(s string) *lyrics.Lyrics {
 // ensureExternal materializes an online track before favorites/ratings.
 func (d Deps) ensureExternal(r *http.Request) error {
 	id := r.PathValue("id")
-	if d.Online == nil || r.PathValue("type") != "track" || !library.IsExternalID(id) {
+	if d.onlineFor(r.Context()) == nil || r.PathValue("type") != "track" || !library.IsExternalID(id) {
 		return nil
 	}
-	return d.Online.Materialize(r.Context(), []string{id})
+	return d.onlineFor(r.Context()).Materialize(r.Context(), []string{id})
 }
 
 // onlineSearch adds federated results when ?online=1.
 func (d Deps) onlineSearch(r *http.Request, q string, limit int) []online.OriginResult {
-	if d.Online == nil || r.URL.Query().Get("online") != "1" {
+	if d.onlineFor(r.Context()) == nil || r.URL.Query().Get("online") != "1" {
 		return nil
 	}
 	var only []string
 	if o := r.URL.Query().Get("origins"); o != "" {
 		only = strings.Split(o, ",")
 	}
-	res := d.Online.Search(r.Context(), q, limit, only)
+	res := d.onlineFor(r.Context()).Search(r.Context(), q, limit, only)
 	if res == nil {
 		res = []online.OriginResult{}
 	}

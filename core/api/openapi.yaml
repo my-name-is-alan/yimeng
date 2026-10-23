@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: 译梦 (yimeng) Core API
-  version: 0.19.0
+  version: 0.20.0
   description: |
     LAN API of the yimeng Core (NAS). Every `/api/*` route requires a device
     token (`Authorization: Bearer ymd_...`) except `POST /api/pair` and
@@ -9,10 +9,13 @@ info:
     accept `?access_token=` because `<audio>`/`<img>` cannot set headers.
     Errors use `{ "error": "<kind>", "message": "..." }`.
 
-    Platform logins are server-wide by design (D57): one NetEase/QQ/Spotify login
-    per Core, shared by every 译梦 account. All accounts therefore see the same
-    platform playlists, recommendations and charts (`/sources`, `/playlists?scope=mine|recommend|…`,
-    `/online/*`). Library data, history, prefs, local playlists and players stay per account.
+    Platform sessions are isolated by the authenticated Yimeng user (API 1.4).
+    Each user's default platform account supplies their private library, recommendations,
+    FM and feedback. Members stream only through an explicit administrator grant pinned
+    to a concrete saved account; missing/revoked grants never fall back to another account.
+    Existing plugin login/account URLs now act on the caller's own accounts, not a global session.
+    A user login session (not an API key) is required to manage platform sessions or grants.
+    Administrator plugin configuration remains global. Migration never creates grants.
     Optional TLS (`YIMENG_TLS_CERT`/`YIMENG_TLS_KEY`), trusted proxies
     (`YIMENG_TRUSTED_PROXIES` CIDRs → honour X-Forwarded-For), and rate limits
     (`YIMENG_RATE_LIMIT` req/s per client, `YIMENG_GLOBAL_RATE_LIMIT`) return 429
@@ -2034,7 +2037,7 @@ paths:
   /api/v1/plugins/{id}/login:
     post:
       tags: [online]
-      summary: Log in with cookie ({method:"cookie",cookie}), account+password ({method:"password",username,password}) or phone+SMS code ({method:"sms",phone,code}) (admin). Session stored in the Vault only
+      summary: Log in with cookie ({method:"cookie",cookie}), account+password ({method:"password",username,password}) or phone+SMS code ({method:"sms",phone,code}) (own user session). Session stored in the Vault only
       requestBody:
         required: true
         content: { application/json: { schema: { type: object } } }
@@ -2046,7 +2049,7 @@ paths:
   /api/v1/plugins/{id}/login/sms:
     post:
       tags: [online]
-      summary: Ask the platform to text an SMS login code to {phone} (admin)
+      summary: Ask the platform to text an SMS login code to {phone} (own user session)
       requestBody:
         required: true
         content: { application/json: { schema: { type: object } } }
@@ -2058,7 +2061,7 @@ paths:
   /api/v1/plugins/{id}/login/qr:
     post:
       tags: [online]
-      summary: "Start a QR login (admin); returns {key, content, image (PNG data URL), expires_at}. Optional body {channel} picks one of manifest.qr_channels (which app scans: QQ / 微信 / platform app)"
+      summary: "Start a QR login (own user session); returns {key, content, image (PNG data URL), expires_at}. Optional body {channel} picks one of manifest.qr_channels (which app scans: QQ / 微信 / platform app)"
       requestBody:
         required: false
         content: { application/json: { schema: { type: object, properties: { channel: { type: string } } } } }
@@ -2071,7 +2074,7 @@ paths:
   /api/v1/plugins/{id}/login/qr/{key}:
     get:
       tags: [online]
-      summary: "Poll a QR login (admin): waiting | scanned | confirmed | expired"
+      summary: "Poll a QR login (own user session): waiting | scanned | confirmed | expired"
       responses:
         "200": { description: QR poll, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2080,7 +2083,7 @@ paths:
   /api/v1/plugins/{id}/refresh:
     post:
       tags: [online]
-      summary: Refresh the platform session (admin)
+      summary: Refresh the platform session (own user session)
       responses:
         "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2089,7 +2092,7 @@ paths:
   /api/v1/plugins/{id}/session:
     delete:
       tags: [online]
-      summary: "Log out: forget the stored session (admin)"
+      summary: "Log out: forget the stored session (own user session)"
       responses:
         "204": { description: Logged out }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2098,7 +2101,7 @@ paths:
   /api/v1/plugins/{id}/accounts:
     get:
       tags: [online]
-      summary: "Saved accounts of a platform plugin (admin): {items: [{account_id, nickname, avatar, vip, tier, method, is_default, active, added_at, used_at}], active}"
+      summary: "Saved accounts of a platform plugin (own user session): {items: [{account_id, nickname, avatar, vip, tier, method, is_default, active, added_at, used_at}], active}"
       responses:
         "200": { description: Accounts, content: { application/json: { schema: { type: object } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -2106,7 +2109,7 @@ paths:
   /api/v1/plugins/{id}/accounts/{acct}/default:
     post:
       tags: [online]
-      summary: "Make an account the default and switch the plugin to it (admin)"
+      summary: "Make an account the default and switch the plugin to it (own user session)"
       responses:
         "200": { description: Plugin status, content: { application/json: { schema: { type: object } } } }
         "404": { description: unknown_account }
@@ -2115,7 +2118,7 @@ paths:
   /api/v1/plugins/{id}/accounts/{acct}:
     delete:
       tags: [online]
-      summary: "Remove a saved account and its Vault session (admin). Removing the active account switches to the next one or signs out"
+      summary: "Remove a saved account and its Vault session (own user session). Removing the active account switches to the next one or signs out"
       responses:
         "204": { description: Removed }
         "404": { description: unknown_account }
@@ -2505,7 +2508,7 @@ paths:
         using the server-measured PCM duration (overriding with a wrong hint caused
         false `no_match`). Limits: ≤15 s and ≤2 MiB (413 too_long). Rate limit
         10/min per account, enforced before decoding (429). Audio is never stored.
-        Requires the server-wide NetEase account to be logged in (409 not_logged_in).
+        Requires the caller's personal NetEase account to be logged in (409 not_logged_in); stream grants do not authorize recognition.
         Fingerprint is a clean-room reimplementation of NetEase shazam_v2 (D62); if the
         format NetEase expects changes, Core returns 503 fingerprint_unsupported.
         Each match `cover` is a CoverRef object (`{url, source_url, …}`), not a string.
@@ -2538,6 +2541,60 @@ paths:
         "413": { description: too_long }
         "429": { $ref: "#/components/responses/RateLimited" }
         "503": { description: fingerprint_unsupported }
+  /api/v1/me/platform-bindings:
+    get:
+      tags: [sources]
+      summary: Personal playback mode and grants (no donor account details for members)
+      responses:
+        "200": { description: Personal binding, content: { application/json: { schema: { $ref: "#/components/schemas/PlatformBindings" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/stream-grants:
+    get:
+      tags: [sources]
+      summary: List stream-only grants issued by this administrator
+      responses:
+        "200": { description: Grants, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: "#/components/schemas/StreamGrant" } } } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [sources]
+      summary: Grant a member streaming through one of my saved accounts (admin user session)
+      description: Replaces only this administrator's existing grant for that member/platform, increments its revision and cancels old streams. Never grants access to personal data. Does not fall back to another account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consumer_user_id, platform, account_id]
+              properties:
+                consumer_user_id: { type: string }
+                platform: { type: string }
+                account_id: { type: string, description: A saved account ID from my personal plugin account list }
+                label: { type: string, maxLength: 80, description: Non-secret display name visible to the member }
+      responses:
+        "201": { description: Grant, content: { application/json: { schema: { $ref: "#/components/schemas/StreamGrant" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Another administrator already granted this member/platform, or plugin disabled }
+  /api/v1/admin/stream-grants/{grant}:
+    delete:
+      tags: [sources]
+      summary: Revoke my stream-only grant and cancel its active streams
+      parameters: [{ name: grant, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: Revoked }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/admin/platform-legacy/claim:
+    post:
+      tags: [sources]
+      summary: Explicitly claim quarantined legacy platform accounts as the current administrator
+      description: Needed only when migration cannot identify one administrator. Copies and verifies credentials, commits ownership, then cleans legacy sessions. Never enables sharing.
+      responses:
+        "200": { description: Migration completed }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
   securitySchemes:
     bearer: { type: http, scheme: bearer, bearerFormat: "ymd_<base64url>" }
@@ -2559,6 +2616,27 @@ components:
       headers: { Retry-After: { schema: { type: integer } } }
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
   schemas:
+    StreamGrant:
+      type: object
+      required: [id, consumer_user_id, platform, label, revision, revoked, available]
+      properties:
+        id: { type: string }
+        provider_user_id: { type: string, description: Administrator responses only }
+        consumer_user_id: { type: string }
+        platform: { type: string }
+        account_id: { type: string, description: Administrator responses only }
+        label: { type: string }
+        revision: { type: integer }
+        revoked: { type: boolean }
+        available: { type: boolean, description: Local authorization and saved session are configured; upstream can still expire or refuse playback }
+        unavailable_reason: { type: string }
+    PlatformBindings:
+      type: object
+      required: [stream_mode, grants, legacy_claim_required]
+      properties:
+        stream_mode: { type: string, enum: [own, shared_required] }
+        grants: { type: array, items: { $ref: "#/components/schemas/StreamGrant" } }
+        legacy_claim_required: { type: boolean }
     MetadataMatch:
       type: object
       description: One provider candidate (web console metadata editor)

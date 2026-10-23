@@ -1,6 +1,6 @@
 // Package library owns the local scan: it walks configured roots, reads files
 // through the local adapter, and upserts rows into source_tracks.
-// Merge into canonical tables is P0 step 4 (not implemented here).
+// Successful scans merge source rows into the canonical catalog.
 package library
 
 import (
@@ -70,7 +70,8 @@ type Scanner struct {
 	log         *slog.Logger
 
 	mu      sync.Mutex
-	running string // job id
+	running string       // job id
+	rootsMu sync.RWMutex // protects opts.Roots, including persisted updates
 	mergeMu sync.Mutex
 	split   atomic.Pointer[Splitter]
 	wg      sync.WaitGroup
@@ -80,6 +81,7 @@ func NewScanner(db *sql.DB, opts Options) *Scanner {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
+	opts.Roots = append([]string(nil), opts.Roots...)
 	return &Scanner{db: db, opts: opts, log: opts.Logger}
 }
 
@@ -98,10 +100,11 @@ type StartRequest struct {
 // Start creates a scan job and runs it in the background. ctx bounds the
 // background work (pass the server lifetime context, not a request context).
 func (s *Scanner) Start(ctx context.Context, req StartRequest) (Job, error) {
-	roots := s.opts.Roots
+	configuredRoots := s.Roots()
+	roots := configuredRoots
 	if req.Root != "" {
 		r := filepath.Clean(req.Root)
-		if !s.underRoot(r) {
+		if rootOf(configuredRoots, r) == "" {
 			return Job{}, ErrUnknownRoot
 		}
 		roots = []string{r}
@@ -123,7 +126,7 @@ func (s *Scanner) Start(ctx context.Context, req StartRequest) (Job, error) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.run(context.WithoutCancel(ctx), ctx, id, roots, req.Full)
+		s.run(context.WithoutCancel(ctx), ctx, id, roots, configuredRoots, req.Full)
 		s.mu.Lock()
 		s.running = ""
 		s.mu.Unlock()
@@ -135,19 +138,20 @@ func (s *Scanner) Start(ctx context.Context, req StartRequest) (Job, error) {
 func (s *Scanner) Wait() { s.wg.Wait() }
 
 func (s *Scanner) underRoot(p string) bool {
-	for _, r := range s.opts.Roots {
-		if p == r || strings.HasPrefix(p, r+string(filepath.Separator)) {
-			return true
-		}
-	}
-	return false
+	return s.rootOf(p) != ""
 }
 
 // rootOf returns the configured root containing p.
 func (s *Scanner) rootOf(p string) string {
+	return rootOf(s.Roots(), p)
+}
+
+// rootOf uses one immutable configuration snapshot for the whole operation.
+func rootOf(roots []string, p string) string {
 	best := ""
-	for _, r := range s.opts.Roots {
-		if (p == r || strings.HasPrefix(p, r+string(filepath.Separator))) && len(r) > len(best) {
+	for _, r := range roots {
+		rel, err := filepath.Rel(r, p)
+		if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && len(r) > len(best) {
 			best = r
 		}
 	}
@@ -156,7 +160,7 @@ func (s *Scanner) rootOf(p string) string {
 
 type counters struct{ total, processed, added, updated, unchanged, removed, failed int }
 
-func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, full bool) {
+func (s *Scanner) run(dbctx, ctx context.Context, id string, roots, configuredRoots []string, full bool) {
 	var c counters
 	var lastErr string
 	fail := func(err error) {
@@ -168,6 +172,9 @@ func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, ful
 	var files []string
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if cerr := ctx.Err(); cerr != nil {
+				return cerr
+			}
 			if err != nil {
 				if p == root {
 					return err
@@ -204,7 +211,7 @@ func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, ful
 			fail(err)
 			return
 		}
-		res, err := s.scanFile(dbctx, id, p, full, folderCovers)
+		res, err := s.scanFile(dbctx, id, p, rootOf(configuredRoots, p), full, folderCovers)
 		c.processed++
 		switch {
 		case err != nil:
@@ -224,7 +231,19 @@ func (s *Scanner) run(dbctx, ctx context.Context, id string, roots []string, ful
 		}
 	}
 
-	// Remove rows for files that disappeared under the scanned roots.
+	// A failed read/update does not prove a file disappeared. Likewise, an
+	// unreadable subtree is not an empty subtree. Keep the previous catalog
+	// and skip destructive reconciliation until a complete scan succeeds.
+	if err := ctx.Err(); err != nil {
+		fail(err)
+		return
+	}
+	if c.failed > 0 {
+		fail(fmt.Errorf("incomplete scan (%d failures); cleanup and merge skipped: %s", c.failed, lastErr))
+		return
+	}
+
+	// Remove rows only after a complete, successful scan of these roots.
 	for _, root := range roots {
 		res, err := s.db.ExecContext(dbctx, `DELETE FROM source_tracks WHERE source=? AND (path=? OR path LIKE ? ESCAPE '\') AND last_scan_id<>?`,
 			SourceLocal, root, likePrefix(root+string(filepath.Separator)), id)
@@ -249,7 +268,7 @@ func likePrefix(p string) string {
 	return r.Replace(p) + "%"
 }
 
-func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, folderCovers map[string]string) (string, error) {
+func (s *Scanner) scanFile(ctx context.Context, jobID, path, root string, full bool, folderCovers map[string]string) (string, error) {
 	st, err := os.Stat(path)
 	if err != nil {
 		return "", err
@@ -324,7 +343,7 @@ func (s *Scanner) scanFile(ctx context.Context, jobID, path string, full bool, f
 		bitrate_kbps=excluded.bitrate_kbps, lossless=excluded.lossless, lyrics=excluded.lyrics,
 		rg_track_gain=excluded.rg_track_gain, rg_track_peak=excluded.rg_track_peak, rg_album_gain=excluded.rg_album_gain,
 		rg_album_peak=excluded.rg_album_peak, rg_source=excluded.rg_source, loudness_lufs=NULL, loudness_error=NULL`,
-		rowID, SourceLocal, path, string(raw), path, s.rootOf(path), size, mtime, hash, t.Format,
+		rowID, SourceLocal, path, string(raw), path, root, size, mtime, hash, t.Format,
 		t.Title, nz(t.Artist), nz(t.Album), nz(t.AlbumArtist), ni(t.TrackNo), ni(t.TrackTotal), ni(t.DiscNo), ni(t.DiscTotal), ni(t.Year), nz(t.Genre),
 		ni64(t.DurationMs), nz(t.ISRC), nz(t.MBRecordingID), nz(t.MBReleaseID), nz(coverPath), nz(coverSrc), jobID, now, now,
 		codecOf(t), ni(t.Audio.SampleRate), ni(t.Audio.BitDepth), ni(t.Audio.Channels), ni(t.Audio.BitrateKbps), t.Audio.Lossless, nz(t.Lyrics),
@@ -529,6 +548,8 @@ func rgSource(g local.Gain) any {
 
 // Roots returns a copy of the configured library roots.
 func (s *Scanner) Roots() []string {
+	s.rootsMu.RLock()
+	defer s.rootsMu.RUnlock()
 	out := make([]string, len(s.opts.Roots))
 	copy(out, s.opts.Roots)
 	return out

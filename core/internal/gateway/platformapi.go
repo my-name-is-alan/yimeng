@@ -33,7 +33,7 @@ func (d Deps) platformErr(w http.ResponseWriter, what string, err error) {
 
 func (d Deps) platformDaily(w http.ResponseWriter, r *http.Request) {
 	o := r.PathValue("origin")
-	ts, err := d.Online.RecommendTracks(r.Context(), o)
+	ts, err := d.onlineFor(r.Context()).RecommendTracks(r.Context(), o)
 	if err != nil {
 		d.platformErr(w, "daily recommendations", err)
 		return
@@ -44,7 +44,7 @@ func (d Deps) platformDaily(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) platformFM(w http.ResponseWriter, r *http.Request) {
 	o := r.PathValue("origin")
-	ts, err := d.Online.FM(r.Context(), o)
+	ts, err := d.onlineFor(r.Context()).FM(r.Context(), o)
 	if err != nil {
 		d.platformErr(w, "personal FM", err)
 		return
@@ -63,7 +63,7 @@ func (d Deps) platformFMFeedback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_body", "track_id and action (like|trash) are required")
 		return
 	}
-	if err := d.Online.FMFeedback(r.Context(), r.PathValue("origin"), b.TrackID, b.Action); err != nil {
+	if err := d.onlineFor(r.Context()).FMFeedback(r.Context(), r.PathValue("origin"), b.TrackID, b.Action); err != nil {
 		d.platformErr(w, "personal FM", err)
 		return
 	}
@@ -72,11 +72,11 @@ func (d Deps) platformFMFeedback(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) platformRecPlaylists(w http.ResponseWriter, r *http.Request) {
 	o := r.PathValue("origin")
-	if !d.Online.Reg.LoggedIn(o) {
+	if !d.onlineFor(r.Context()).Reg.LoggedIn(o) {
 		d.platformErr(w, "recommended playlists", online.ErrNeedsLogin)
 		return
 	}
-	ps, err := d.Online.RecommendPlaylists(r.Context(), o)
+	ps, err := d.onlineFor(r.Context()).RecommendPlaylists(r.Context(), o)
 	if err != nil {
 		d.platformErr(w, "recommended playlists", err)
 		return
@@ -92,7 +92,7 @@ func (d Deps) platformUserPlaylists(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid_query", "type must be created or collected")
 		return
 	}
-	ps, err := d.Online.UserPlaylists(r.Context(), o)
+	ps, err := d.onlineFor(r.Context()).UserPlaylists(r.Context(), o)
 	if err != nil {
 		d.platformErr(w, "user playlists", err)
 		return

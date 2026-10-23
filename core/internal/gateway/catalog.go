@@ -102,9 +102,9 @@ func (d Deps) listTracks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getTrack(w http.ResponseWriter, r *http.Request) {
-	if id := r.PathValue("id"); d.Online != nil && library.IsExternalID(id) {
+	if id := r.PathValue("id"); d.onlineFor(r.Context()) != nil && library.IsExternalID(id) {
 		lt, lerr := d.Library.GetTrack(r.Context(), id)
-		t, err := d.Online.Track(r.Context(), id)
+		t, err := d.onlineFor(r.Context()).Track(r.Context(), id)
 		if lerr != nil {
 			if err != nil {
 				d.platformErr(w, "track", err)

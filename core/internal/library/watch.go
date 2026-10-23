@@ -28,6 +28,7 @@ func (s *Scanner) Watch(ctx context.Context, o WatchOptions) {
 	if o.Debounce <= 0 {
 		o.Debounce = 5 * time.Second
 	}
+	roots := s.Roots()
 	var polled []string
 	var fw *fsnotify.Watcher
 	watched := map[string]bool{} // root -> watched
@@ -39,7 +40,7 @@ func (s *Scanner) Watch(ctx context.Context, o WatchOptions) {
 			fw = nil
 		}
 	}
-	for _, root := range s.opts.Roots {
+	for _, root := range roots {
 		switch {
 		case fw == nil:
 			polled = append(polled, root)
@@ -98,7 +99,7 @@ func (s *Scanner) Watch(ctx context.Context, o WatchOptions) {
 					}
 				}
 			}
-			if r := s.rootOf(ev.Name); r != "" {
+			if r := rootOf(roots, ev.Name); r != "" {
 				dirty[r] = true
 				arm()
 			}

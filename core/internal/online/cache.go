@@ -72,10 +72,11 @@ const DefaultCacheBytes = 256 << 20
 
 // Cache stores normalized DTOs keyed "origin:kind:id" (external_cache table).
 type Cache struct {
-	db       *sql.DB
-	now      func() time.Time
-	MaxBytes int64
-	Log      *slog.Logger
+	namespace string // immutable; isolates persisted entries and refreshes
+	db        *sql.DB
+	now       func() time.Time
+	MaxBytes  int64
+	Log       *slog.Logger
 	// Cooling reports whether origin is in a risk-control cooldown; when set
 	// and a stale copy exists, it is served without calling upstream.
 	Cooling func(origin string) bool
@@ -84,6 +85,13 @@ type Cache struct {
 	bg     sync.WaitGroup
 	evict  sync.Mutex
 	stats  cacheCounters
+}
+
+func (c *Cache) storageKey(key string) string {
+	if c.namespace == "" {
+		return key
+	}
+	return c.namespace + "/" + key
 }
 
 type cacheCounters struct {
@@ -123,7 +131,7 @@ type entry struct {
 func (c *Cache) load(ctx context.Context, key string) (entry, bool) {
 	var e entry
 	var exp, stale, access int64
-	err := c.db.QueryRowContext(ctx, `SELECT body, negative, expires_at, stale_until, last_access FROM external_cache WHERE key=?`, key).
+	err := c.db.QueryRowContext(ctx, `SELECT body, negative, expires_at, stale_until, last_access FROM external_cache WHERE key=?`, c.storageKey(key)).
 		Scan(&e.body, &e.negative, &exp, &stale, &access)
 	if err != nil {
 		return e, false
@@ -135,7 +143,7 @@ func (c *Cache) load(ctx context.Context, key string) (entry, bool) {
 		return e, false
 	}
 	if now-access > int64(time.Hour/time.Millisecond) { // cheap LRU touch, at most hourly
-		c.db.ExecContext(context.WithoutCancel(ctx), `UPDATE external_cache SET last_access=? WHERE key=?`, now, key)
+		c.db.ExecContext(context.WithoutCancel(ctx), `UPDATE external_cache SET last_access=? WHERE key=?`, now, c.storageKey(key))
 	}
 	return e, true
 }
@@ -177,7 +185,7 @@ func (c *Cache) store(ctx context.Context, key, body, negative string, ttl time.
 	_, err := c.db.ExecContext(context.WithoutCancel(ctx), `INSERT INTO external_cache(key, body, negative, fetched_at, expires_at, stale_until, size, last_access) VALUES (?,?,?,?,?,?,?,?)
 		ON CONFLICT(key) DO UPDATE SET body=excluded.body, negative=excluded.negative, fetched_at=excluded.fetched_at,
 		expires_at=excluded.expires_at, stale_until=excluded.stale_until, size=excluded.size, last_access=excluded.last_access`,
-		key, body, negative, now.UnixMilli(), now.Add(ttl).UnixMilli(), now.Add(ttl+stale).UnixMilli(), len(body)+len(key), now.UnixMilli())
+		c.storageKey(key), body, negative, now.UnixMilli(), now.Add(ttl).UnixMilli(), now.Add(ttl+stale).UnixMilli(), len(body)+len(key), now.UnixMilli())
 	if err == nil {
 		c.maybeEvict(ctx)
 	}
@@ -185,7 +193,7 @@ func (c *Cache) store(ctx context.Context, key, body, negative string, ttl time.
 }
 
 func (c *Cache) Delete(ctx context.Context, key string) error {
-	_, err := c.db.ExecContext(ctx, `DELETE FROM external_cache WHERE key=?`, key)
+	_, err := c.db.ExecContext(ctx, `DELETE FROM external_cache WHERE key=?`, c.storageKey(key))
 	return err
 }
 
@@ -358,7 +366,7 @@ func (c *Cache) Stats(ctx context.Context) (CacheStats, error) {
 		"stale_on_error": c.stats.staleOnError.Load(), "evicted": c.stats.evicted.Load(),
 	}}
 	now := c.now().UnixMilli()
-	rows, err := c.db.QueryContext(ctx, `SELECT key, size, expires_at FROM external_cache`)
+	rows, err := c.db.QueryContext(ctx, `SELECT key, size, expires_at FROM external_cache WHERE key LIKE ?`, c.storageKey("%"))
 	if err != nil {
 		return st, err
 	}
@@ -370,7 +378,14 @@ func (c *Cache) Stats(ctx context.Context) (CacheStats, error) {
 		if rows.Scan(&key, &size, &exp) != nil {
 			continue
 		}
-		o, k := keyParts(key)
+		logical := strings.TrimPrefix(key, c.namespace+"/")
+		if c.namespace == "" {
+			parts := strings.SplitN(key, "/", 3)
+			if len(parts) == 3 && len(parts[0]) == 33 && strings.HasPrefix(parts[0], "u") {
+				logical = parts[2]
+			}
+		}
+		o, k := keyParts(logical)
 		i, ok := idx[o+"\x00"+k]
 		if !ok {
 			i = len(st.Kinds)
@@ -402,7 +417,12 @@ func (c *Cache) Clear(ctx context.Context, origin, kind string) (int64, error) {
 	case kind != "":
 		pat = "%:" + kind + ":%"
 	}
-	res, err := c.db.ExecContext(ctx, `DELETE FROM external_cache WHERE key LIKE ? ESCAPE '\'`, pat)
+	q, args := `DELETE FROM external_cache WHERE key LIKE ? ESCAPE '\'`, []any{c.storageKey(pat)}
+	if c.namespace == "" {
+		q += ` OR key LIKE ? ESCAPE '\'`
+		args = append(args, "%/"+pat)
+	}
+	res, err := c.db.ExecContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
 	}

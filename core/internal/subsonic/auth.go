@@ -139,6 +139,10 @@ func (h *Handler) withAuth(scope string, next func(http.ResponseWriter, *http.Re
 		if h.WithDevice != nil {
 			ctx = h.WithDevice(ctx, dev)
 		}
+		if h.ScopeRequest != nil {
+			h.ScopeRequest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { next(w, r, dev) })).ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 		next(w, r.WithContext(ctx), dev)
 	}
 }

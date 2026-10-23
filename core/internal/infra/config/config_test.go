@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -10,20 +12,42 @@ func env(m map[string]string) func(string) string { return func(k string) string
 
 func TestDefaults(t *testing.T) {
 	c, err := load(env(nil))
-	if err != nil || c.Bind != "0.0.0.0:8741" || c.LibraryRoots[0] != "/music" {
+	if err != nil || c.Bind != "0.0.0.0:8741" || len(c.LibraryRoots) != 1 || !filepath.IsAbs(c.LibraryRoots[0]) {
 		t.Fatalf("%+v %v", c, err)
+	}
+	if runtime.GOOS != "windows" && c.LibraryRoots[0] != "/music" {
+		t.Fatal("changed NAS defaults", c.LibraryRoots)
+	}
+	if runtime.GOOS == "windows" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.LibraryRoots[0] != filepath.Join(home, "Music") {
+			t.Fatal(c.LibraryRoots)
+		}
+	}
+	for _, path := range []string{c.DBPath, c.VaultPath, c.MasterKeyFile, c.CacheDir, c.Backup.Dir} {
+		if !filepath.IsAbs(path) {
+			t.Errorf("default path is not absolute: %q", path)
+		}
 	}
 }
 
 func TestFileAndEnv(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "c.toml")
-	os.WriteFile(p, []byte("[server]\nbind=\"127.0.0.1:1\"\n[library]\nroots=[\"/a\",\"/b/\"]\n[db]\npath=\"/x.db\"\n"), 0o600)
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.toml")
+	a, b, dbPath := filepath.Join(dir, "a"), filepath.Join(dir, "b"), filepath.Join(dir, "x.db")
+	if err := os.WriteFile(p, []byte(fmt.Sprintf("[server]\nbind=\"127.0.0.1:1\"\n[library]\nroots=[%q,%q]\n[db]\npath=%q\n", a, b+string(filepath.Separator), dbPath)), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	c, err := load(env(map[string]string{"YIMENG_CONFIG": p}))
-	if err != nil || c.Bind != "127.0.0.1:1" || len(c.LibraryRoots) != 2 || c.LibraryRoots[1] != "/b" || c.DBPath != "/x.db" {
+	if err != nil || c.Bind != "127.0.0.1:1" || len(c.LibraryRoots) != 2 || c.LibraryRoots[0] != a || c.LibraryRoots[1] != b || c.DBPath != dbPath {
 		t.Fatalf("%+v %v", c, err)
 	}
-	c, err = load(env(map[string]string{"YIMENG_CONFIG": p, "YIMENG_LIBRARY_ROOTS": "/m1, /m2", "YIMENG_BIND": ":9"}))
-	if err != nil || c.Bind != ":9" || len(c.LibraryRoots) != 2 || c.LibraryRoots[0] != "/m1" {
+	m1, m2 := filepath.Join(dir, "m1"), filepath.Join(dir, "m2")
+	c, err = load(env(map[string]string{"YIMENG_CONFIG": p, "YIMENG_LIBRARY_ROOTS": m1 + ", " + m2, "YIMENG_BIND": ":9"}))
+	if err != nil || c.Bind != ":9" || len(c.LibraryRoots) != 2 || c.LibraryRoots[0] != m1 || c.LibraryRoots[1] != m2 {
 		t.Fatalf("%+v %v", c, err)
 	}
 	if _, err := load(env(map[string]string{"YIMENG_LIBRARY_ROOTS": "relative/dir"})); err == nil {
@@ -32,8 +56,18 @@ func TestFileAndEnv(t *testing.T) {
 }
 
 func TestShippedDefaultToml(t *testing.T) {
-	c, err := load(env(map[string]string{"YIMENG_CONFIG": "../../../configs/default.toml"}))
-	if err != nil || c.Bind != "0.0.0.0:8741" || c.LibraryRoots[0] != "/music" || c.CacheMaxBytes != 2147483648 {
+	vars := map[string]string{"YIMENG_CONFIG": "../../../configs/default.toml"}
+	wantRoot := "/music"
+	if runtime.GOOS == "windows" {
+		if _, err := load(env(vars)); err == nil {
+			t.Fatal("NAS config's drive-relative root accepted on Windows")
+		}
+		def := Defaults()
+		wantRoot = def.LibraryRoots[0]
+		vars["YIMENG_LIBRARY_ROOTS"], vars["YIMENG_DB_PATH"], vars["YIMENG_VAULT_PATH"], vars["YIMENG_CACHE_DIR"] = wantRoot, def.DBPath, def.VaultPath, def.CacheDir
+	}
+	c, err := load(env(vars))
+	if err != nil || c.Bind != "0.0.0.0:8741" || c.LibraryRoots[0] != wantRoot || c.CacheMaxBytes != 2147483648 {
 		t.Fatalf("%+v %v", c, err)
 	}
 }

@@ -76,6 +76,9 @@ type Alternative struct {
 // Alternatives finds the same song on the other enabled, logged-in
 // platforms (ordered by the caller's priority, fully entitled first).
 func (s *Service) Alternatives(ctx context.Context, id string) ([]Alternative, error) {
+	if s.Isolated {
+		return []Alternative{}, nil
+	}
 	o, _, err := split(id)
 	if err != nil {
 		return nil, err

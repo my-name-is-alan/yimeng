@@ -36,8 +36,8 @@ func (d Deps) decoratePlaylists(r *http.Request, ps []library.Playlist) {
 
 func (d Deps) playlistTracks(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if library.IsExternalID(id) && d.Online != nil {
-		pl, err := d.Online.Playlist(r.Context(), id)
+	if library.IsExternalID(id) && d.onlineFor(r.Context()) != nil {
+		pl, err := d.onlineFor(r.Context()).Playlist(r.Context(), id)
 		if err != nil {
 			d.platformErr(w, "playlist", err)
 			return

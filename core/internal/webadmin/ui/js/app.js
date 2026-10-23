@@ -48,7 +48,7 @@ function shell() {
 async function logout() {
   if (!(await confirmDlg("退出登录", "确定退出登录？", "退出"))) return;
   try { await post("/auth/logout"); } catch {}
-  store.token = ""; closeWS(); player.clear(); location.hash = "#/"; location.reload();
+  player.selectUser(""); store.token = ""; closeWS(); location.hash = "#/"; location.reload();
 }
 
 // ── sign-in / first-run setup ──
@@ -159,18 +159,22 @@ async function boot() {
   if (!store.token) return loginView();
   try { state.me = await get("/devices/me"); }
   catch (e) { if (e.status === 401) { store.token = ""; return loginView("登录已失效，请重新登录"); } main.replaceChildren(empty(`无法连接 Core：${e.message}`, "cloud", h("button", { class: "btn", onclick: boot }, "重试"))); return; }
+  const accountChanged = player.selectUser(state.me.user_id || `device:${state.me.id}`);
   app.dataset.state = "ready";
   await onl.loadMode();
   shell();
   onEvent("plugin.updated", async () => { await onl.loadMode(); shell(); });
-  if (!booted) { booted = true; mountNowBar(navigate); document.querySelector("#nowbar .nb-right")?.prepend(sleepButton()); player.restore(); initSleep(); loadPlaybackPrefs(); }
+  if (!booted) { booted = true; mountNowBar(navigate); document.querySelector("#nowbar .nb-right")?.prepend(sleepButton()); initSleep(); }
+  if (accountChanged) { player.restore(); loadPlaybackPrefs(); }
   connectWS();
   onEvent("security.alert", (a) => { const k = { device_paired: "新设备已配对", new_ip_login: "新 IP 登录", login_failed: "多次登录失败", lockout: "登录已被锁定" }[a.kind] || a.kind; toast(`安全提醒：${k}${a.ip ? `（${a.ip}）` : ""}`, a.severity === "info" ? "ok" : "err", 6000); });
   onEvent("library.cover", () => {}); // reserved for future live refresh
   route();
 }
-onUnauthorized(() => { if (app.dataset.state === "ready") { store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
+onUnauthorized(() => { if (app.dataset.state === "ready") { player.selectUser(""); store.token = ""; closeWS(); loginView("登录已失效或会话已被撤销，请重新登录"); } });
 initHScroll();
 initSelects();
 initTooltips();
 boot();
+
+addEventListener("storage", (e) => { if (e.key === "yimeng.token") { player.selectUser(""); closeWS(); location.reload(); } });

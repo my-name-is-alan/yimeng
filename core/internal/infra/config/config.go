@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -119,7 +120,7 @@ type fileConfig struct {
 }
 
 func Defaults() Config {
-	return Config{
+	cfg := Config{
 		Bind:          "0.0.0.0:8741",
 		LibraryRoots:  []string{"/music"},
 		DBPath:        "/var/yimeng/library.db",
@@ -141,6 +142,21 @@ func Defaults() Config {
 		Subsonic:  true,
 		MDNS:      true,
 	}
+	if runtime.GOOS == "windows" {
+		// The NAS defaults remain unchanged on Unix. Windows must not resolve
+		// drive-relative /music or write application data into the drive root.
+		home, _ := os.UserHomeDir()
+		data := os.Getenv("LOCALAPPDATA")
+		if data == "" {
+			data = filepath.Join(home, "AppData", "Local")
+		}
+		data = filepath.Join(data, "Yimeng")
+		cfg.LibraryRoots = []string{filepath.Join(home, "Music")}
+		cfg.DBPath = filepath.Join(data, "library.db")
+		cfg.VaultPath = filepath.Join(data, "vault")
+		cfg.CacheDir = filepath.Join(data, "cache")
+	}
+	return cfg
 }
 
 // Load reads configuration. Environment variables:
