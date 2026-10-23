@@ -567,3 +567,28 @@ func TestOnlineStreamDirectRedirect(t *testing.T) {
 		t.Fatalf("cookies/headers leaked: %s", body)
 	}
 }
+
+func TestOnlineStreamDirectRedirectHTTP(t *testing.T) {
+	e, plug := newOnlineEnv(t)
+	e.do("PUT", "/api/plugins/gw", `{"enabled":true}`, e.token)
+	e.do("POST", "/api/plugins/gw/login", `{"method":"cookie","cookie":"S=SECRET-SESSION"}`, e.token)
+	// NetEase often returns http:// CDN hosts; bare GET still works → 302.
+	plug.noHeader = true
+	plug.cdn = "http://m801.music.126.net/test"
+	want := plug.cdn + "/full.mp3"
+	cl := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, _ := http.NewRequest("GET", e.srv.URL+"/api/stream/gw:full", nil)
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	res, err := cl.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 302 || res.Header.Get("Location") != want {
+		t.Fatalf("http direct 302: %d Location=%q want %q", res.StatusCode, res.Header.Get("Location"), want)
+	}
+	_, body := e.do("GET", "/api/online/resolve/gw:full", "", e.token)
+	if !strings.Contains(string(body), `"play_url":"`+want+`"`) {
+		t.Fatalf("http play_url %s", body)
+	}
+}

@@ -849,15 +849,16 @@ func (d Deps) cloudFavorites(w http.ResponseWriter, r *http.Request) {
 // ---- playback ---------------------------------------------------------------
 
 
-// canDirectCDN reports whether the client can GET the resolved HTTPS URL without
+// canDirectCDN reports whether the client can GET the resolved CDN URL without
 // Core injecting headers (NetEase-style tokens-in-query). Non-empty Header means
-// proxy (QQ/Kugou Referer/UA).
+// proxy (QQ/Kugou Referer/UA). http and https both qualify — NetEase often
+// returns http://m*.music.126.net links that work with a bare GET.
 func canDirectCDN(res online.Resolution) bool {
 	if res.URL == "" || len(res.Header) != 0 {
 		return false
 	}
 	u, err := url.Parse(res.URL)
-	return err == nil && u.Scheme == "https" && u.Host != ""
+	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
 }
 
 func qualityQ(r *http.Request) online.Quality {
