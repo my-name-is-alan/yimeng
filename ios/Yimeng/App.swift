@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
     @Published var tab: Tab = .home
     @Published var path: [Route] = []
     @Published var nowPlaying = false
+    @Published var showYueqian = false
     /// Mac shot / desktop: stage SoundSettings inline (sheets do not render in offscreen NSHostingView).
     @Published var macSoundStage = false
     @Published var macQueueStage = false

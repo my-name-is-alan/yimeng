@@ -330,6 +330,7 @@ final class LibraryStore: ObservableObject {
             cfg.host = self.host; cfg.username = username; cfg.connected = true; cfg.statusNote = status
             SourceStore.shared.upsert(cfg)
             CoreEvents.shared.start()
+            await CoreClient.shared.refreshPlatforms()
             await PlatformStore.shared.refresh()
             Task { await CoreAccountStore.shared.refreshAll() }
             #if DEBUG

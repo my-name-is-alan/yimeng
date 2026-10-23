@@ -46,11 +46,29 @@ actor CoreClient {
         UserDefaults.standard.set((u.host ?? "") + "_" + String(u.port ?? 0), forKey: MusicSources.coreScopeKey)
     }
     /// No auth. Used by the connect form to show the server's name before login.
+    /// When already authenticated, do NOT overwrite platforms — anonymous info has loggedIn=false
+    /// and would wipe daily/fm/charts capability (宝英真机 2026-10-23).
     func serverInfo() async throws -> CoreServerInfo {
         let i: CoreServerInfo = try await get("/api/v1/server/info", auth: false)
         info = i
-        CoreState.setPlatforms(i.platforms ?? [])
+        if accessToken.isEmpty {
+            CoreState.setPlatforms(i.platforms ?? [])
+        }
         return i
+    }
+    /// Authenticated platform list (logged_in + capabilities). Prefer after login / token restore.
+    func refreshPlatforms() async {
+        struct Plugins: Decodable { var platforms: [CorePlatform]?; var items: [CorePlatform]? }
+        if let r: Plugins = try? await get("/api/plugins"), let p = r.platforms ?? r.items, !p.isEmpty {
+            CoreState.setPlatforms(p); return
+        }
+        if let arr: [CorePlatform] = try? await get("/api/plugins"), !arr.isEmpty {
+            CoreState.setPlatforms(arr); return
+        }
+        // Fall back: authenticated server info (some builds put per-user platforms here)
+        if let i: CoreServerInfo = try? await get("/api/v1/server/info", auth: true), let p = i.platforms, !p.isEmpty {
+            CoreState.setPlatforms(p)
+        }
     }
     func login(username: String, password: String) async throws {
         struct Body: Encodable { let username: String; let password: String; let deviceName: String; let deviceType: String }

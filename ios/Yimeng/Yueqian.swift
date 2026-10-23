@@ -33,9 +33,26 @@ final class YueqianStore: ObservableObject {
     func load() async {
         guard LibraryStore.shared.connected else { return }
         var pick: NDSong?, origin: String?
-        if NavidromeClient.core, let p = CoreState.platforms(can: "daily").first,
-           let d = try? await CoreClient.shared.daily(p.origin), let t = d.list.first {
-            pick = CoreClient.nd(t); origin = p.origin
+        if NavidromeClient.core {
+            // Prefer authenticated daily capability; fall back to PlatformStore / home sections
+            // when anonymous server/info briefly wiped platforms (真机 2026-10-23).
+            var origins = CoreState.platforms(can: "daily").map(\.origin)
+            if origins.isEmpty { origins = PlatformStore.shared.dailies.map(\.origin) }
+            for o in origins {
+                if let d = try? await CoreClient.shared.daily(o), let t = d.list.first {
+                    pick = CoreClient.nd(t); origin = o; break
+                }
+            }
+            if pick == nil, let d = PlatformStore.shared.dailies.first, let t = d.tracks.first {
+                pick = t; origin = d.origin
+            }
+            if pick == nil, let h = try? await CoreClient.shared.home(), let secs = h.sections {
+                for s in secs where s.error == nil && (s.id.hasSuffix(".daily")) {
+                    if let o = s.origin, let t = s.tracks?.first {
+                        pick = CoreClient.nd(t); origin = o; break
+                    }
+                }
+            }
         }
         if pick == nil { pick = await Self.dayPick() }
         guard let s = pick else {

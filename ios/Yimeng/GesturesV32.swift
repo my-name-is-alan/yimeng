@@ -28,6 +28,8 @@ enum Nav {
         guard let s = AppStateBridge.current else { return }
         withAnimation(.ui) { s.nowPlaying = false; s.lyricsMode = false }
         if s.tab == .me { s.tab = .home }
+        // 乐签 is a popup, not a pushed page (宝英 2026-10-23).
+        if case .yueqian = r { s.showYueqian = true; return }
         s.path.append(r)
     }
     static func album(of song: NDSong) {

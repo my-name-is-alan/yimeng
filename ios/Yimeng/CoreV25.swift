@@ -143,10 +143,11 @@ struct DateTile: View {
     }
 }
 
-// MARK: - 今日乐签 page (pushed; no popup)
+// MARK: - 今日乐签 (popup via fullScreenCover; asPopup=true)
 
 #if os(iOS)
 struct YueqianPage: View {
+    var asPopup: Bool = false
     @ObservedObject private var store = YueqianStore.shared
     @EnvironmentObject var state: AppState
     @State private var rendered: PlatformImage?
@@ -169,11 +170,19 @@ struct YueqianPage: View {
                                 ShareLink(item: Image(platformImage: img), preview: SharePreview("今日乐签", image: Image(platformImage: img))) { pill("分享", "square.and.arrow.up", pal) }
                             } else { pill("分享", "square.and.arrow.up", pal).opacity(0.5) }
                         }
-                    } else { DoodleLoader().padding(.top, 160) }
+                    } else {
+                        VStack(spacing: 12) {
+                            DoodleLoader()
+                            Text("暂时取不到，关掉再试").font(.system(size: 14)).foregroundStyle(pal.ink.opacity(0.55))
+                        }.padding(.top, 120)
+                    }
                 }.frame(maxWidth: .infinity).padding(.top, 64).padding(.bottom, 160)
             }
             HStack {
-                Button { if !state.path.isEmpty { state.path.removeLast() } } label: { CircleIconButton(icon: "chevron.left") }
+                Button {
+                    if asPopup { state.showYueqian = false }
+                    else if !state.path.isEmpty { state.path.removeLast() }
+                } label: { CircleIconButton(icon: asPopup ? "xmark" : "chevron.left") }
                 Spacer()
                 Text("今日乐签").font(.system(size: 16, weight: .semibold)).foregroundStyle(pal.ink)
                 Spacer(); Color.clear.frame(width: 44, height: 44)
@@ -182,7 +191,7 @@ struct YueqianPage: View {
         .environment(\.colorScheme, .light)
         .task {
             store.markOpened()
-            if store.card == nil { await store.load() }
+            await store.load()  // always refresh when opening popup
             render()
         }
         .onChange(of: store.cover) { _, _ in render() }
@@ -219,7 +228,7 @@ struct YueqianHomeTicket: View {
             let c = store.card
             let date = c?.date ?? Date()
             let isStub = c == nil || c?.song.id == "yueqian:stub"
-            Button { state.path.append(.yueqian) } label: {
+            Button { state.showYueqian = true } label: {
                 HStack(spacing: 0) {
                     VStack(spacing: 0) {
                         Text("\(cal.component(.month, from: date))月").font(.system(size: 12, weight: .semibold))

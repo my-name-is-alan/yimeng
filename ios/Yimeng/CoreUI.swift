@@ -173,14 +173,21 @@ final class PlatformStore: ObservableObject {
         for p in CoreState.platforms(can: "daily") {
             if let x = try? await c.daily(p.origin), !x.list.isEmpty { d.append(Daily(origin: p.origin, tracks: x.list.map(CoreClient.nd), date: x.date)) }
         }
-        // /home carries the platforms' own recommended playlists (one ETag'd call); fall back per platform.
-        // Also consume `*.mine` into userPlaylists so homepage / 曲库 can show 我的歌单 after platform login.
+        // /home carries platform sections (one ETag'd call). Eat daily/mine/playlists even if
+        // CoreState.platforms was briefly anonymous (loggedIn=false).
         var mineByOrigin: [String: [NDPlaylist]] = [:]
+        var dailyOrigins = Set(d.map(\.origin))
         if let h = try? await c.home(), let secs = h.sections {
             for s in secs where s.error == nil {
-                guard let o = s.origin, let l = s.playlists, !l.isEmpty else { continue }
-                if s.id.hasSuffix(".playlists") { r.append((o, l.map(CoreClient.nd))) }
-                if s.id.hasSuffix(".mine") { mineByOrigin[o, default: []] += l.map(CoreClient.nd) }
+                guard let o = s.origin else { continue }
+                if s.id.hasSuffix(".daily"), let tracks = s.tracks, !tracks.isEmpty, !dailyOrigins.contains(o) {
+                    d.append(Daily(origin: o, tracks: tracks.map(CoreClient.nd), date: nil))
+                    dailyOrigins.insert(o)
+                }
+                if let l = s.playlists, !l.isEmpty {
+                    if s.id.hasSuffix(".playlists") { r.append((o, l.map(CoreClient.nd))) }
+                    if s.id.hasSuffix(".mine") { mineByOrigin[o, default: []] += l.map(CoreClient.nd) }
+                }
             }
         } else {
             for p in CoreState.platforms(can: "recommend_playlists") {
@@ -193,6 +200,10 @@ final class PlatformStore: ObservableObject {
             userPlaylists = mineByOrigin.keys.sorted().map { o in (o, mineByOrigin[o] ?? [], []) }
         }
         fmOrigins = CoreState.platforms(can: "fm").map(\.origin)
+        if fmOrigins.isEmpty {
+            // Soft fallback while platforms catch up: origins that already delivered daily usually have FM.
+            fmOrigins = d.map(\.origin)
+        }
         YMWidgetBridge.fm(fmOrigins)
         await loadUserPlaylists()
         OfflineCache.shared.precache()

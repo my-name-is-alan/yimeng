@@ -162,6 +162,10 @@ struct HomeLive: View {
             }
         }
         .background(YMBackdrop())
+        .ymFullScreenCover(isPresented: $state.showYueqian) {
+            YueqianPage(asPopup: true)
+                .environmentObject(state)
+        }
         .refreshable { await home.refresh(force: true) }
         .task {
             await home.refresh()
@@ -187,7 +191,7 @@ struct HomeLive: View {
                     PlayerStore.shared.play(songs: d.tracks, startAt: 0); state.nowPlaying = true
                     try? await Task.sleep(for: .seconds(2)); PlayerStore.shared.setSleep(minutes: args.contains("-sleep1") ? 1 : 30)
                 }
-                if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); state.path.append(.yueqian) }
+                if args[i + 1] == "yueqian" { try? await Task.sleep(for: .seconds(2)); state.showYueqian = true }
                 if args[i + 1] == "daily", let d = PlatformStore.shared.dailies.first { state.path.append(.trackList(DailyMixCard.spec(d.origin, d.tracks))) }
                 if args[i + 1].hasPrefix("daily-play"), let d = PlatformStore.shared.dailies.first, !d.tracks.isEmpty {
                     PlayerStore.shared.play(songs: d.tracks, startAt: 0); state.nowPlaying = true
