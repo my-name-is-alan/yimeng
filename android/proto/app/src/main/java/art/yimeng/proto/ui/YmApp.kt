@@ -18,6 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -27,7 +31,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.StrokeCap
@@ -36,6 +39,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -318,7 +327,7 @@ private fun PlayerPage(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Pixel targets from sd-np/target-cover-v3.html (390×844 canvas)
+    // Pixel targets from sd-np/target-cover-v3 + iOS 0.3.8(19)
     var progress by remember(track.id) { mutableFloatStateOf(0.35f) }
     var liked by remember(track.id) { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
@@ -327,38 +336,41 @@ private fun PlayerPage(
     val posSec = (progress * durationSec).toInt()
     fun fmt(s: Int) = "%d:%02d".format(s / 60, s % 60)
     val dream = DreamMock.coverV3.copy(title = track.title, artist = track.artist)
-    val beatAgo = 0.12f
+    val haze = remember { HazeState() }
 
     Box(modifier.background(Base)) {
+        // Haze source: field (+ cover stage content sits above but source is field)
         DreamField(
             dream,
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().hazeSource(haze),
             realPlayback = true,
-            lastBeatAgoSec = beatAgo,
+            lastBeatAgoSec = 0.12f,
             intensity = 0.75f,
         )
 
+        // iOS NowPlayingView: lyrics full-bleed behind chrome; cover/info only in cover mode.
         // skel6c: Cover(weight=1) + chrome at bottom — never Spacer(weight) above transport
+        if (lyricsMode) {
+            PlayerLyricsFullscreen(
+                progress = progress,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                // bottom 10dp after nav inset ≈ 8–16dp above gesture bar
-                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 2.dp), // skel6c: navBars already = safe; keep ≤16dp total
+                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             PlayerTopBar(liked = liked, onBack = onBack, onLike = { liked = !liked })
 
             if (lyricsMode) {
-                PlayerLyricsFullscreen(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                )
+                // Chrome spacer only — lyrics already fill middle behind (no empty cover slots)
+                Spacer(Modifier.weight(1f))
             } else {
-                // Remaining height goes to cover (centered); chrome packs below with no flex gap
                 Box(
                     Modifier
                         .weight(1f)
@@ -366,7 +378,12 @@ private fun PlayerPage(
                         .padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    PlayerCoverWithDoodle(track.coverUrl)
+                    // M8+M2+M9: DreamLayout.slot + independent E+G DoodleLayer (no cover scale)
+                    PlayerCoverStage(
+                        dream = dream,
+                        coverUrl = track.coverUrl,
+                        playing = !paused,
+                    )
                 }
                 Text(
                     track.title,
@@ -382,7 +399,7 @@ private fun PlayerPage(
                 Text(
                     track.artist,
                     color = Color.White.copy(0.60f),
-                    fontSize = 17.sp,
+                    fontSize = 16.sp, // S2: iOS 16
                     fontWeight = FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -405,48 +422,26 @@ private fun PlayerPage(
                 PlayerProgress(progress, posSec, durationSec, ::fmt) { progress = it }
             }
 
-            // Secondary 5 keys — 12–16dp under progress
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp)
-                    .padding(top = 14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    YMIcon(
-                        YMGlyph.Lyrics,
-                        size = 22.dp,
-                        weight = 1.70f,
-                        color = Color.White.copy(0.92f),
-                        active = lyricsMode,
-                        modifier = Modifier.clickable { lyricsMode = !lyricsMode },
-                    )
-                    if (lyricsMode) {
-                        Box(
-                            Modifier
-                                .padding(top = 28.dp)
-                                .size(5.dp)
-                                .clip(CircleShape)
-                                .background(Lime),
-                        )
-                    }
-                }
-                YMIcon(YMGlyph.Eq, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
-                YMIcon(YMGlyph.AddList, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
-                YMIcon(YMGlyph.Queue, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
-                YMIcon(YMGlyph.More, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.92f))
-            }
+            // M3: secondary 5 keys in GlassCapsule / Haze
+            Spacer(Modifier.height(if (!lyricsMode) 14.dp else 10.dp))
+            PlayerActionRow(
+                haze = haze,
+                lyricsMode = lyricsMode,
+                onToggleLyrics = { lyricsMode = !lyricsMode },
+            )
 
-            // ≤16dp between five keys and transport capsule
             Spacer(Modifier.height(if (!lyricsMode) 14.dp else 10.dp))
 
-            // Transport pinned as last child (no weight above) — solid black 32%, NO glass
-            PlayerTransportCapsule(paused = paused, onToggle = { paused = !paused })
+            // M4: transport GlassCapsule + skel6c bottom-stick
+            PlayerTransportCapsule(
+                haze = haze,
+                paused = paused,
+                onToggle = { paused = !paused },
+            )
         }
     }
 }
+
 
 @Composable
 private fun PlayerTopBar(liked: Boolean, onBack: () -> Unit, onLike: () -> Unit) {
@@ -498,7 +493,7 @@ private fun CircleChromeButton(onClick: () -> Unit, content: @Composable () -> U
         Modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(Color.Black.copy(0.28f))
+            .background(Color.White.copy(0.14f))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -529,57 +524,54 @@ private fun QualityPill(label: String, accentDot: Boolean = false, mutedFill: Bo
 }
 
 @Composable
-private fun PlayerCoverWithDoodle(coverUrl: String?) {
-    // HTML .art 330×330 on 390w; keep ratio, slightly tighter on tall phones
-    val pulse = kotlin.math.exp(-7.0 * 0.12).toFloat()
-    val beatScale = 1f + 0.04f * 0.75f * pulse
-
-    Box(Modifier.size(280.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val sx = size.width / 350f
-            val sy = size.height / 350f
-            fun tx(x: Float) = x * sx
-            fun ty(y: Float) = y * sy
-            val path = coverDoodlePath(::tx, ::ty)
-            val pivot = Offset(size.width / 2f, size.height / 2f)
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(pivot.x, pivot.y)
-                canvas.scale(beatScale, beatScale)
-                canvas.translate(-pivot.x, -pivot.y)
-                val glow = Paint().asFrameworkPaint().apply {
-                    isAntiAlias = true
-                    style = android.graphics.Paint.Style.STROKE
-                    strokeWidth = 1.15.dp.toPx()
-                    strokeCap = android.graphics.Paint.Cap.ROUND
-                    strokeJoin = android.graphics.Paint.Join.ROUND
-                    color = android.graphics.Color.argb(110, 255, 255, 255)
-                    maskFilter = BlurMaskFilter(3.5.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
-                }
-                canvas.nativeCanvas.drawPath(path.asAndroidPath(), glow)
-                canvas.restore()
-            }
-            scale(beatScale, beatScale, pivot) {
-                drawPath(
-                    path,
-                    color = Color.White.copy(0.82f),
-                    style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                )
-                val sparkle = Path().apply {
-                    moveTo(tx(290f), ty(20f))
-                    quadraticTo(tx(292f), ty(30f), tx(300f), ty(32f))
-                    quadraticTo(tx(292f), ty(34f), tx(290f), ty(44f))
-                    quadraticTo(tx(288f), ty(34f), tx(280f), ty(32f))
-                    quadraticTo(tx(288f), ty(30f), tx(290f), ty(20f))
-                    close()
-                }
-                drawPath(sparkle, color = Color.White.copy(0.95f))
-            }
-        }
+private fun PlayerCoverStage(
+    dream: DreamTrack,
+    coverUrl: String?,
+    playing: Boolean,
+) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val wPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val hPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        // Fit DreamLayout.frame slot into available stage; keep aspect, center.
+        val design = coverSlot(dream.layout, wPx)
+        val slotW = design.rect.width
+        val slotH = design.rect.height
+        val fit = minOf(1f, (hPx * 0.92f) / slotH)
+        // Remap slot into centered stage coords
+        val cx = wPx / 2f
+        val cy = hPx / 2f
+        val mapped = CoverSlot(
+            rect = Rect(
+                left = cx - slotW * fit / 2f,
+                top = cy - slotH * fit / 2f,
+                right = cx + slotW * fit / 2f,
+                bottom = cy + slotH * fit / 2f,
+            ),
+            radius = design.radius * fit,
+        )
+        // M9: doodle independent, allowsHitTesting=false equivalent (Canvas no input)
+        DoodleLayer(
+            track = dream,
+            modifier = Modifier.fillMaxSize(),
+            intensity = 0.75f,
+            playing = playing,
+            beat = true,
+            slotOverride = mapped,
+        )
+        val density = LocalDensity.current
         CoverImage(
             coverUrl,
             Modifier
-                .size(258.dp)
+                .offset {
+                    IntOffset(mapped.rect.left.toInt(), mapped.rect.top.toInt())
+                }
+                .size(
+                    with(density) { mapped.rect.width.toDp() },
+                    with(density) { mapped.rect.height.toDp() },
+                )
                 .drawBehind {
                     drawIntoCanvas { canvas ->
                         val paint = Paint().asFrameworkPaint().apply {
@@ -587,7 +579,7 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
                             color = android.graphics.Color.argb(89, 0, 0, 0)
                             maskFilter = BlurMaskFilter(35.dp.toPx(), BlurMaskFilter.Blur.NORMAL)
                         }
-                        val r = 12.dp.toPx()
+                        val r = mapped.radius
                         canvas.nativeCanvas.drawRoundRect(
                             0f,
                             20.dp.toPx(),
@@ -599,51 +591,12 @@ private fun PlayerCoverWithDoodle(coverUrl: String?) {
                         )
                     }
                 }
-                .clip(RoundedCornerShape(12.dp)),
+                .clip(RoundedCornerShape(with(density) { mapped.radius.toDp() })),
             fallback = Color(0xFFFF7A1A),
         )
     }
 }
 
-/** Port of target-cover-v3.html doodle SVG (viewBox 350×350) — soft curves, NOT jagged polylines. */
-private fun coverDoodlePath(tx: (Float) -> Float, ty: (Float) -> Float): Path {
-    return Path().apply {
-        moveTo(tx(20f), ty(25f))
-        cubicTo(tx(100f), ty(20f), tx(250f), ty(30f), tx(325f), ty(25f))
-        cubicTo(tx(330f), ty(100f), tx(320f), ty(250f), tx(325f), ty(325f))
-        cubicTo(tx(250f), ty(330f), tx(100f), ty(320f), tx(25f), ty(325f))
-        cubicTo(tx(20f), ty(250f), tx(30f), ty(100f), tx(25f), ty(25f))
-        moveTo(tx(10f), ty(40f))
-        cubicTo(tx(90f), ty(30f), tx(260f), ty(15f), tx(340f), ty(30f))
-        cubicTo(tx(345f), ty(110f), tx(330f), ty(260f), tx(335f), ty(340f))
-        cubicTo(tx(255f), ty(350f), tx(85f), ty(365f), tx(15f), ty(350f))
-        cubicTo(tx(10f), ty(270f), tx(25f), ty(120f), tx(10f), ty(40f))
-        moveTo(tx(280f), ty(45f))
-        quadraticTo(tx(285f), ty(40f), tx(290f), ty(45f))
-        quadraticTo(tx(285f), ty(50f), tx(280f), ty(45f))
-        moveTo(tx(270f), ty(330f))
-        cubicTo(tx(270f), ty(310f), tx(290f), ty(305f), tx(300f), ty(315f))
-        cubicTo(tx(310f), ty(300f), tx(330f), ty(305f), tx(330f), ty(320f))
-        cubicTo(tx(345f), ty(320f), tx(350f), ty(340f), tx(335f), ty(345f))
-        lineTo(tx(265f), ty(345f))
-        cubicTo(tx(255f), ty(340f), tx(260f), ty(330f), tx(270f), ty(330f))
-        moveTo(tx(5f), ty(150f))
-        cubicTo(tx(5f), ty(130f), tx(25f), ty(125f), tx(35f), ty(135f))
-        cubicTo(tx(45f), ty(120f), tx(65f), ty(125f), tx(65f), ty(140f))
-        cubicTo(tx(80f), ty(140f), tx(85f), ty(160f), tx(70f), ty(165f))
-        lineTo(tx(0f), ty(165f))
-        val rcx = tx(325f); val rcy = ty(25f)
-        val rx = kotlin.math.abs(tx(333f) - tx(325f)); val ry = kotlin.math.abs(ty(33f) - ty(25f))
-        addOval(Rect(rcx - rx, rcy - ry, rcx + rx, rcy + ry))
-        moveTo(tx(315f), ty(15f)); lineTo(tx(335f), ty(35f))
-        moveTo(tx(25f), ty(325f))
-        cubicTo(tx(25f), ty(325f), tx(35f), ty(340f), tx(50f), ty(335f))
-        val rcx2 = tx(25f); val rcy2 = ty(325f)
-        val r2x = kotlin.math.abs(tx(29f) - tx(25f)); val r2y = kotlin.math.abs(ty(329f) - ty(325f))
-        addOval(Rect(rcx2 - r2x, rcy2 - r2y, rcx2 + r2x, rcy2 + r2y))
-        moveTo(tx(50f), ty(335f)); lineTo(tx(120f), ty(280f))
-    }
-}
 
 @Composable
 private fun PlayerProgress(
@@ -653,74 +606,128 @@ private fun PlayerProgress(
     fmt: (Int) -> String,
     onScrub: (Float) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(20.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        onScrub((offset.x / size.width).coerceIn(0f, 1f))
-                    }
-                },
-            contentAlignment = Alignment.CenterStart,
-        ) {
+    val rem = maxOf(0, durationSec - posSec)
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(Modifier.fillMaxWidth()) {
+            // S1: thin 3dp capsule (iOS), invisible taller hit target
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(0.20f)),
+                    .height(20.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            onScrub((offset.x / size.width).coerceIn(0f, 1f))
+                        }
+                    },
+                contentAlignment = Alignment.CenterStart,
             ) {
                 Box(
                     Modifier
-                        .fillMaxWidth(progress)
-                        .fillMaxHeight()
-                        .background(Color.White),
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color.White.copy(0.30f)),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color.White),
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    fmt(posSec),
+                    color = Color.White.copy(0.85f),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                // M1: remaining with leading "-"
+                Text(
+                    "-" + fmt(rem),
+                    color = Color.White.copy(0.85f),
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
                 )
             }
-            Box(Modifier.fillMaxWidth(progress).wrapContentWidth(Alignment.End)) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(Color.White))
-            }
         }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                fmt(posSec),
-                color = Color.White.copy(0.60f),
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-            Text(
-                fmt(durationSec),
-                color = Color.White.copy(0.60f),
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-            )
+    }
+}
+
+
+@Composable
+private fun PlayerActionRow(
+    haze: HazeState,
+    lyricsMode: Boolean,
+    onToggleLyrics: () -> Unit,
+) {
+    GlassCapsule(
+        hazeState = haze,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp)
+            .height(44.dp),
+    ) {
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                YMIcon(
+                    YMGlyph.Lyrics,
+                    size = 20.dp,
+                    weight = 1.70f,
+                    color = Color.White.copy(0.92f),
+                    active = lyricsMode,
+                    modifier = Modifier.clickable(onClick = onToggleLyrics),
+                )
+                if (lyricsMode) {
+                    Box(
+                        Modifier
+                            .padding(top = 26.dp)
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(Lime),
+                    )
+                }
+            }
+            YMIcon(YMGlyph.Eq, size = 20.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+            YMIcon(YMGlyph.AddList, size = 20.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+            YMIcon(YMGlyph.Queue, size = 20.dp, weight = 1.70f, color = Color.White.copy(0.92f))
+            YMIcon(YMGlyph.More, size = 20.dp, weight = 1.70f, color = Color.White.copy(0.92f))
         }
     }
 }
 
 @Composable
-private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
-    Box(
-        Modifier
+private fun PlayerTransportCapsule(
+    haze: HazeState,
+    paused: Boolean,
+    onToggle: () -> Unit,
+) {
+    GlassCapsule(
+        hazeState = haze,
+        modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .clip(RoundedCornerShape(32.dp))
-            .background(Color.Black.copy(0.32f))
-            .border(1.dp, Color.White.copy(0.10f), RoundedCornerShape(38.dp)),
+            .height(64.dp),
     ) {
         Row(
             Modifier.fillMaxSize().padding(horizontal = 22.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            YMIcon(YMGlyph.Repeat, size = 22.dp, weight = 1.70f, color = Color.White.copy(0.90f))
-            YMIcon(YMGlyph.Previous, size = 30.dp, filled = true, color = Color.White)
+            YMIcon(YMGlyph.Repeat, size = 18.dp, weight = 1.70f, color = Color.White.copy(0.90f))
+            // M5 / S3: prev/next ~26dp, filled triangle directions from YMIcons
+            YMIcon(YMGlyph.Previous, size = 26.dp, filled = true, color = Color.White)
             Box(
                 Modifier
-                    .size(52.dp)
+                    .size(50.dp)
                     .clip(CircleShape)
                     .background(Color.White)
                     .clickable(onClick = onToggle),
@@ -733,13 +740,14 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
                     color = Color.Black,
                 )
             }
-            YMIcon(YMGlyph.Next, size = 30.dp, filled = true, color = Color.White)
+            YMIcon(YMGlyph.Next, size = 26.dp, filled = true, color = Color.White)
             Text(
-                "1x",
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.width(24.dp),
+                "1×",
+                color = Color.White.copy(0.70f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.width(28.dp),
                 textAlign = TextAlign.Center,
             )
         }
@@ -747,9 +755,15 @@ private fun PlayerTransportCapsule(paused: Boolean, onToggle: () -> Unit) {
 }
 
 
+
 @Composable
-private fun PlayerLyricsFullscreen(modifier: Modifier = Modifier) {
-    // v32: current bold bright; fade above/below; saturation feel via alpha
+private fun PlayerLyricsFullscreen(
+    progress: Float,
+    modifier: Modifier = Modifier,
+) {
+    // Port of iOS LyricsView / LiveLyrics (yimeng-clean @ 0.3.8/19):
+    // uniform dark scrim α0.52 + left-aligned lines + current @ ~36% Y + soft edge MASK.
+    // Do NOT paint opaque top/bottom dark rectangles (those looked like empty cover slots).
     val lines = listOf(
         "那些欲言又止",
         "一笑带过",
@@ -758,51 +772,78 @@ private fun PlayerLyricsFullscreen(modifier: Modifier = Modifier) {
         "梦还在心中不曾熄灭",
         "这一路走来不容易",
         "你和我曾并肩前进",
+        "风雨里也不曾回头",
+        "译梦还在心中",
+        "这一刻只为你停留",
     )
-    val current = 2
-    Box(modifier) {
+    val current = ((progress * lines.size).toInt()).coerceIn(0, lines.lastIndex)
+    val scrim = Color(red = 12f / 255f, green = 10f / 255f, blue = 14f / 255f, alpha = 0.45f)
+    val density = LocalDensity.current
+    val lineStepPx = with(density) { 62.dp.toPx() }
+
+    BoxWithConstraints(modifier) {
+        val stageH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        // Uniform scrim (iOS Color(12,10,14).opacity(0.52)) — full bleed, no banded slots
+        Box(Modifier.fillMaxSize().background(scrim))
+
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(vertical = 24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 28.dp)
+                .offset {
+                    val y = stageH * 0.28f - current * lineStepPx
+                    IntOffset(0, y.toInt())
+                }
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    // iOS .mask(LinearGradient clear@0.08…black@0.2…black@0.8…clear@0.9)
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            // Keep iOS-style edge fade, but start later so middle stays lyrics-first
+                            0.00f to Color.Transparent,
+                            0.04f to Color.Transparent,
+                            0.12f to Color.Black,
+                            0.88f to Color.Black,
+                            0.96f to Color.Transparent,
+                            1.00f to Color.Transparent,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top,
         ) {
             lines.forEachIndexed { i, line ->
+                val past = i < current
+                val active = i == current
                 val dist = kotlin.math.abs(i - current)
-                val alpha = when {
-                    dist == 0 -> 1f
-                    dist == 1 -> 0.55f
-                    else -> 0.40f
+                // M6 / LiveLyrics phone: past || active → Theme.lime; future → white ~0.4
+                val target = when {
+                    active -> Lime
+                    past -> Lime.copy(alpha = 0.90f)
+                    else -> Color.White.copy(alpha = if (dist == 1) 0.55f else 0.40f)
                 }
-                val size = if (dist == 0) 24.sp else 21.sp
+                val color by animateColorAsState(
+                    targetValue = target,
+                    animationSpec = tween(durationMillis = 550),
+                    label = "lyricAccent",
+                )
                 Text(
                     line,
-                    color = Color.White.copy(alpha),
-                    fontSize = size,
+                    color = color,
+                    fontSize = if (active) 24.sp else 21.sp,
                     fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(vertical = 11.dp),
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 11.dp),
                 )
             }
         }
-        // Top/bottom fade masks (stops ~0.08/0.2/0.8/0.9)
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0f to Color(0xFF0C0A0E).copy(0.72f),
-                        0.08f to Color(0xFF0C0A0E).copy(0.45f),
-                        0.20f to Color.Transparent,
-                        0.80f to Color.Transparent,
-                        0.90f to Color(0xFF0C0A0E).copy(0.45f),
-                        1f to Color(0xFF0C0A0E).copy(0.72f),
-                    ),
-                ),
-        )
     }
 }
+
 
 @Composable
 private fun DoodleEmptyState(title: String, subtitle: String) {
