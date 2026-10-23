@@ -90,8 +90,8 @@ struct MacRoot: View {
 
                     if !state.nowPlaying {
                         MacMiniBar(state: state)
-                            .padding(.horizontal, 28)
-                            .padding(.bottom, 18)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 14)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -178,13 +178,24 @@ struct MacSidebar: View {
     @ObservedObject var state: AppState
     @Environment(\.colorScheme) private var scheme
     @ObservedObject private var acct = CoreAccountStore.shared
+    @ObservedObject private var library = LibraryStore.shared
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                YMBrandMark(size: 34)
-                Text("译梦").font(.system(size: 20, weight: .bold))
+                ZStack {
+                    MonogramAvatar(name: displayName, size: 36)
+                    Crayon(shape: WobblyCircle(), color: Theme.fg(scheme).opacity(0.35), width: 1.2)
+                        .frame(width: 42, height: 42)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(displayName).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Text(library.connected ? "在梦里听歌" : "未连接")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondary(scheme))
+                }
             }
-            .padding(.leading, 8).padding(.bottom, 18).padding(.top, 16)
+            .padding(.leading, 4).padding(.trailing, 4)
+            .padding(.bottom, 14).padding(.top, 12)
 
             ForEach(Tab.allCases, id: \.self) { t in
                 let on = state.tab == t && !state.nowPlaying
@@ -198,7 +209,8 @@ struct MacSidebar: View {
                     HStack(spacing: 12) {
                         ZStack {
                             if on {
-                                Crayon(shape: WobblyCircle(), color: Theme.accent(scheme), width: 1.6)
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Theme.fill(scheme))
                                     .frame(width: 34, height: 34)
                             }
                             YMIcon(glyph: t.glyph, size: 18, weight: on ? 2.0 : 1.6, active: on)
@@ -210,26 +222,50 @@ struct MacSidebar: View {
                                     .offset(x: 14, y: -12)
                             }
                         }.frame(width: 36, height: 36)
-                        Text(t.rawValue).font(.system(size: 15, weight: on ? .semibold : .regular))
+                        Text(t.rawValue).font(.system(size: 15, weight: on ? .semibold : .medium))
+                            .foregroundStyle(on ? Theme.accent(scheme) : Theme.fg(scheme).opacity(0.72))
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 8).frame(height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(on ? Theme.fill(scheme) : .clear)
                     )
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
+
             Spacer(minLength: 0)
-            Crayon(shape: WaveShape(), color: Theme.fg(scheme).opacity(0.25), width: 1.4)
-                .frame(width: 90, height: 10)
-                .padding(.leading, 10).padding(.bottom, 20)
+
+            HStack(spacing: 4) {
+                Button {
+                    withAnimation(.snappy) { state.tab = .me; state.nowPlaying = false; state.path = [] }
+                } label: {
+                    YMIcon(glyph: .settings, size: 16, weight: 1.6)
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Theme.fg(scheme).opacity(0.45))
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.fill(scheme).opacity(0.001)))
+                }
+                .buttonStyle(.plain)
+                .help("设置")
+                Spacer()
+            }
+            .padding(.top, 8)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Theme.fg(scheme).opacity(0.06)).frame(height: 0.5)
+            }
+            .padding(.bottom, 8)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .foregroundStyle(Theme.fg(scheme))
+    }
+
+    private var displayName: String {
+        if let n = CoreProfileStore.shared.displayName, !n.isEmpty { return n }
+        if !library.user.isEmpty { return library.user }
+        return "译梦"
     }
 }
 
@@ -258,9 +294,9 @@ struct MacContent: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .navigationDestination(for: Route.self) { r in routeView(r) }
         }
-        // Room for the floating mini bar.
+        // Room for the floating mini bar (home-v1 ~72pt + insets).
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Color.clear.frame(height: 88)
+            Color.clear.frame(height: 96)
         }
     }
 
@@ -281,88 +317,244 @@ struct MacContent: View {
     }
 }
 
-/// Floating liquid-glass mini player — Music.app style, not a third column.
+/// Floating glass mini player — home-v1: full content width, cover bleed, 3 columns. Not a third column.
 struct MacMiniBar: View {
     @ObservedObject var state: AppState
     @Environment(\.colorScheme) private var scheme
     @ObservedObject private var player = PlayerStore.shared
+    @ObservedObject private var stars = StarStore.shared
+    @ObservedObject private var vol = VolumeController.shared
+    @ObservedObject private var diff = RemoteDiffusion.shared
+
+    private var coverURL: URL? { state.remoteCoverURL ?? player.coverURL }
+    private var tint: Color {
+        _ = diff.rev
+        return diff.entry(coverURL)?.color ?? state.track.blobs.first ?? Color(hex: 0x7a1cff)
+    }
+    private var playing: Bool { player.hasRealPlayback ? player.isPlaying : state.isPlaying }
+    private var title: String { player.song?.title ?? state.track.title }
+    private var artist: String { player.song?.artist ?? state.track.artist }
 
     var body: some View {
-        let playing = player.hasRealPlayback ? player.isPlaying : state.isPlaying
-        HStack(spacing: 14) {
-            Button {
-                withAnimation(.ui) { state.nowPlaying = true }
-            } label: {
+        HStack(spacing: 0) {
+            left.frame(maxWidth: .infinity, alignment: .leading)
+            center.frame(maxWidth: .infinity)
+            right.frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 18)
+        .frame(height: 72)
+        .background { barChrome }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.45), radius: 20, y: 10)
+        .foregroundStyle(.white)
+        .onAppear { RemoteDiffusion.shared.load(coverURL) }
+        .onChange(of: coverURL) { _, u in RemoteDiffusion.shared.load(u) }
+    }
+
+    private var left: some View {
+        HStack(spacing: 12) {
+            Button { withAnimation(.ui) { state.nowPlaying = true } } label: {
                 HStack(spacing: 12) {
                     cover
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(player.song?.title ?? state.track.title)
+                        Text(title)
                             .font(.system(size: 14, weight: .semibold))
                             .lineLimit(1).truncationMode(.middle)
-                        Text(player.song?.artist ?? state.track.artist)
+                        Text(artist)
                             .font(.system(size: 12))
-                            .foregroundStyle(Theme.secondary(scheme))
+                            .foregroundStyle(.white.opacity(0.6))
                             .lineLimit(1)
                     }
-                    .frame(maxWidth: 280, alignment: .leading)
+                    .frame(maxWidth: 200, alignment: .leading)
                 }
             }
             .buttonStyle(.plain)
 
-            Spacer(minLength: 8)
+            if let song = player.song {
+                Button {
+                    stars.toggle(song)
+                } label: {
+                    YMIcon(
+                        glyph: stars.isStarred(song: song.id) ? .heartFill : .heart,
+                        size: 16, weight: 1.7,
+                        filled: stars.isStarred(song: song.id),
+                        color: stars.isStarred(song: song.id) ? Color(hex: 0xff5fa8) : .white.opacity(0.7)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Button { withAnimation(.ui) { state.nowPlaying = true } } label: {
+                YMIcon(glyph: .more, size: 15, weight: 1.6).opacity(0.65)
+            }.buttonStyle(.plain)
+        }
+    }
 
-            HStack(spacing: 18) {
+    private var center: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 16) {
+                Button { PlayerStore.shared.cyclePlayMode() } label: {
+                    YMIcon(glyph: modeGlyph, size: 14, weight: 1.6).opacity(0.75)
+                }.buttonStyle(.plain)
                 Button { state.skip(-1) } label: {
-                    YMIcon(glyph: .previous, size: 18, weight: 1.8, filled: true)
+                    YMIcon(glyph: .previous, size: 16, weight: 1.8, filled: true)
                 }.buttonStyle(.plain)
                 Button { state.setPlaying(!playing) } label: {
-                    YMIcon(glyph: playing ? .pause : .play, size: 22, weight: 1.9, filled: true)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(Theme.fg(scheme).opacity(scheme == .dark ? 0.12 : 0.08)))
+                    YMIcon(glyph: playing ? .pause : .play, size: 16, weight: 1.9, filled: true, color: Color(white: 0.07))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(.white))
                 }.buttonStyle(.plain)
                 Button { state.skip(1) } label: {
-                    YMIcon(glyph: .next, size: 18, weight: 1.8, filled: true)
+                    YMIcon(glyph: .next, size: 16, weight: 1.8, filled: true)
+                }.buttonStyle(.plain)
+                Button {
+                    withAnimation(.ui) { state.nowPlaying = true; state.lyricsMode = true }
+                    if let s = player.song { LyricsStore.shared.load(s) }
+                } label: {
+                    YMIcon(glyph: .lyrics, size: 14, weight: 1.6).opacity(0.55)
                 }.buttonStyle(.plain)
             }
+            TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                MacMiniScrub(elapsed: player.elapsed, total: max(player.duration > 0 ? player.duration : state.track.duration, 1))
+            }
+            .frame(maxWidth: 360)
+        }
+    }
 
-            Spacer(minLength: 8)
-
-            Button { SheetCenter.shared.queue = true } label: {
-                YMIcon(glyph: .queue, size: 16, weight: 1.6).opacity(0.7)
-            }.buttonStyle(.plain)
+    private var right: some View {
+        HStack(spacing: 14) {
+            if let s = player.song { QualityBadge(song: s) }
             Button {
                 withAnimation(.ui) { state.nowPlaying = true; state.lyricsMode = true }
                 if let s = player.song { LyricsStore.shared.load(s) }
             } label: {
-                YMIcon(glyph: .lyrics, size: 16, weight: 1.6).opacity(0.7)
+                YMIcon(glyph: .lyrics, size: 15, weight: 1.6)
+                    .foregroundStyle(state.lyricsMode ? Theme.lime : .white.opacity(0.65))
             }.buttonStyle(.plain)
-        }
-        .foregroundStyle(Theme.fg(scheme))
-        .padding(.leading, 10).padding(.trailing, 18)
-        .frame(height: 64)
-        .background {
-            ZStack {
-                Capsule().fill(.ultraThinMaterial)
-                Capsule().fill(Theme.base(scheme).opacity(scheme == .dark ? 0.45 : 0.55))
-                Capsule().strokeBorder(Theme.fg(scheme).opacity(0.12), lineWidth: 1)
+            Button { SheetCenter.shared.queue = true } label: {
+                YMIcon(glyph: .queue, size: 15, weight: 1.6).opacity(0.7)
+            }.buttonStyle(.plain)
+            HStack(spacing: 6) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 11, weight: .medium))
+                    .opacity(0.65)
+                VolumeSlider()
+                    .frame(width: 56)
             }
+            .frame(width: 86)
         }
-        .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 18, y: 8)
-        .frame(maxWidth: 920)
+    }
+
+    private var modeGlyph: YMGlyph {
+        switch player.playMode {
+        case .loop: return .repeat
+        case .one: return .repeatOne
+        case .shuffle: return .shuffle
+        case .order: return .order
+        }
     }
 
     @ViewBuilder private var cover: some View {
         Group {
-            if let url = state.remoteCoverURL ?? player.coverURL {
-                CoverImage(url: url, points: 44)
+            if let url = coverURL {
+                CoverImage(url: url, points: 48)
             } else if !state.track.cover.isEmpty {
                 Image(state.track.cover).resizable().scaledToFill()
             } else {
                 Theme.fill(scheme).overlay(YMBrandMark(size: 22).opacity(0.6))
             }
         }
-        .frame(width: 44, height: 44)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
+    }
+
+    private var barChrome: some View {
+        ZStack {
+            // Cover-color bleed (glass only on the mini bar).
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            tint.opacity(0.78),
+                            tint.mix(with: Color(hex: 0x0A0A0C), by: 0.55).opacity(0.85),
+                            Color(hex: 0x0A0A0C).opacity(0.55)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+            if let img = diff.entry(coverURL)?.image {
+                HStack(spacing: 0) {
+                    Image(platformImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 220)
+                        .blur(radius: 28)
+                        .saturation(1.55)
+                        .opacity(0.9)
+                    Spacer(minLength: 0)
+                }
+                .allowsHitTesting(false)
+            }
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.55)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(hex: 0x0A0A0C).opacity(0.38))
+            // Top glass edge
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.18), .white.opacity(0.04)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.8
+                )
+                .blendMode(.plusLighter)
+                .opacity(0.9)
+        }
+    }
+}
+
+/// Compact lime scrubber for the desktop mini bar (home-v1).
+private struct MacMiniScrub: View {
+    let elapsed: TimeInterval
+    let total: TimeInterval
+    @State private var drag: Double?
+    var body: some View {
+        let shown = drag ?? min(1, elapsed / max(total, 1))
+        HStack(spacing: 8) {
+            Text(fmtTime(shown * total))
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 32, alignment: .leading)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.18))
+                    Capsule().fill(Theme.lime).frame(width: g.size.width * CGFloat(shown))
+                    Circle().fill(.white)
+                        .frame(width: drag == nil ? 0 : 8, height: drag == nil ? 0 : 8)
+                        .shadow(color: Theme.lime.opacity(0.5), radius: 4)
+                        .offset(x: g.size.width * CGFloat(shown) - 4)
+                        .opacity(drag == nil ? 0 : 1)
+                }
+                .frame(height: 3)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    drag = max(0, min(1, Double(v.location.x / max(g.size.width, 1))))
+                }.onEnded { _ in
+                    if let f = drag { PlayerStore.shared.seek(to: f * total) }
+                    drag = nil
+                })
+            }
+            .frame(height: 16)
+            Text(fmtTime(total))
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 32, alignment: .trailing)
+        }
     }
 }
 
@@ -724,7 +916,26 @@ enum MacShot {
             && !a.contains("-shotMacSearch") && !a.contains("-shotMacLib") && !a.contains("-shotMacAlbums")
             && !a.contains("-shotMacMe") && !a.contains("-shotMacColl")) {
             await PlatformStore.shared.refresh()
+            // Seed a real track so the floating mini bar shows cover bleed (stay on home, not full NP).
+            if PlatformStore.shared.dailies.isEmpty { await PlatformStore.shared.refresh() }
+            if let d = PlatformStore.shared.dailies.first {
+                let songs = d.tracks.filter { !$0.isUnplayable }
+                if !songs.isEmpty {
+                    PlayerStore.shared.play(songs: songs)
+                    for _ in 0..<25 {
+                        if PlayerStore.shared.coverURL != nil || state.remoteCoverURL != nil { break }
+                        try? await Task.sleep(for: .milliseconds(40))
+                    }
+                    if PlayerStore.shared.isPlaying { PlayerStore.shared.toggle() }
+                }
+            }
+            state.nowPlaying = false
             await warmCovers()
+            if let u = PlayerStore.shared.coverURL ?? state.remoteCoverURL {
+                RemoteDiffusion.shared.load(u)
+                _ = try? await CoverCache.shared.fetch(CoverCache.sized(u, points: 48))
+                try? await Task.sleep(for: .milliseconds(350))
+            }
         }
         try? await Task.sleep(for: .milliseconds(500))
         capture(state: state)
