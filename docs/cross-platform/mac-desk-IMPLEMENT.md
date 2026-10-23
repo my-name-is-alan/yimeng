@@ -45,3 +45,9 @@
 - 歌词区用真实 `LiveLyricsView`，空歌词时显示空态而非稿上假句。
 - 运输条右侧控件顺序/图标与 HTML 略有出入（队列/回壳），无独立「均衡器」入口（进音效设置）。
 - 涂鸦为运行时 DoodleLayer，非稿上静态 SVG 云朵路径，但同源 frame/cloud 规则。
+
+## 已做（2026-10-23 · 涂鸦可见性）
+
+- **根因**：Mac `dreamCover` 画布仅 `side+80`，cloud/月/星路径画出槽外被裁掉；且 shot 路径 trim 动画可能未画完。
+- **修**：画布 pad=120；Mac 描边更亮更粗；cloud motif 双框+相对坐标；`-shotMac` 时 `drawn=1` 立即满画。
+- 截图：`~/ymshots/mac-np-v2.png` / 盒上 `mac-desk/mac-np-v2.png`。

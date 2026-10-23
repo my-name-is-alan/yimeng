@@ -669,27 +669,29 @@ struct MacNowPlaying: View {
     private var rightColumn: some View {
         ZStack { dreamCover }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Don't clip doodle strokes that sit just outside the wrap math.
+            .contentShape(Rectangle())
     }
 
     /// Square cover + DoodleLayer forced to frame/cloud (no vinyl / orbit).
+    /// Canvas must leave ~110pt around the cover — cloud/moon/sparkle paths extend outside the slot
+    /// (iPhone uses the full screen GeometryReader; a tight wrap clips doodles away).
     private var dreamCover: some View {
         let side = coverSide
-        let wrap = side + 80
+        let pad: CGFloat = 120
+        let wrap = side + pad * 2
         return ZStack {
-            GeometryReader { g in
-                let rect = CGRect(
-                    x: (g.size.width - side) / 2,
-                    y: (g.size.height - side) / 2,
-                    width: side, height: side
-                )
-                DoodleLayer(
-                    track: cloudFrameTrack,
-                    slot: CoverSlot(rect: rect, radius: 12),
-                    ambience: .doodle,
-                    intensity: state.intensity,
-                    beat: state.beatSync
-                )
-            }
+            // Doodles first (behind cover), full intensity, beat pulse on.
+            DoodleLayer(
+                track: cloudFrameTrack,
+                slot: CoverSlot(
+                    rect: CGRect(x: pad, y: pad, width: side, height: side),
+                    radius: 12
+                ),
+                ambience: .doodle,
+                intensity: max(state.intensity, 0.95),
+                beat: state.beatSync
+            )
             .frame(width: wrap, height: wrap)
             .allowsHitTesting(false)
 
@@ -712,12 +714,10 @@ struct MacNowPlaying: View {
             .frame(width: side, height: side)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.45), radius: 30, y: 16)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5)
-            )
+            // Cover only clips itself — never the doodle sibling.
         }
         .frame(width: wrap, height: wrap)
+        // Explicitly allow doodle overflow into the art column.
     }
 
     /// energy/genre → Motif.cloud → DreamLayout.frame (design lock: no vinyl).

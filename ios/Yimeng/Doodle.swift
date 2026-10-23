@@ -129,6 +129,23 @@ struct DoodleLayer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceEnv
     private var calm: Bool { YMMotion.calm(reduceEnv) }
 
+    private var shotMac: Bool { ProcessInfo.processInfo.arguments.contains("-shotMac") }
+    /// Mac full-window NP: doodles sit on a dark stage — keep strokes bright (iPhone already has high contrast).
+    private var strokeOpacity: Double {
+        #if os(macOS)
+        return min(1, 0.88 + 0.12 * intensity)
+        #else
+        return 0.6 + 0.3 * intensity
+        #endif
+    }
+    private var strokeWidth: CGFloat {
+        #if os(macOS)
+        return track.stroke * 1.25
+        #else
+        return track.stroke
+        #endif
+    }
+
     var body: some View {
         GeometryReader { g in
             // Reduce Motion: no beat pulse, wobble slowed to a near-still drift, low frame rate.
@@ -140,8 +157,8 @@ struct DoodleLayer: View {
                     case .doodle:
                         strokes(size: g.size)
                             .trim(from: 0, to: drawn)
-                            .stroke(Color.white.opacity(0.6 + 0.3 * intensity), style: StrokeStyle(lineWidth: track.stroke, lineCap: .round, lineJoin: .round))
-                            .shadow(color: .white.opacity(0.5), radius: 4)
+                            .stroke(Color.white.opacity(strokeOpacity), style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
+                            .shadow(color: .white.opacity(0.65), radius: 5)
                         stars(size: g.size).opacity(Double(drawn))
                     case .stardust: StardustHalo(track: track, slot: slot, time: t, intensity: intensity)
                     case .aurora: AuroraBands(track: track, time: t)
@@ -156,8 +173,12 @@ struct DoodleLayer: View {
             }
         }
         .allowsHitTesting(false)
-        .onAppear { redraw() }
-        .onChange(of: track.id) { _, _ in redraw() }
+        .onAppear {
+            if shotMac { drawn = 1 } else { redraw() }
+        }
+        .onChange(of: track.id) { _, _ in
+            if shotMac { drawn = 1 } else { redraw() }
+        }
     }
 
     private func redraw() {
@@ -171,12 +192,14 @@ struct DoodleLayer: View {
         var p = Path()
         switch track.motif {
         case .cloud:
-            p.addPath(DoodlePaths.frame(rc.insetBy(dx: -14, dy: -14), seed: track.seed, jitter: track.jitter))
-            p.addPath(DoodlePaths.cloud(at: CGPoint(x: x - 50, y: y + 40), w: 110))
-            p.addPath(DoodlePaths.cloud(at: CGPoint(x: x + s - 40, y: y + s + 30), w: 90))
-            p.addPath(DoodlePaths.moon(center: CGPoint(x: x + s + 10, y: y - 10), r: 16))
-            p.addPath(DoodlePaths.moon(center: CGPoint(x: 40, y: y + s + 90), r: 10))
-            p.addPath(DoodlePaths.sparkle(center: CGPoint(x: x + s - 20, y: y - 40), r: 7))
+            p.addPath(DoodlePaths.frame(rc.insetBy(dx: -18, dy: -18), seed: track.seed, jitter: track.jitter))
+            p.addPath(DoodlePaths.frame(rc.insetBy(dx: -36, dy: -36), seed: track.seed &+ 7, jitter: track.jitter * 1.1))
+            p.addPath(DoodlePaths.cloud(at: CGPoint(x: x - 56, y: y + 36), w: 120))
+            p.addPath(DoodlePaths.cloud(at: CGPoint(x: x + s - 36, y: y + s + 28), w: 100))
+            p.addPath(DoodlePaths.moon(center: CGPoint(x: x + s + 14, y: y - 14), r: 18))
+            p.addPath(DoodlePaths.moon(center: CGPoint(x: x - 28, y: y + s + 72), r: 12))
+            p.addPath(DoodlePaths.sparkle(center: CGPoint(x: x + s - 12, y: y - 48), r: 9))
+            p.addPath(DoodlePaths.sparkle(center: CGPoint(x: x + 24, y: y - 28), r: 5))
         case .zig:
             p.addPath(DoodlePaths.orbit(center: CGPoint(x: rc.midX + 14, y: rc.midY), rx: s * 0.62, ry: s * 0.5, seed: track.seed, jitter: track.jitter))
             p.addPath(DoodlePaths.lightning(at: CGPoint(x: x + s - 10, y: y - 34), h: 46))
