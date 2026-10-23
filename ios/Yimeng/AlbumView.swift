@@ -70,6 +70,11 @@ struct NDAlbumView: View {
     @State private var pull: CGFloat = 0
 
     private var shown: NDAlbum { detail ?? album }
+    /// Online (`origin:id`) album that failed or returned empty — show 暂时打不开 instead of a blank stub.
+    private var isOnlineAlbumFail: Bool {
+        let o = shown.origin ?? (shown.id.contains(":") ? String(shown.id.split(separator: ":")[0]) : nil)
+        return o != nil && (error != nil || songs.isEmpty)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {

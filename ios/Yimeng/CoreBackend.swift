@@ -42,7 +42,6 @@ extension CoreClient {
         x.origin = a.origin ?? splitExternal(a.id)?.origin
         return x
     }
-    nonisolated static func splitExternal(_ id: String) -> (origin: String, native: String)? { CoreClient.splitExternal(id) }
     nonisolated static func nd(_ p: CorePlaylist) -> NDPlaylist {
         CoreState.remember(cover: p.cover)
         var x = NDPlaylist(id: p.id, name: p.name, songCount: p.trackCount, coverId: p.cover?.url ?? p.coverUrl, comment: p.description ?? p.subtitle, owner: p.owner)
