@@ -167,11 +167,21 @@ struct TicketDivider: Shape {
 }
 
 extension YueqianStore {
-    static func saveToPhotos(_ img: UIImage) {
+    static func saveToPhotos(_ img: UIImage, done: ((Bool) -> Void)? = nil) {
         PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
-            guard s == .authorized || s == .limited else { Task { @MainActor in SheetCenter.shared.say("没有相册权限") }; return }
+            guard s == .authorized || s == .limited else {
+                Task { @MainActor in
+                    SheetCenter.shared.say("没有相册权限")
+                    done?(false)
+                }
+                return
+            }
             PHPhotoLibrary.shared().performChanges { PHAssetChangeRequest.creationRequestForAsset(from: img) } completionHandler: { ok, _ in
-                Task { @MainActor in SheetCenter.shared.say(ok ? "已保存到相册" : "保存失败") }
+                Task { @MainActor in
+                    // Toast under fullScreenCover is invisible — callers that pass `done` show in-page feedback.
+                    if done == nil { SheetCenter.shared.say(ok ? "已保存到相册" : "保存失败") }
+                    done?(ok)
+                }
             }
         }
     }

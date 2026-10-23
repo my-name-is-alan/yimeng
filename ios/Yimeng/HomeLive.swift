@@ -162,9 +162,12 @@ struct HomeLive: View {
             }
         }
         .background(YMBackdrop())
-        .ymFullScreenCover(isPresented: $state.showYueqian) {
+        .sheet(isPresented: $state.showYueqian) {
             YueqianPage(asPopup: true)
                 .environmentObject(state)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(false)
         }
         .refreshable { await home.refresh(force: true) }
         .task {

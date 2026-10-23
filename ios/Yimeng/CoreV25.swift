@@ -150,7 +150,9 @@ struct YueqianPage: View {
     var asPopup: Bool = false
     @ObservedObject private var store = YueqianStore.shared
     @EnvironmentObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var rendered: PlatformImage?
+    @State private var toast: String?
     var body: some View {
         let pal = store.palette
         ZStack(alignment: .top) {
@@ -174,27 +176,59 @@ struct YueqianPage: View {
                         VStack(spacing: 12) {
                             DoodleLoader()
                             Text("暂时取不到，关掉再试").font(.system(size: 14)).foregroundStyle(pal.ink.opacity(0.55))
+                            if asPopup {
+                                Button("关闭") { close() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(pal.ink.opacity(0.7))
+                            }
                         }.padding(.top, 120)
                     }
-                }.frame(maxWidth: .infinity).padding(.top, 64).padding(.bottom, 160)
+                }.frame(maxWidth: .infinity).padding(.top, 72).padding(.bottom, 160)
             }
+            // Toolbar above ScrollView so taps are not swallowed (真机关不掉).
             HStack {
-                Button {
-                    if asPopup { state.showYueqian = false }
-                    else if !state.path.isEmpty { state.path.removeLast() }
-                } label: { CircleIconButton(icon: asPopup ? "xmark" : "chevron.left") }
+                Button(action: close) {
+                    Image(systemName: asPopup ? "xmark" : "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(pal.ink)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(Color.white.opacity(0.92)))
+                        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
                 Spacer()
                 Text("今日乐签").font(.system(size: 16, weight: .semibold)).foregroundStyle(pal.ink)
-                Spacer(); Color.clear.frame(width: 44, height: 44)
-            }.padding(.horizontal, Theme.margin).padding(.top, 6)
+                Spacer()
+                Color.clear.frame(width: 44, height: 44)
+            }
+            .padding(.horizontal, Theme.margin).padding(.top, 10)
+            .zIndex(10)
+            if let toast {
+                Text(toast)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18).frame(height: 38)
+                    .background(Capsule().fill(Color.black.opacity(0.78)))
+                    .padding(.top, 64)
+                    .frame(maxWidth: .infinity)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(20)
+            }
         }
         .environment(\.colorScheme, .light)
         .task {
             store.markOpened()
-            await store.load()  // always refresh when opening popup
+            await store.load()
             render()
         }
         .onChange(of: store.cover) { _, _ in render() }
+    }
+    private func close() {
+        if asPopup {
+            state.showYueqian = false
+            dismiss()
+        } else if !state.path.isEmpty {
+            state.path.removeLast()
+        }
     }
     private func pill(_ t: String, _ ic: String, _ p: PaperPalette) -> some View {
         Label(t, systemImage: ic).font(.system(size: 15, weight: .semibold)).foregroundStyle(p.ink)
@@ -210,8 +244,17 @@ struct YueqianPage: View {
         let r = ImageRenderer(content: v); r.scale = 3; rendered = r.uiImage
     }
     private func save() {
-        render(); guard let img = rendered else { return }
-        YueqianStore.saveToPhotos(img)
+        render(); guard let img = rendered else { flash("还没渲好，再试一次"); return }
+        YueqianStore.saveToPhotos(img) { ok in
+            flash(ok ? "已保存到相册" : "保存失败")
+            if ok { Haptics.tap() }
+        }
+    }
+    private func flash(_ s: String) {
+        withAnimation(.snappy) { toast = s }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation(.snappy) { if toast == s { toast = nil } }
+        }
     }
 }
 
