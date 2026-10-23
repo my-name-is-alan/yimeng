@@ -46,7 +46,19 @@ struct ArtistDetailView: View {
                                 Text(artist.name).font(.system(size: 26, weight: .bold)).lineLimit(2)
                                 SourceBadge(origin: originHint)
                             }
-                            Text("\(detail?.albums.count ?? artist.albumCount ?? 0) 张专辑").font(.system(size: 13)).opacity(0.7)
+                            Group {
+                                let n: Int? = {
+                                    if let c = detail?.albums.count, c > 0 { return c }
+                                    if let c = artist.albumCount, c > 0 { return c }
+                                    if let c = detail?.artist.albumCount, c > 0 { return c }
+                                    return detail?.albums.count ?? artist.albumCount
+                                }()
+                                if let n, n > 0 {
+                                    Text("\(n) 张专辑").font(.system(size: 13)).opacity(0.7)
+                                } else if failed {
+                                    Text("暂无专辑").font(.system(size: 13)).opacity(0.5)
+                                }
+                            }
                         }.foregroundStyle(Theme.fg(scheme))
                         Spacer()
                         StarButton(on: stars.isStarred(artist: artist.id), size: 20) { stars.toggle(artist) }
@@ -116,9 +128,8 @@ struct ArtistDetailView: View {
                         }.padding(.horizontal, Theme.margin)
                     }
                 }
-                if failed && detail == nil {
-                    onlineFailBlock
-                } else if detail != nil, top.isEmpty, (detail?.albums.isEmpty ?? true), originHint != nil {
+                // Only hard-fail when we have no navigated metadata either.
+                if failed && detail == nil && (artist.albumCount ?? 0) == 0 && (artist.coverId ?? "").isEmpty {
                     onlineFailBlock
                 }
                 Color.clear.frame(height: 190)
@@ -133,18 +144,31 @@ struct ArtistDetailView: View {
     private func load() async {
         failed = false
         do {
-            let d = try await NavidromeClient.shared.artistDetail(artist)
+            var d = try await NavidromeClient.shared.artistDetail(artist)
+            // Keep navigated coverId + albumCount (online GET often 404 / empty albums — never overwrite with 0).
+            var a = d.artist
+            if (a.coverId == nil || a.coverId?.isEmpty == true), let cid = artist.coverId { a.coverId = cid }
+            if (a.albumCount == nil || a.albumCount == 0), let n = artist.albumCount, n > 0 { a.albumCount = n }
+            d.artist = a
             detail = d
-            if d.top.isEmpty, let first = d.albums.first {
-                // getTopSongs needs last.fm data; fall back to the artist's albums.
+            if d.top.isEmpty, !d.albums.isEmpty {
                 var out: [NDSong] = []
-                for a in d.albums.prefix(3) { if let (_, s) = try? await library.fetchAlbum(id: a.id) { out += s } }
-                fallbackTop = out.isEmpty ? [] : out
-                _ = first
+                for al in d.albums.prefix(3) { if let (_, s) = try? await library.fetchAlbum(id: al.id) { out += s } }
+                fallbackTop = out
             }
-            // External id with nothing usable → treat as failure (no blank stub page).
-            if originHint != nil, d.top.isEmpty, d.albums.isEmpty, fallbackTop.isEmpty { failed = true; detail = nil }
-        } catch { failed = true; detail = nil }
+            // Empty online body is OK if list gave us albumCount/cover — stay on page.
+            if originHint != nil, d.top.isEmpty, d.albums.isEmpty, fallbackTop.isEmpty,
+               (artist.albumCount ?? 0) == 0, (artist.coverId ?? "").isEmpty {
+                failed = true; detail = nil
+            }
+        } catch {
+            if (artist.albumCount ?? 0) > 0 || !(artist.coverId ?? "").isEmpty {
+                detail = .init(artist: artist, albums: [], bio: "", image: nil, similar: [], top: [])
+                failed = false
+            } else {
+                failed = true; detail = nil
+            }
+        }
     }
 
 

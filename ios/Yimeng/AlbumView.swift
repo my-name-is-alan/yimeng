@@ -251,12 +251,19 @@ struct LibrarySearchView: View {
                         .task { if ProcessInfo.processInfo.arguments.contains("-recognizeFile") { try? await Task.sleep(for: .seconds(2)); recognizing = true } }.font(.system(size: 28, weight: .bold))
                     Spacer()
                     #if os(iOS)
-                    if NavidromeClient.core {
-                        Button { recognizing = true } label: {
-                            Label { Text("识曲").font(.system(size: 14, weight: .semibold)) } icon: { YMIcon(glyph: .recognize, size: 14, weight: 1.7) }
-                                .padding(.horizontal, 12).frame(height: 34).background(Capsule().fill(Theme.fill(scheme)))
-                        }.buttonStyle(.plain).accessibilityIdentifier("search.recognize")
-                    }
+                    // Visible entry. Core → RecognizeSheet (no ShazamKit); else toast 即将上线.
+                    Button {
+                        if NavidromeClient.core { recognizing = true }
+                        else { SheetCenter.shared.say("即将上线") }
+                    } label: {
+                        HStack(spacing: 6) {
+                            YMIcon(glyph: .recognize, size: 16, weight: 1.8, color: Theme.accent(scheme))
+                            Text("听歌识曲").font(.system(size: 14, weight: .semibold))
+                        }
+                        .padding(.horizontal, 14).frame(height: 36)
+                        .background(Capsule().fill(Theme.fill(scheme)))
+                        .overlay(Capsule().strokeBorder(Theme.accent(scheme).opacity(0.35), lineWidth: 1))
+                    }.buttonStyle(.plain).accessibilityIdentifier("search.recognize")
                     #endif
                 }
                 .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
@@ -437,28 +444,31 @@ struct LibrarySearchView: View {
     }
 
     private func loadDiscover() async {
-        // Prefer platform hot search; fall back to daily titles / artists as 猜你喜欢 + 热搜.
+        // 热搜：各已登录平台 /online/{origin}/search/hot（kugou 404 跳过）
+        // 猜你喜欢：平台每日推荐歌名（非热词）
         var g: [String] = [], h: [(String, String?)] = []
         if NavidromeClient.core {
-            let origins = CoreState.platforms(can: "daily").map(\.origin)
-            let o = origins.first ?? "netease"
-            if let words = try? await CoreClient.shared.searchHot(o), !words.isEmpty {
-                h = words.prefix(15).map { ($0.word, $0.tag) }
-                g = Array(words.prefix(8).map(\.word))
-            }
-            if g.isEmpty {
-                let dailies = PlatformStore.shared.dailies
-                if dailies.isEmpty { await PlatformStore.shared.refresh() }
-                for d in PlatformStore.shared.dailies {
-                    for s in d.tracks.prefix(6) {
-                        g.append(s.title)
-                        if h.count < 15 { h.append((s.title, nil)) }
-                        if !s.artist.isEmpty, g.count < 8 { g.append(s.artist.components(separatedBy: " / ").first ?? s.artist) }
+            var origins = CoreState.platforms.filter { $0.active }.map(\.origin)
+            if origins.isEmpty { origins = ["netease", "qq"] }
+            for o in origins where o != "kugou" {
+                if let words = try? await CoreClient.shared.searchHot(o), !words.isEmpty {
+                    let tag = origins.count > 1 ? CoreOrigin.label(o) : nil
+                    for w in words.prefix(20) {
+                        h.append((w.word, w.tag ?? tag))
                     }
                 }
             }
+            let dailies = PlatformStore.shared.dailies
+            if dailies.isEmpty { await PlatformStore.shared.refresh() }
+            for d in PlatformStore.shared.dailies {
+                for s in d.tracks.prefix(8) {
+                    g.append(s.title)
+                    if !s.artist.isEmpty { g.append(s.artist.components(separatedBy: " / ").first ?? s.artist) }
+                }
+            }
+            // 未登录日推时：热词顶几条暂充「猜你喜欢」
+            if g.isEmpty { g = h.prefix(8).map(\.0) }
         }
-        // Dedupe preserve order
         func uniq(_ a: [String]) -> [String] {
             var seen = Set<String>(), out: [String] = []
             for x in a { let k = x.lowercased(); if seen.insert(k).inserted { out.append(x) } }
@@ -469,7 +479,7 @@ struct LibrarySearchView: View {
         for (w, tag) in h {
             let k = w.lowercased(); if seenH.insert(k).inserted { hotOut.append((w, tag)) }
         }
-        hot = hotOut
+        hot = Array(hotOut.prefix(15))
     }
 
     private func runSearch() async {

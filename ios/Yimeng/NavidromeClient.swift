@@ -241,7 +241,26 @@ actor NavidromeClient {
 
     struct ArtistDetail { var artist: NDArtist; var albums: [NDAlbum]; var bio: String; var image: String?; var similar: [NDArtist]; var top: [NDSong] }
     func artistDetail(_ a: NDArtist) async throws -> ArtistDetail {
-        if let B = Self.backend { async let al = B.artistAlbums(a.id); async let tr = B.artistTracks(a.id, size: 10); return ArtistDetail(artist: a, albums: try await al, bio: "", image: nil, similar: [], top: try await tr) }
+        if Self.core, let (o, n) = CoreClient.splitExternal(a.id) {
+            // Online: detail + albums list (…/artists/{id}/albums). Keep navigated cover/albumCount.
+            let ca = try? await CoreClient.shared.onlineArtist(origin: o, id: n)
+            var artist = ca.map(CoreClient.nd) ?? a
+            if (artist.coverId == nil || artist.coverId?.isEmpty == true), let cid = a.coverId { artist.coverId = cid }
+            if (artist.albumCount == nil || artist.albumCount == 0), let c = a.albumCount, c > 0 { artist.albumCount = c }
+            if let ca, (artist.albumCount == nil || artist.albumCount == 0), let c = ca.albumCount, c > 0 { artist.albumCount = c }
+            let top = Array((ca?.topTracks ?? []).prefix(20).map(CoreClient.nd))
+            let albums: [NDAlbum]
+            if let nested = ca?.albums, !nested.isEmpty { albums = nested.map(CoreClient.nd) }
+            else { albums = (try? await CoreClient.shared.artistAlbums(a.id)) ?? [] }
+            if artist.albumCount == nil || artist.albumCount == 0, !albums.isEmpty { artist.albumCount = albums.count }
+            let img = ca?.pictureUrl ?? ca?.cover?.sourceUrl ?? ca?.cover?.url
+            return ArtistDetail(artist: artist, albums: albums, bio: ca?.description ?? "", image: img, similar: [], top: top)
+        }
+        if let B = Self.backend {
+            let albums = (try? await B.artistAlbums(a.id)) ?? []
+            let top = (try? await B.artistTracks(a.id, size: 10)) ?? []
+            return ArtistDetail(artist: a, albums: albums, bio: "", image: nil, similar: [], top: top)
+        }
         async let det = rest("getArtist.view", query: ["id": a.id])
         async let inf = rest("getArtistInfo2.view", query: ["id": a.id, "count": "12"])
         async let top = rest("getTopSongs.view", query: ["artist": a.name, "count": "10"])

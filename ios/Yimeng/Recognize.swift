@@ -40,7 +40,7 @@ enum RecognizeFailure: Equatable {
         case .notLoggedIn: "识曲需要先在译梦服务端登录网易云账号"
         case .noMatch: "没听出来，靠近声源再试一次"
         case .tooLong: "录音太长了（最多 15 秒）"
-        case .notSupported: "当前服务端还不支持识曲"
+        case .notSupported: "即将上线"
         case .micDenied: "需要麦克风权限才能识曲（可在「设置」中开启）"
         case .fingerprintUnsupported: "识曲暂时用不了：网易云那边换了识别格式，等译梦服务端更新后再试"
         case .rateLimited: "识得有点快了，歇一分钟再试"

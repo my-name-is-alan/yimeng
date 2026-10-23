@@ -62,6 +62,8 @@ struct CoreTrack: Codable, Hashable, Sendable {
     var audio: CoreAudio?
     var cover: CoreCover?
     var streamUrl: String?
+    /// Absolute CDN URL (resolve / track payloads). Prefer over streamUrl for AVPlayer.
+    var playUrl: String?
     var sortLetter: String?
     var trackNo: Int?
     var isrc: String?
@@ -134,6 +136,26 @@ struct CoreSession: Codable, Hashable, Sendable, Identifiable {
     var current: Bool?
     var online: Bool?
     var id: String { device.id }
+}
+
+/// GET /api/v1/online/resolve/{id} — prefer play_url (absolute CDN) over stream_url.
+struct CoreOnlineResolve: Codable, Hashable, Sendable {
+    var playUrl: String?
+    var streamUrl: String?
+    var entitlement: String?
+    var quality: String?
+    var format: String?
+}
+
+/// GET /api/v1/online/{origin}/artists/{id}/albums (offset/limit; `next` is a bool).
+struct CoreArtistAlbumsPage: Codable, Sendable {
+    var origin: String?
+    var id: String?
+    var items: [CoreAlbum]
+    var total: Int?
+    var offset: Int?
+    var limit: Int?
+    var next: Bool?
 }
 
 struct CorePage<T: Codable & Sendable>: Codable, Sendable {

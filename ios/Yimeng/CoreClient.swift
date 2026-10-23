@@ -43,6 +43,7 @@ actor CoreClient {
         guard let u = Self.normalize(host) else { throw NavidromeError.badURL }
         if u != base { cursors = [:] }
         base = u
+        CoreState.baseHost = u.host
         UserDefaults.standard.set((u.host ?? "") + "_" + String(u.port ?? 0), forKey: MusicSources.coreScopeKey)
     }
     /// No auth. Used by the connect form to show the server's name before login.
@@ -107,7 +108,7 @@ actor CoreClient {
             struct B: Encodable { let refreshToken: String }
             _ = try? await raw("POST", "/api/v1/auth/logout", body: try? Self.encoder.encode(B(refreshToken: refreshToken)))
         }
-        accessToken = ""; refreshToken = ""; CoreState.setPlatforms([]); CoreState.setUser(nil); username = ""
+        accessToken = ""; refreshToken = ""; CoreState.setPlatforms([]); CoreState.setUser(nil); CoreState.baseHost = nil; username = ""
         Keychain.delete(service: Self.svc, account: "access"); Keychain.delete(service: Self.svc, account: "refresh")
     }
     nonisolated static let svc = SourceKind.core.keychainService
@@ -318,6 +319,12 @@ actor CoreClient {
     func onlineArtist(origin: String, id: String) async throws -> CoreArtist {
         try await get("/api/v1/online/\(origin)/artists/\(Self.path(id))", cache: true)
     }
+    /// Offset/limit artist albums (prod). `next` bool; limit max 50. 404/not_supported → empty via caller.
+    func onlineArtistAlbums(origin: String, id: String, offset: Int = 0, limit: Int = 30) async throws -> CoreArtistAlbumsPage {
+        let lim = min(max(limit, 1), 50)
+        return try await get("/api/v1/online/\(origin)/artists/\(Self.path(id))/albums",
+                             query: ["offset": "\(offset)", "limit": "\(lim)"])
+    }
 
     /// Online ids look like `netease:12345` — keep them in one path segment.
     nonisolated static func path(_ id: String) -> String { id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id }
@@ -340,6 +347,106 @@ actor CoreClient {
         if let s = CoreState.stream(id), let u = URL(string: s, relativeTo: base)?.absoluteURL { return u }
         return url(base, "/api/stream/\(path(id))")
     }
+
+    /// Prefer CDN: resolve `play_url` → 302 Location → last-resort `/api/stream/{id}`+Bearer.
+    /// Small TTL cache so gapless preload does not hammer Core.
+    func resolvePlayURL(id: String) async throws -> URL {
+        if let c = CorePlayURLCache.get(id) { return c }
+        guard let base else { throw NavidromeError.badURL }
+
+        // Remembered absolute http(s) whose host is NOT Core → CDN (no Bearer).
+        if let s = CoreState.stream(id),
+           let u = Self.absoluteHTTP(s, relativeTo: base),
+           !CoreState.isCoreHost(u) {
+            CorePlayURLCache.set(id, u); return u
+        }
+
+        if id.contains(":") {
+            // 1) GET /api/v1/online/resolve/{id} → play_url
+            do {
+                let r: CoreOnlineResolve = try await get("/api/v1/online/resolve/\(Self.path(id))")
+                if let p = r.playUrl, let u = Self.absoluteHTTP(p, relativeTo: base) {
+                    CoreState.rememberStream(id, p); CorePlayURLCache.set(id, u); return u
+                }
+                if let s = r.streamUrl, let u = Self.absoluteHTTP(s, relativeTo: base), !CoreState.isCoreHost(u) {
+                    CoreState.rememberStream(id, s); CorePlayURLCache.set(id, u); return u
+                }
+            } catch let e as CoreAPIError where e.status == 401 || e.code == "plugin_login_required" || e.code == "not_logged_in" {
+                throw e
+            } catch { /* fall through */ }
+
+            // 2) GET /api/stream/{id} redirects disabled → Location
+            do {
+                if let loc = try await captureStreamLocation(id: id, base: base) {
+                    CoreState.rememberStream(id, loc.absoluteString); CorePlayURLCache.set(id, loc); return loc
+                }
+            } catch let e as CoreAPIError {
+                throw e
+            } catch { /* fall through */ }
+        }
+
+        // 3) Last resort: Core stream path (Bearer only when host matches Core).
+        guard let u = Self.streamURL(base: base, id: id) else { throw NavidromeError.badURL }
+        CorePlayURLCache.set(id, u); return u
+    }
+
+    nonisolated static func absoluteHTTP(_ s: String, relativeTo base: URL) -> URL? {
+        guard let u = URL(string: s, relativeTo: base)?.absoluteURL,
+              let sch = u.scheme?.lowercased(), sch == "http" || sch == "https",
+              u.host != nil else { return nil }
+        return u
+    }
+
+    private static let noRedirectDelegate = NoRedirectDelegate()
+    private lazy var noRedirectSession: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 12
+        c.httpAdditionalHeaders = ["User-Agent": "Yimeng/0.3 (iOS; art.yimeng.app)", "Accept": "*/*"]
+        c.urlCache = nil
+        return URLSession(configuration: c, delegate: Self.noRedirectDelegate, delegateQueue: nil)
+    }()
+
+    /// 401 → throws; 3xx + Location → CDN URL; else nil.
+    private func captureStreamLocation(id: String, base: URL) async throws -> URL? {
+        guard let u = Self.url(base, "/api/stream/\(Self.path(id))") else { return nil }
+        var r = URLRequest(url: u)
+        r.httpMethod = "GET"
+        r.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        if !accessToken.isEmpty { r.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        let (_, resp) = try await noRedirectSession.data(for: r)
+        guard let h = resp as? HTTPURLResponse else { return nil }
+        if h.statusCode == 401 {
+            throw CoreAPIError(status: 401, code: "unauthorized", message: "需要登录才能播放")
+        }
+        guard [301, 302, 303, 307, 308].contains(h.statusCode),
+              let loc = h.value(forHTTPHeaderField: "Location"), !loc.isEmpty else { return nil }
+        return Self.absoluteHTTP(loc, relativeTo: base)
+    }
+}
+
+/// Refuse redirects so callers can read the Location header (CDN).
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
+/// Short TTL cache for resolved play URLs.
+enum CorePlayURLCache {
+    private static let lock = NSLock()
+    private static var map: [String: (URL, Date)] = [:]
+    private static let ttl: TimeInterval = 180
+    static func get(_ id: String) -> URL? {
+        lock.lock(); defer { lock.unlock() }
+        guard let (u, exp) = map[id], exp > Date() else { map.removeValue(forKey: id); return nil }
+        return u
+    }
+    static func set(_ id: String, _ url: URL) {
+        lock.lock(); map[id] = (url, Date().addingTimeInterval(ttl)); lock.unlock()
+    }
 }
 
 // MARK: - Shared state readable from any thread (signed stream URLs, blurhashes, accounts, filter)
@@ -359,14 +466,20 @@ enum CoreState {
         var platforms: [CorePlatform] = []
         var origin: String? = nil
         var token = ""
+        var baseHost: String? = nil
     }
     private static let b = Box()
     private static func with<T>(_ f: (Box) -> T) -> T { b.lock.lock(); defer { b.lock.unlock() }; return f(b) }
     static func remember(_ t: CoreTrack) {
         with { b in
-            if let s = t.streamUrl { b.stream[t.id] = s }
+            // Prefer absolute CDN play_url, then stream_url.
+            if let p = t.playUrl, p.hasPrefix("http") { b.stream[t.id] = p }
+            else if let s = t.streamUrl { b.stream[t.id] = s }
             if let c = t.cover { remember(cover: c, in: b) }
         }
+    }
+    static func rememberStream(_ id: String, _ url: String) {
+        with { $0.stream[id] = url }
     }
     static func remember(cover c: CoreCover?) { guard let c else { return }; with { remember(cover: c, in: $0) } }
     private static func remember(cover c: CoreCover, in b: Box) {
@@ -389,9 +502,16 @@ enum CoreState {
     static func platforms(can c: String) -> [CorePlatform] { platforms.filter { $0.can(c) } }
     static var originFilter: String? { get { with { $0.origin } } set { with { $0.origin = newValue } } }
     static var token: String { get { with { $0.token } } set { with { $0.token = newValue } } }
-    /// Header auth for unsigned media (covers/streams) on the Core host.
+    static var baseHost: String? { get { with { $0.baseHost } } set { with { $0.baseHost = newValue } } }
+    /// True when URL host matches the configured Core host (never treat CDN as Core).
+    static func isCoreHost(_ url: URL) -> Bool {
+        guard let uh = url.host, let ch = baseHost, !ch.isEmpty else { return false }
+        return uh.caseInsensitiveCompare(ch) == .orderedSame
+    }
+    /// Bearer only for Core-host media. Never attach Authorization to third-party CDN.
     static func mediaHeaders(for url: URL) -> [String: String] {
-        guard NavidromeClient.core, !url.absoluteString.contains("sig="), !token.isEmpty else { return [:] }
+        guard NavidromeClient.core, !token.isEmpty, isCoreHost(url) else { return [:] }
+        if url.absoluteString.contains("sig=") { return [:] }
         return ["Authorization": "Bearer \(token)"]
     }
 }

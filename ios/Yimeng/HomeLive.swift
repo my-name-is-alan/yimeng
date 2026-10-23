@@ -21,6 +21,7 @@ struct HomeLive: View {
 
     private var bannerURLs: [URL?] { banner.map { library.coverURL($0, size: 600) } }
 
+    @State private var recognizing = false
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width - Theme.margin * 2
@@ -34,6 +35,18 @@ struct HomeLive: View {
                             Text(greeting).font(.system(size: 13)).opacity(0.7)
                         }
                         Spacer()
+                        #if os(iOS)
+                        if NavidromeClient.core {
+                            Button { recognizing = true } label: {
+                                HStack(spacing: 6) {
+                                    YMIcon(glyph: .recognize, size: 15, weight: 1.8)
+                                    Text("识曲").font(.system(size: 13, weight: .semibold))
+                                }
+                                .padding(.horizontal, 12).frame(height: 32)
+                                .background(Capsule().fill(.white.opacity(banner.isEmpty ? 0.12 : 0.18)))
+                            }.buttonStyle(.plain).accessibilityIdentifier("home.recognize")
+                        }
+                        #endif
                     }
                     .foregroundStyle(banner.isEmpty ? Theme.fg(scheme) : .white)
                     .padding(.horizontal, Theme.margin).padding(.top, 16).motionIn(0)
@@ -80,7 +93,7 @@ struct HomeLive: View {
                                     VStack(spacing: 8) {
                                         ArtistAvatar(artist: ar, size: 84)
                                         Text(ar.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                                        Text("\(ar.albumCount ?? 0) 张专辑").font(.system(size: 11)).foregroundStyle(Theme.secondary(scheme))
+                                        Text((ar.albumCount ?? 0) > 0 ? "\(ar.albumCount!) 张专辑" : " ").font(.system(size: 11)).foregroundStyle(Theme.secondary(scheme))
                                     }
                                     .frame(width: 90)
                                     .onTapGesture { state.path.append(.ndArtist(ar)) }
@@ -168,7 +181,8 @@ struct HomeLive: View {
                 .presentationDragIndicator(.visible)
                 .interactiveDismissDisabled(false)
         }
-        .refreshable { await home.refresh(force: true) }
+        .sheet(isPresented: $recognizing) { RecognizeSheet().presentationDetents([.medium, .large]).presentationCornerRadius(28) }
+                    .refreshable { await home.refresh(force: true) }
         .task {
             await home.refresh()
             #if os(iOS)

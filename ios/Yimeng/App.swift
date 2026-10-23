@@ -407,13 +407,14 @@ struct Shell: View {
     /// 典藏: raised liquid-glass orb tinted by the current cover, crayon moon + star (moonwave glyph). Lime only as a dot.
     var centreButton: some View {
         CentreOrb(active: state.tab == .collection) {
-            withAnimation(.snappy) { if state.tab == .collection { state.path = [] }; state.tab = .collection }
+            withAnimation(.snappy) { state.path = []; state.tab = .collection }
         }
     }
 
     func tabItem(_ t: Tab) -> some View {
         let active = state.tab == t
-        return Button { withAnimation(.snappy) { if state.tab == t { state.path = [] }; state.tab = t } } label: {
+        // Shared path across tabs: always pop when switching, otherwise first tap only changes tab under the pushed page.
+        return Button { withAnimation(.snappy) { state.path = []; state.tab = t } } label: {
             VStack(spacing: 2) {
                 YMIcon(glyph: t.glyph, size: 22, weight: 1.8, active: state.tab == t)
                     .overlay(alignment: .topTrailing) { if t == .me && acct.unread > 0 { UnreadBadge(n: acct.unread).offset(x: 10, y: -6) } }

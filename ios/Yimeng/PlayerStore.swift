@@ -302,11 +302,31 @@ final class PlayerStore: ObservableObject {
     private func preloadNext() {
         guard AudioPrefs.gapless, index + 1 < queue.count || repeatMode == .all, !queue.isEmpty else { return }
         let next = queue[(index + 1) % queue.count]
-        guard preloaded?.id != next.id, queuedNext?.id != next.id,
-              let url = OfflineCache.shared.file(for: next.id) ?? LibraryStore.shared.streamURL(for: next.id) else { return }
+        guard preloaded?.id != next.id, queuedNext?.id != next.id else { return }
+        if let local = OfflineCache.shared.file(for: next.id) {
+            enqueuePreload(next, url: local)
+            return
+        }
+        if NavidromeClient.core {
+            let nid = next.id
+            Task { @MainActor [weak self] in
+                guard let self, self.preloaded?.id != nid, self.queuedNext?.id != nid else { return }
+                guard let url = try? await CoreClient.shared.resolvePlayURL(id: nid) else { return }
+                guard self.song != nil, self.preloaded?.id != nid, self.queuedNext?.id != nid else { return }
+                // Still the upcoming track?
+                guard !self.queue.isEmpty, self.queue[(self.index + 1) % self.queue.count].id == nid else { return }
+                self.enqueuePreload(next, url: url)
+            }
+            return
+        }
+        guard let url = LibraryStore.shared.streamURL(for: next.id) else { return }
+        enqueuePreload(next, url: url)
+    }
+
+    private func enqueuePreload(_ next: NDSong, url: URL) {
+        guard preloaded?.id != next.id, queuedNext?.id != next.id else { return }
         let asset = Self.asset(url)
         if AudioPrefs.crossfade == 0, repeatMode != .one, !sleepAfterTrack, let qp = player as? AVQueuePlayer {
-            // True gapless: AVQueuePlayer starts decoding the next item early and plays it back-to-back.
             let item = AVPlayerItem(asset: asset)
             item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
             if qp.canInsert(item, after: nil) { qp.insert(item, after: nil); queuedNext = (next.id, item); attachFX(item, next); return }
@@ -406,29 +426,67 @@ final class PlayerStore: ObservableObject {
         duration = TimeInterval(s.duration ?? 0)
         elapsed = seek ?? 0
         pendingSeek = nil
-        // Offline cache first (works with no network); else stream. Playback never waits on a download.
+        // Offline cache first; Core online resolves CDN (play_url / 302) before AVPlayer.
         let local = OfflineCache.shared.file(for: s.id)
-        guard let url = local ?? LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
-        let p: AVPlayer, item: AVPlayerItem
         if let adopt, let cur = player as? AVQueuePlayer {
-            // Gapless hand-off: the queue player is already on (or about to start) the next item.
-            if let l = embyLive { embyReport(.stopped, id: l.id, pos: l.pos, paused: false); embyLive = nil }
-            detachObservers()
-            if cur.currentItem !== adopt { cur.advanceToNextItem() }
-            p = cur; item = adopt
-            queuedNext = nil; preloaded = nil
-        } else {
-            tearDownPlayer()
-            AudioRoute.configureSession()
-            let asset: AVURLAsset = (preloaded?.id == s.id && local == nil ? preloaded?.asset : nil) ?? Self.asset(url)
-            preloaded = nil
-            item = AVPlayerItem(asset: asset)
-            // Let iOS render multichannel / Atmos (spatial on AirPods, passthrough on AirPlay/HDMI) — no in-app downmix.
-            item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
-            p = AVQueuePlayer(playerItem: item)
-            player = p
-            attachFX(item, s)   // FX off → analysis-only tap (beat breathing); bitstream → none
+            beginWithPlayer(adopt: adopt, cur: cur, song: s, url: local ?? URL(fileURLWithPath: "/"), autoplay: autoplay, seek: seek, isLocal: local != nil)
+            return
         }
+        if let local {
+            beginPlayback(url: local, song: s, autoplay: autoplay, seek: seek, isLocal: true)
+            return
+        }
+        if NavidromeClient.core {
+            let trackId = s.id
+            Task { @MainActor [weak self] in
+                guard let self, self.song?.id == trackId else { return }
+                do {
+                    let url = try await CoreClient.shared.resolvePlayURL(id: trackId)
+                    guard self.song?.id == trackId else { return }
+                    self.beginPlayback(url: url, song: s, autoplay: autoplay, seek: seek, isLocal: false)
+                } catch let e as CoreAPIError where e.status == 401 || e.code == "plugin_login_required" || e.code == "not_logged_in" || e.code == "unauthorized" {
+                    self.isPlaying = false
+                    SheetCenter.shared.say(e.message.isEmpty ? "需要登录音源账号才能播放" : e.message)
+                } catch {
+                    if let url = LibraryStore.shared.streamURL(for: trackId) {
+                        self.beginPlayback(url: url, song: s, autoplay: autoplay, seek: seek, isLocal: false)
+                    } else {
+                        self.isPlaying = false
+                        SheetCenter.shared.say("暂时无法播放")
+                    }
+                }
+            }
+            return
+        }
+        guard let url = LibraryStore.shared.streamURL(for: s.id) else { isPlaying = false; return }
+        beginPlayback(url: url, song: s, autoplay: autoplay, seek: seek, isLocal: false)
+    }
+
+    private func beginWithPlayer(adopt: AVPlayerItem, cur: AVQueuePlayer, song s: NDSong, url: URL, autoplay: Bool, seek: TimeInterval?, isLocal: Bool) {
+        if let l = embyLive { embyReport(.stopped, id: l.id, pos: l.pos, paused: false); embyLive = nil }
+        detachObservers()
+        if cur.currentItem !== adopt { cur.advanceToNextItem() }
+        let p: AVPlayer = cur; let item = adopt
+        queuedNext = nil; preloaded = nil
+        finishStart(p: p, item: item, song: s, url: url, autoplay: autoplay, seek: seek, isLocal: isLocal)
+    }
+
+    private func beginPlayback(url: URL, song s: NDSong, autoplay: Bool, seek: TimeInterval?, isLocal: Bool) {
+        tearDownPlayer()
+        AudioRoute.configureSession()
+        let asset: AVURLAsset = (preloaded?.id == s.id && !isLocal ? preloaded?.asset : nil) ?? Self.asset(url)
+        preloaded = nil
+        let item = AVPlayerItem(asset: asset)
+        item.allowedAudioSpatializationFormats = .monoStereoAndMultichannel
+        let p = AVQueuePlayer(playerItem: item)
+        player = p
+        attachFX(item, s)
+        finishStart(p: p, item: item, song: s, url: url, autoplay: autoplay, seek: seek, isLocal: isLocal)
+    }
+
+    private func finishStart(p: AVPlayer, item: AVPlayerItem, song s: NDSong, url: URL, autoplay: Bool, seek: TimeInterval?, isLocal: Bool) {
+        // Preview: do not block start; duration from metadata / readyToPlay still applies.
+        _ = s.previewEndMs
         OfflineCache.shared.played(s)
         fadingOut = false
         let vol = targetVolume(for: s)

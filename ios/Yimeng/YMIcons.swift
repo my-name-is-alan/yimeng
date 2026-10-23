@@ -108,7 +108,8 @@ enum YMIconPaths {
     }
     private static func skip(back: Bool) -> Path {
         var p = Path()
-        let flip: CGFloat = back ? -1 : 1
+        // next = ▶|; previous = |◀  (base path is |◀; flip when NOT back)
+        let flip: CGFloat = back ? 1 : -1
         func x(_ v: CGFloat) -> CGFloat { 0.5 + (v - 0.5) * flip }
         p.move(to: CGPoint(x: x(0.22), y: 0.22)); p.addLine(to: CGPoint(x: x(0.22), y: 0.78))
         p.move(to: CGPoint(x: x(0.30), y: 0.50)); p.addLine(to: CGPoint(x: x(0.78), y: 0.18))

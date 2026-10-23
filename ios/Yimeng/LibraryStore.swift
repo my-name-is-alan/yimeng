@@ -18,7 +18,7 @@ struct NDAlbum: Identifiable, Hashable, Codable {
 struct NDArtist: Identifiable, Hashable, Codable {
     let id: String
     let name: String
-    let albumCount: Int?
+    var albumCount: Int?
     var coverId: String? = nil
     var sortLetter: String? = nil
     var origin: String? = nil

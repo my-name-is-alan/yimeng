@@ -90,15 +90,37 @@ extension CoreClient: LibraryBackend {
     }
     func artistAlbums(_ id: String) async throws -> [NDAlbum] {
         if let (o, n) = Self.splitExternal(id) {
-            let a = try await onlineArtist(origin: o, id: n)
-            return (a.albums ?? []).map(Self.nd)
+            // Prefer nested albums on online artist detail; else paginate …/artists/{id}/albums.
+            if let a = try? await onlineArtist(origin: o, id: n), let al = a.albums, !al.isEmpty { return al.map(Self.nd) }
+            var all: [NDAlbum] = []
+            var offset = 0
+            do {
+                while true {
+                    let page = try await onlineArtistAlbums(origin: o, id: n, offset: offset, limit: 30)
+                    all += page.items.map(Self.nd)
+                    let more = page.next == true || (page.total.map { offset + page.items.count < $0 } ?? false)
+                    if !more || page.items.isEmpty { break }
+                    offset += page.items.count
+                    if offset >= 500 { break }
+                }
+            } catch let e as CoreAPIError where e.status == 404 || e.code == "not_supported" {
+                return []   // e.g. kugou — hide section, don't crash
+            } catch {
+                return all
+            }
+            return all
         }
         let p: CorePage<CoreAlbum> = try await page("/api/v1/artists/\(Self.path(id))/albums", [:], offset: 0, limit: 200); return p.items.map(Self.nd)
     }
     func artistTracks(_ id: String, size: Int) async throws -> [NDSong] {
         if let (o, n) = Self.splitExternal(id) {
-            let a = try await onlineArtist(origin: o, id: n)
-            return Array((a.topTracks ?? []).prefix(size).map(Self.nd))
+            if let a = try? await onlineArtist(origin: o, id: n) {
+                return Array((a.topTracks ?? []).prefix(size).map(Self.nd))
+            }
+            if let p: CorePage<CoreTrack> = try? await page("/api/v1/online/\(o)/artists/\(Self.path(n))/tracks", ["sort": "plays", "order": "desc"], offset: 0, limit: size) {
+                return p.items.map(Self.nd)
+            }
+            return []
         }
         let p: CorePage<CoreTrack> = try await page("/api/v1/artists/\(Self.path(id))/tracks", ["sort": "plays", "order": "desc"], offset: 0, limit: size); return p.items.map(Self.nd)
     }
