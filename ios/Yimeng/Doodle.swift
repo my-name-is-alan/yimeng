@@ -98,7 +98,98 @@ enum DoodlePaths {
         var p = Path(); p.move(to: o); p.addLine(to: CGPoint(x: o.x, y: o.y + length))
         p.addEllipse(in: CGRect(x: o.x - 3.5, y: o.y + length, width: 7, height: 9)); return p
     }
+
+    /// Single scribble loop (one pass) — closed orbit for chase light / star trail.
+    static func frameLoop(_ rc: CGRect, seed: UInt64, jitter: CGFloat, pass: CGFloat = 0) -> Path {
+        var r = SeededRNG(seed); var p = Path()
+        let o = pass * 6
+        let pts = [CGPoint(x: rc.minX - o, y: rc.minY + o), CGPoint(x: rc.maxX + o, y: rc.minY - o),
+                   CGPoint(x: rc.maxX - o, y: rc.maxY + o), CGPoint(x: rc.minX + o, y: rc.maxY - o), CGPoint(x: rc.minX - o + 4, y: rc.minY + o - 3)]
+        p.move(to: pts[0])
+        for i in 1..<pts.count {
+            let a = pts[i - 1], b = pts[i]
+            let mid = CGPoint(x: (a.x + b.x) / 2 + jit(&r, jitter * 2), y: (a.y + b.y) / 2 + jit(&r, jitter * 2))
+            p.addQuadCurve(to: CGPoint(x: b.x + jit(&r, jitter), y: b.y + jit(&r, jitter)), control: mid)
+        }
+        return p
+    }
 }
+
+// MARK: - Path sampling (arc-length) for particles along a doodle orbit
+
+enum PathSampler {
+    static func polyline(_ path: Path) -> [CGPoint] {
+        var poly: [CGPoint] = []
+        path.cgPath.applyWithBlock { ep in
+            let e = ep.pointee
+            switch e.type {
+            case .moveToPoint:
+                poly.append(e.points[0])
+            case .addLineToPoint:
+                poly.append(e.points[0])
+            case .addQuadCurveToPoint:
+                let c = e.points[0], end = e.points[1]
+                let start = poly.last ?? c
+                for i in 1...10 {
+                    let t = CGFloat(i) / 10, u = 1 - t
+                    poly.append(CGPoint(x: u * u * start.x + 2 * u * t * c.x + t * t * end.x,
+                                        y: u * u * start.y + 2 * u * t * c.y + t * t * end.y))
+                }
+            case .addCurveToPoint:
+                let c1 = e.points[0], c2 = e.points[1], end = e.points[2]
+                let start = poly.last ?? c1
+                for i in 1...12 {
+                    let t = CGFloat(i) / 12, u = 1 - t
+                    poly.append(CGPoint(
+                        x: u * u * u * start.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * end.x,
+                        y: u * u * u * start.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * end.y))
+                }
+            case .closeSubpath:
+                if let f = poly.first { poly.append(f) }
+            @unknown default: break
+            }
+        }
+        return poly
+    }
+
+    static func points(_ path: Path, count: Int) -> [CGPoint] {
+        let poly = polyline(path)
+        guard poly.count >= 2, count >= 2 else { return poly }
+        var dists: [CGFloat] = [0]
+        for i in 1..<poly.count {
+            dists.append(dists[i - 1] + hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y))
+        }
+        let total = dists.last!
+        guard total > 0 else { return Array(poly.prefix(count)) }
+        var out: [CGPoint] = []
+        out.reserveCapacity(count)
+        for i in 0..<count {
+            let target = total * CGFloat(i) / CGFloat(count)
+            var j = 1
+            while j < dists.count && dists[j] < target { j += 1 }
+            let j0 = min(max(j, 1), dists.count - 1)
+            let seg = dists[j0] - dists[j0 - 1]
+            let f = seg > 0 ? (target - dists[j0 - 1]) / seg : 0
+            let a = poly[j0 - 1], b = poly[min(j0, poly.count - 1)]
+            out.append(CGPoint(x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f))
+        }
+        return out
+    }
+
+    static func point(_ path: Path, fraction: CGFloat) -> CGPoint {
+        let pts = points(path, count: 96)
+        guard !pts.isEmpty else { return .zero }
+        var f = fraction.truncatingRemainder(dividingBy: 1)
+        if f < 0 { f += 1 }
+        let idx = f * CGFloat(pts.count)
+        let i0 = Int(idx) % pts.count
+        let i1 = (i0 + 1) % pts.count
+        let t = idx - CGFloat(Int(idx))
+        return CGPoint(x: pts[i0].x + (pts[i1].x - pts[i0].x) * t,
+                       y: pts[i0].y + (pts[i1].y - pts[i0].y) * t)
+    }
+}
+
 
 // MARK: - Composition layer
 
@@ -118,7 +209,8 @@ extension DreamLayout {
     var centered: Bool { self == .frame }
 }
 
-/// Generative doodles seeded by the track. Drawn in with `.trim` on track change; wobble via Metal distortion; optional beat pulse.
+/// Generative doodles seeded by the track. Drawn in with `.trim` on track change; wobble via Metal distortion.
+/// Beat: E chase-light + G star trail along the cover frame (no whole-layer scale pulse).
 struct DoodleLayer: View {
     let track: DreamTrack
     let slot: CoverSlot
@@ -135,7 +227,7 @@ struct DoodleLayer: View {
         #if os(macOS)
         return min(1, 0.88 + 0.12 * intensity)
         #else
-        return 0.6 + 0.3 * intensity
+        return 0.55 + 0.25 * intensity
         #endif
     }
     private var strokeWidth: CGFloat {
@@ -146,28 +238,43 @@ struct DoodleLayer: View {
         #endif
     }
 
+    /// Lemon → cyan → pink → violet (E/G palette).
+    private static let chaseColors: [Color] = [
+        Color(hex: 0xc4f542), Color(hex: 0x5eead4), Color(hex: 0xff7ab8), Color(hex: 0x9b6dff)
+    ]
+
     var body: some View {
         GeometryReader { g in
-            // Reduce Motion: no beat pulse, wobble slowed to a near-still drift, low frame rate.
             TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 30)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate * (calm ? 0.08 : 1)
-                let pulse = (beat && !calm) ? 1 + (PlayerStore.shared.hasRealPlayback ? 0.04 * intensity * BeatStore.pulse(serverBPM: track.serverBPM) : 0.025 * intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))) : 1
+                // 0…1 beat envelope (not a scale factor).
+                let beatAmt: Double = {
+                    guard beat && !calm else { return 0 }
+                    if PlayerStore.shared.hasRealPlayback {
+                        return intensity * BeatStore.pulse(serverBPM: track.serverBPM)
+                    }
+                    return intensity * max(0, sin(t * Double(track.bpm) / 60 * 2 * .pi))
+                }()
                 ZStack {
                     switch ambience {
                     case .doodle:
+                        // Static base ink (cover itself stays still; no whole-layer scale).
                         strokes(size: g.size)
                             .trim(from: 0, to: drawn)
-                            .stroke(Color.white.opacity(strokeOpacity), style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
-                            .shadow(color: .white.opacity(0.65), radius: 5)
+                            .stroke(Color.white.opacity(strokeOpacity * 0.85), style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
+                            .shadow(color: .white.opacity(0.35), radius: 4)
                         stars(size: g.size).opacity(Double(drawn))
+                        if !calm {
+                            chaseAndTrail(size: g.size, time: t, beatAmt: beatAmt)
+                                .opacity(Double(drawn))
+                        }
                     case .stardust: StardustHalo(track: track, slot: slot, time: t, intensity: intensity)
                     case .aurora: AuroraBands(track: track, time: t)
                     case .pure: Color.clear
                     }
                 }
-                .scaleEffect(pulse, anchor: UnitPoint(x: slot.rect.midX / max(g.size.width, 1), y: slot.rect.midY / max(g.size.height, 1)))
                 #if os(iOS)
-                .distortionEffect(ShaderLibrary.doodleWobble(.float(Float(t.truncatingRemainder(dividingBy: 1000))), .float(Float(track.jitter * intensity))),
+                .distortionEffect(ShaderLibrary.doodleWobble(.float(Float(t.truncatingRemainder(dividingBy: 1000))), .float(Float(track.jitter * intensity * (calm ? 0.15 : 1)))),
                                   maxSampleOffset: CGSize(width: 6, height: 6))
                 #endif
             }
@@ -184,6 +291,124 @@ struct DoodleLayer: View {
     private func redraw() {
         drawn = 0
         withAnimation(.easeInOut(duration: 1.6)) { drawn = 1 }
+    }
+
+    // MARK: E chase + G particles
+
+    /// Hand-drawn cover orbit: frame loop for cloud/ink, scribble ellipse for zig.
+    private func beatOrbit(size: CGSize) -> Path {
+        let rc = slot.rect, s = rc.width
+        switch track.motif {
+        case .zig:
+            return DoodlePaths.orbit(center: CGPoint(x: rc.midX + 14, y: rc.midY), rx: s * 0.62, ry: s * 0.5, seed: track.seed, jitter: track.jitter)
+        case .cloud, .ink:
+            return DoodlePaths.frameLoop(rc.insetBy(dx: -18, dy: -18), seed: track.seed, jitter: track.jitter, pass: 0)
+        }
+    }
+
+    private func chaseColor(at phase: Double) -> Color {
+        let cols = Self.chaseColors
+        let n = cols.count
+        let p = (phase.truncatingRemainder(dividingBy: 1) + 1).truncatingRemainder(dividingBy: 1) * Double(n)
+        let i0 = Int(p) % n
+        let i1 = (i0 + 1) % n
+        let f = CGFloat(p - Double(Int(p)))
+        return Self.lerp(cols[i0], cols[i1], f)
+    }
+
+    private static func lerp(_ a: Color, _ b: Color, _ t: CGFloat) -> Color {
+        #if canImport(UIKit)
+        let ua = UIColor(a), ub = UIColor(b)
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        ua.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        ub.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return Color(red: Double(r1 + (r2 - r1) * t), green: Double(g1 + (g2 - g1) * t), blue: Double(b1 + (b2 - b1) * t), opacity: Double(a1 + (a2 - a1) * t))
+        #elseif canImport(AppKit)
+        let ua = NSColor(a), ub = NSColor(b)
+        guard let ca = ua.usingColorSpace(.deviceRGB), let cb = ub.usingColorSpace(.deviceRGB) else { return a }
+        return Color(red: Double(ca.redComponent + (cb.redComponent - ca.redComponent) * t),
+                     green: Double(ca.greenComponent + (cb.greenComponent - ca.greenComponent) * t),
+                     blue: Double(ca.blueComponent + (cb.blueComponent - ca.blueComponent) * t),
+                     opacity: Double(ca.alphaComponent + (cb.alphaComponent - ca.alphaComponent) * t))
+        #else
+        return t < 0.5 ? a : b
+        #endif
+    }
+
+    @ViewBuilder
+    private func chaseAndTrail(size: CGSize, time: Double, beatAmt: Double) -> some View {
+        let orbit = beatOrbit(size: size)
+        let run = CGFloat((time / 2.4).truncatingRemainder(dividingBy: 1))
+        let seg: CGFloat = 0.078
+        let col = chaseColor(at: time / 2.4)
+        let hot = beatAmt
+        let chaseW = strokeWidth * (2.0 + 1.4 * hot)
+        let flashW = strokeWidth * (2.4 + 2.2 * hot)
+
+        ZStack {
+            // G faint dashed color trail along the orbit
+            orbit
+                .stroke(
+                    col.opacity(0.55),
+                    style: StrokeStyle(lineWidth: strokeWidth * 0.85, lineCap: .round, dash: [7, 16], dashPhase: CGFloat(-time * 50))
+                )
+                .opacity(0.30 + 0.22 * intensity)
+                .blur(radius: 0.35)
+
+            // E chase segment (wrap-aware Shape.trim)
+            chaseStroke(orbit, from: run, length: seg, color: col, width: chaseW)
+                .shadow(color: col.opacity(0.85), radius: 8 + 6 * hot)
+                .opacity(0.75 + 0.25 * intensity)
+
+            // Beat flash: short brighter white-ish segment at same phase
+            if hot > 0.05 {
+                chaseStroke(orbit, from: run, length: seg * 0.55, color: Color.white.opacity(0.55 + 0.45 * hot), width: flashW)
+                    .shadow(color: .white.opacity(0.7 * hot), radius: 10)
+                    .blendMode(.plusLighter)
+            }
+
+            // G star dots on the same orbit
+            starTrail(orbit: orbit, time: time, beatAmt: hot)
+        }
+    }
+
+    @ViewBuilder
+    private func chaseStroke(_ path: Path, from start: CGFloat, length: CGFloat, color: Color, width: CGFloat) -> some View {
+        let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+        let s0 = start.truncatingRemainder(dividingBy: 1)
+        let s = s0 < 0 ? s0 + 1 : s0
+        let e = s + length
+        if e <= 1 {
+            path.trim(from: s, to: e).stroke(color, style: style)
+        } else {
+            ZStack {
+                path.trim(from: s, to: 1).stroke(color, style: style)
+                path.trim(from: 0, to: e - 1).stroke(color, style: style)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func starTrail(orbit: Path, time: Double, beatAmt: Double) -> some View {
+        let n = 5
+        let sizes: [CGFloat] = [7, 5, 6, 4, 5]
+        let speeds: [Double] = [2.4, 2.8, 3.2, 2.6, 3.0]
+        let delays: [Double] = [0, 0.7, 1.4, 2.0, 0.3]
+        ForEach(0..<n, id: \.self) { i in
+            let dur = speeds[i]
+            let frac = CGFloat(((time + delays[i]) / dur).truncatingRemainder(dividingBy: 1))
+            let pt = PathSampler.point(orbit, fraction: frac)
+            let col = chaseColor(at: time / 1.8 + Double(i) * 0.22)
+            let pulse = 1 + 0.28 * beatAmt + 0.12 * sin(time * 3.1 + Double(i) * 1.3)
+            Circle()
+                .fill(col)
+                .frame(width: sizes[i], height: sizes[i])
+                .scaleEffect(pulse)
+                .shadow(color: col.opacity(0.9), radius: 6 + 4 * beatAmt)
+                .position(pt)
+                .blendMode(.plusLighter)
+        }
     }
 
     /// All line-art for the motif, merged into one Path so a single trim draws it in.
