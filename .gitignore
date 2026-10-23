@@ -21,3 +21,5 @@ sim-shots/
 *.mov
 *.gif
 *.bak
+**/src/debug/assets/core-account.env
+**/core-account.env
