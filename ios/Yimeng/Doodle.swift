@@ -214,6 +214,11 @@ extension DreamLayout {
 private final class DoodleOrbitClock {
     var phase: Double = 0
     var lastTick: CFTimeInterval = 0
+    /// Smoothed BPM so tempo changes ease instead of snapping the angular velocity.
+    var smoothedBPM: Double = 0
+    /// Per-star phase offsets (set once per track) so dots are not evenly locked.
+    var starOffsets: [Double] = [0, 0.17, 0.41, 0.63, 0.88]
+    var starRates: [Double] = [1.0, 0.92, 1.08, 0.85, 1.12] // slight speed drift vs chase
 }
 
 /// Generative doodles seeded by the track. Drawn in with `.trim` on track change; wobble via Metal distortion.
@@ -258,8 +263,8 @@ struct DoodleLayer: View {
         return AppStateBridge.current?.isPlaying ?? true
     }
 
-    /// Tempo for orbit: server BPM → live BeatStore → track.bpm. Clamped so laps stay calm.
-    private func effectiveBPM() -> Double {
+    /// Tempo target: server BPM → live BeatStore → track.bpm.
+    private func targetBPM() -> Double {
         if let s = track.serverBPM, s >= 50 { return min(168, s) }
         let r = BeatStore.read()
         if r.live, r.bpm >= 50 { return min(168, r.bpm) }
@@ -267,28 +272,29 @@ struct DoodleLayer: View {
         return fb >= 50 ? min(168, fb) : 96
     }
 
-    /// One chase lap ≈ 16 beats, hard-clamped to 6.5…12s (宝英: current 2.4s felt too fast).
+    /// One chase lap ≈ 22 beats, clamped 8…14s — slower than build 18, still continuous neon drift.
     private func lapSeconds(bpm: Double) -> Double {
-        let raw = 16.0 * 60.0 / max(bpm, 50)
-        return min(12, max(6.5, raw))
+        let raw = 22.0 * 60.0 / max(bpm, 50)
+        return min(14, max(8, raw))
     }
 
-    /// Advance orbit phase only while playing; freeze on pause. Prefer song elapsed when streaming.
+    /// Continuous phase via CACurrentMediaTime + angular velocity. BPM only steers speed (lerped).
+    /// Never hard-lock to PlayerStore.elapsed (that caused the PPT stutter). Freeze on pause.
     private func advanceOrbitPhase() -> Double {
-        let bpm = effectiveBPM()
-        let lap = lapSeconds(bpm: bpm)
-        let p = PlayerStore.shared
-        if p.hasRealPlayback {
-            // Song-locked: elapsed freezes on pause / seeks with scrub — ideal.
-            let ph = (p.elapsed / lap).truncatingRemainder(dividingBy: 1)
-            orbitClock.phase = ph < 0 ? ph + 1 : ph
-            orbitClock.lastTick = CACurrentMediaTime()
-            return orbitClock.phase
-        }
         let now = CACurrentMediaTime()
-        if orbitClock.lastTick == 0 { orbitClock.lastTick = now }
-        let dt = min(0.12, max(0, now - orbitClock.lastTick))
+        if orbitClock.lastTick == 0 {
+            orbitClock.lastTick = now
+            orbitClock.smoothedBPM = targetBPM()
+        }
+        let dt = min(0.05, max(0, now - orbitClock.lastTick)) // small clamp keeps motion silky if a frame hitch
         orbitClock.lastTick = now
+
+        // Ease BPM toward target (~0.6s time constant) so tempo changes don't jerk the chase.
+        let target = targetBPM()
+        let bpmBlend = 1 - exp(-dt / 0.6)
+        orbitClock.smoothedBPM += (target - orbitClock.smoothedBPM) * bpmBlend
+        let lap = lapSeconds(bpm: orbitClock.smoothedBPM)
+
         if transportPlaying && !calm && !shotMac {
             orbitClock.phase += dt / lap
         }
@@ -297,20 +303,24 @@ struct DoodleLayer: View {
 
     var body: some View {
         GeometryReader { g in
-            TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 30)) { tl in
+            TimelineView(.animation(minimumInterval: calm ? 1 / 6 : 1 / 60)) { tl in
                 let t = tl.date.timeIntervalSinceReferenceDate * (calm ? 0.08 : 1)
                 let run = advanceOrbitPhase()
-                // 0…1 beat envelope (not a scale factor) — Align flash to BeatStore / serverBPM.
+                // Soft 0…1 beat breath (no hard white flash). Squash so peaks are gentle.
                 let beatAmt: Double = {
                     guard beat && !calm else { return 0 }
+                    let raw: Double
                     if PlayerStore.shared.hasRealPlayback {
                         let pulse = BeatStore.pulse(serverBPM: track.serverBPM)
                         let energy = BeatStore.read().energy
-                        return intensity * max(pulse, energy * 0.35)
+                        raw = max(pulse * 0.85, energy * 0.25)
+                    } else {
+                        let bpm = orbitClock.smoothedBPM > 0 ? orbitClock.smoothedBPM : targetBPM()
+                        raw = max(0, sin(t * bpm / 60 * 2 * .pi)) * 0.55
                     }
-                    // Mock: soft downbeat from track BPM, phase-aligned to orbit when possible.
-                    let bpm = effectiveBPM()
-                    return intensity * max(0, sin(t * bpm / 60 * 2 * .pi))
+                    // Ease curve: keep most of the motion in the soft mid, cap loud peaks.
+                    let soft = raw * raw * (3 - 2 * raw) // smoothstep-ish
+                    return intensity * min(1, soft)
                 }()
                 ZStack {
                     switch ambience {
@@ -339,17 +349,27 @@ struct DoodleLayer: View {
         .allowsHitTesting(false)
         .onAppear {
             if shotMac { drawn = 1 } else { redraw() }
-            orbitClock = DoodleOrbitClock()
+            resetOrbitClock()
         }
         .onChange(of: track.id) { _, _ in
             if shotMac { drawn = 1 } else { redraw() }
-            orbitClock = DoodleOrbitClock()
+            resetOrbitClock()
         }
     }
 
     private func redraw() {
         drawn = 0
         withAnimation(.easeInOut(duration: 1.6)) { drawn = 1 }
+    }
+
+    private func resetOrbitClock() {
+        let c = DoodleOrbitClock()
+        c.smoothedBPM = targetBPM()
+        // Deterministic but uneven spacing + speed micro-drift per track.
+        var rng = SeededRNG(track.seed &+ 404)
+        c.starOffsets = (0..<5).map { _ in rng.d(0, 1) }
+        c.starRates = (0..<5).map { _ in rng.d(0.82, 1.18) }
+        orbitClock = c
     }
 
     // MARK: E chase + G particles
@@ -399,35 +419,30 @@ struct DoodleLayer: View {
     private func chaseAndTrail(size: CGSize, run: Double, beatAmt: Double) -> some View {
         let orbit = beatOrbit(size: size)
         let runF = CGFloat(run)
-        let seg: CGFloat = 0.078
-        let col = chaseColor(at: run) // hue drifts once per lap
+        let seg: CGFloat = 0.09
+        // Hue rotates continuously along the lap (and a bit faster than position for neon drift).
+        let col = chaseColor(at: run * 1.35)
         let hot = beatAmt
-        let chaseW = strokeWidth * (2.0 + 1.4 * hot)
-        let flashW = strokeWidth * (2.4 + 2.2 * hot)
+        // Beat: only +8…15% width / slight opacity — no white slam.
+        let chaseW = strokeWidth * (1.85 + 0.28 * hot)
+        let chaseOpacity = 0.72 + 0.18 * intensity + 0.10 * hot
 
         ZStack {
-            // G faint dashed color trail — dash marches with orbit phase (not wall-clock * 50).
+            // G faint dashed color trail — soft, phase-driven.
             orbit
                 .stroke(
-                    col.opacity(0.55),
-                    style: StrokeStyle(lineWidth: strokeWidth * 0.85, lineCap: .round, dash: [7, 16], dashPhase: -runF * 140)
+                    col.opacity(0.45),
+                    style: StrokeStyle(lineWidth: strokeWidth * 0.75, lineCap: .round, dash: [6, 18], dashPhase: -runF * 90)
                 )
-                .opacity(0.30 + 0.22 * intensity)
-                .blur(radius: 0.35)
+                .opacity(0.26 + 0.18 * intensity)
+                .blur(radius: 0.45)
 
-            // E chase segment (wrap-aware Shape.trim)
+            // E chase segment
             chaseStroke(orbit, from: runF, length: seg, color: col, width: chaseW)
-                .shadow(color: col.opacity(0.85), radius: 8 + 6 * hot)
-                .opacity(0.75 + 0.25 * intensity)
+                .shadow(color: col.opacity(0.55 + 0.25 * hot), radius: 6 + 3 * hot)
+                .opacity(chaseOpacity)
 
-            // Beat flash: short brighter white-ish segment at same phase
-            if hot > 0.05 {
-                chaseStroke(orbit, from: runF, length: seg * 0.55, color: Color.white.opacity(0.55 + 0.45 * hot), width: flashW)
-                    .shadow(color: .white.opacity(0.7 * hot), radius: 10)
-                    .blendMode(.plusLighter)
-            }
-
-            // G star dots — same tempo, evenly spaced around the orbit
+            // G star dots — staggered phase + slight speed drift
             starTrail(orbit: orbit, run: run, beatAmt: hot)
         }
     }
@@ -451,17 +466,22 @@ struct DoodleLayer: View {
     @ViewBuilder
     private func starTrail(orbit: Path, run: Double, beatAmt: Double) -> some View {
         let n = 5
-        let sizes: [CGFloat] = [7, 5, 6, 4, 5]
+        let sizes: [CGFloat] = [6.5, 4.5, 5.5, 3.8, 5]
+        let offsets = orbitClock.starOffsets
+        let rates = orbitClock.starRates
         ForEach(0..<n, id: \.self) { i in
-            let frac = CGFloat((run + Double(i) / Double(n)).truncatingRemainder(dividingBy: 1))
-            let pt = PathSampler.point(orbit, fraction: frac)
-            let col = chaseColor(at: run + Double(i) * 0.18)
-            let pulse = 1 + 0.28 * beatAmt + 0.08 * sin(run * 2 * .pi + Double(i) * 1.3)
+            let off = i < offsets.count ? offsets[i] : Double(i) / Double(n)
+            let rate = i < rates.count ? rates[i] : 1.0
+            // Drift slightly faster/slower than chase; phase not evenly locked.
+            let frac = CGFloat((run * rate + off).truncatingRemainder(dividingBy: 1))
+            let pt = PathSampler.point(orbit, fraction: frac < 0 ? frac + 1 : frac)
+            let col = chaseColor(at: run * 1.35 + off)
+            let breath = 1 + 0.10 * beatAmt + 0.06 * sin(run * 2 * .pi * rate + off * 6)
             Circle()
-                .fill(col)
+                .fill(col.opacity(0.85 + 0.12 * beatAmt))
                 .frame(width: sizes[i], height: sizes[i])
-                .scaleEffect(pulse)
-                .shadow(color: col.opacity(0.9), radius: 6 + 4 * beatAmt)
+                .scaleEffect(breath)
+                .shadow(color: col.opacity(0.7), radius: 5 + 2 * beatAmt)
                 .position(pt)
                 .blendMode(.plusLighter)
         }
