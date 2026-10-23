@@ -40,7 +40,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		ID: origin, Name: "网易云音乐", Version: "1.0.0", Homepage: "https://music.163.com",
 		Description: "搜索、歌词、排行榜、每日推荐、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
-			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM},
+			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapFM, online.CapHotSearch},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie, online.LoginPassword, online.LoginSMS},
 		QRChannels:   []online.QRChannel{{ID: "app", Label: "网易云 App 扫码", App: "网易云音乐 App", Hint: "请使用 网易云音乐 App 扫码（不是微信/QQ）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless, online.QHiRes},
@@ -369,6 +369,28 @@ func parseIDs(ids []string) ([]int64, error) {
 			return nil, fmt.Errorf("%w: bad netease id %q", online.ErrUnavailable, s)
 		}
 		out = append(out, n)
+	}
+	return out, nil
+}
+
+func (p *Plugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
+	var r struct {
+		Data []struct {
+			SearchWord string `json:"searchWord"`
+			Score      int64  `json:"score"`
+			URL        string `json:"url"`
+		} `json:"data"`
+	}
+	if err := p.weapi(ctx, "/api/search/hot/detail", map[string]any{}, &r); err != nil {
+		return nil, err
+	}
+	out := make([]online.HotKeyword, 0, len(r.Data))
+	for _, d := range r.Data {
+		kw := strings.TrimSpace(d.SearchWord)
+		if kw == "" {
+			continue
+		}
+		out = append(out, online.HotKeyword{Keyword: kw, Score: d.Score, URL: d.URL})
 	}
 	return out, nil
 }

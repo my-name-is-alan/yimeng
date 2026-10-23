@@ -474,6 +474,23 @@ func (s *Service) DiscoverPlaylists(ctx context.Context, origin, cat string, off
 	return v, err
 }
 
+
+func (s *Service) HotSearch(ctx context.Context, origin string) ([]HotKeyword, error) {
+	p, _, err := s.plugin(origin)
+	if err != nil {
+		return nil, err
+	}
+	h, ok := p.(HotSearcher)
+	if !ok {
+		return nil, ErrNotSupported
+	}
+	v, err := cached(ctx, s.Cache, Key(origin, "hot-search", "all"), 10*time.Minute, func(ctx context.Context) ([]HotKeyword, error) {
+		return h.HotSearch(ctx)
+	})
+	s.after(ctx, origin, err)
+	return v, err
+}
+
 func (s *Service) UserPlaylists(ctx context.Context, origin string) ([]Playlist, error) {
 	p, _, err := s.plugin(origin)
 	if err != nil {

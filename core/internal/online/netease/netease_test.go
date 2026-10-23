@@ -82,6 +82,7 @@ func newFake() *fake {
 		"/api/w/login/cellphone":               "login_wrong.json",
 		"/api/w/login":                         "login_wrong.json",
 		"/api/login/token/refresh":             "login_ok.json",
+		"/api/search/hot/detail":               "search_hot_detail.json",
 	}}
 }
 
@@ -322,5 +323,20 @@ func TestPlaylistDiscoveryLyrics(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(strings.Join(f.calls, ",")), []byte("/api/v3/song/detail")) {
 		t.Fatal("playlist should fetch missing tracks via song detail")
+	}
+}
+
+func TestHotSearch(t *testing.T) {
+	p, _, _ := newPlugin(t)
+	var _ online.HotSearcher = p
+	items, err := p.HotSearch(context.Background())
+	if err != nil {
+		t.Fatalf("hot %v", err)
+	}
+	if len(items) < 2 || items[0].Keyword != "罗刹海市" || items[0].Score != 34771 {
+		t.Fatalf("items %+v", items)
+	}
+	if items[1].URL == "" {
+		t.Fatalf("expected url on second item %+v", items[1])
 	}
 }

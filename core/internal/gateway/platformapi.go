@@ -17,6 +17,7 @@ import (
 //	POST /api/v1/online/{origin}/fm/feedback {track_id, action: like|trash}
 //	GET  /api/v1/online/{origin}/recommend/playlists
 //	GET  /api/v1/online/{origin}/user/playlists?type=created|collected
+//	GET  /api/v1/online/{origin}/search/hot
 
 func (d Deps) platformErr(w http.ResponseWriter, what string, err error) {
 	if errors.Is(err, online.ErrNeedsLogin) {
@@ -106,6 +107,19 @@ func (d Deps) platformUserPlaylists(w http.ResponseWriter, r *http.Request) {
 	}
 	d.decorateOnlinePlaylists(out)
 	writeJSON(w, http.StatusOK, map[string]any{"origin": o, "type": typ, "items": out})
+}
+
+func (d Deps) platformHotSearch(w http.ResponseWriter, r *http.Request) {
+	o := r.PathValue("origin")
+	items, err := d.onlineFor(r.Context()).HotSearch(r.Context(), o)
+	if err != nil {
+		d.platformErr(w, "hot search", err)
+		return
+	}
+	if items == nil {
+		items = []online.HotKeyword{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"origin": o, "items": items})
 }
 
 func (d Deps) platformSub(w http.ResponseWriter, r *http.Request) {

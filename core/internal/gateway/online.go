@@ -61,6 +61,7 @@ func (d Deps) mountOnline(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/plugins/{id}/accounts/{acct}", d.personalOnly(d.pluginAccountRemove))
 
 	mux.HandleFunc("GET /api/home", d.home)
+	mux.HandleFunc("GET /api/online/{origin}/search/hot", d.platformHotSearch)
 	mux.HandleFunc("GET /api/online/{origin}/{sub}", d.platformSub) // daily | fm
 	mux.HandleFunc("POST /api/online/{origin}/fm/feedback", d.platformFMFeedback)
 	mux.HandleFunc("GET /api/online/{origin}/recommend/playlists", d.platformRecPlaylists)

@@ -40,6 +40,7 @@ const (
 	CapUserPlaylists Capability = "user_playlists"
 	CapStream        Capability = "stream"
 	CapFM            Capability = "fm"
+	CapHotSearch     Capability = "hot_search"
 )
 
 // LoginMethod values: "qr", "cookie", "password".
@@ -203,6 +204,13 @@ type Playlist struct {
 	Cover       *CoverRef `json:"cover,omitempty"` // set by the gateway
 }
 
+// HotKeyword is one platform hot-search entry (keyword + optional score/url).
+type HotKeyword struct {
+	Keyword string `json:"keyword"`
+	Score   int64  `json:"score,omitempty"`
+	URL     string `json:"url,omitempty"`
+}
+
 type SearchResult struct {
 	Tracks    []Track    `json:"tracks"`
 	Albums    []Album    `json:"albums"`
@@ -310,6 +318,11 @@ type Catalog interface {
 	Artist(ctx context.Context, nativeID string) (Artist, error)
 	Playlist(ctx context.Context, nativeID string) (Playlist, error)
 	Lyrics(ctx context.Context, nativeID string) (Lyrics, error)
+}
+
+// HotSearcher is optional: platform search-box hot keywords (no login usually).
+type HotSearcher interface {
+	HotSearch(ctx context.Context) ([]HotKeyword, error)
 }
 
 type Discovery interface {

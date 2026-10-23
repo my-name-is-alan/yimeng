@@ -138,6 +138,7 @@ func newPlugin(t *testing.T) (*Plugin, *fake, *online.Client) {
 		"music.musichallAlbum.AlbumSongList.GetAlbumSongList": "albumsongs",
 		"musichall.song_list_server.GetSingerSongList":        "singer",
 		"newsong.NewSongServer.get_new_song_info":             "newsongs",
+		"music.musicsearch.HotkeyService.GetHotkeyForQQMusicMobile": "hotkey",
 	}}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
@@ -151,13 +152,14 @@ func newPlugin(t *testing.T) (*Plugin, *fake, *online.Client) {
 
 func TestManifestAndInterfaces(t *testing.T) {
 	p, _, _ := newPlugin(t)
-	if m := p.Manifest(); m.Skeleton || !m.Has(online.CapStream) {
+	if m := p.Manifest(); m.Skeleton || !m.Has(online.CapStream) || !m.Has(online.CapHotSearch) {
 		t.Fatal(m)
 	}
 	var _ online.Authenticator = p
 	var _ online.Catalog = p
 	var _ online.Discovery = p
 	var _ online.UserLibrary = p
+	var _ online.HotSearcher = p
 	var _ online.Streamer = p
 }
 
@@ -357,5 +359,17 @@ func TestCookieLogin(t *testing.T) {
 	}
 	if _, err := p.LoginPassword(ctx, "a", "b"); !errors.Is(err, online.ErrNotSupported) {
 		t.Fatal(err)
+	}
+}
+
+func TestHotSearch(t *testing.T) {
+	p, _, _ := newPlugin(t)
+	items, err := p.HotSearch(context.Background())
+	if err != nil {
+		t.Fatalf("hot %v", err)
+	}
+	// duplicate 周杰伦 and empty query stripped
+	if len(items) != 2 || items[0].Keyword != "周杰伦" || items[0].Score != 100 || items[1].Keyword != "晴天" {
+		t.Fatalf("items %+v", items)
 	}
 }

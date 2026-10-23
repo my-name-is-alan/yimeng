@@ -2384,6 +2384,15 @@ paths:
       parameters:
         - { name: type, in: query, schema: { type: string, enum: [created, collected] } }
       responses: { "200": { description: "{origin, items:[Playlist]}" }, "404": { description: not_logged_in } }
+  /api/v1/online/{origin}/search/hot:
+    parameters: [{ name: origin, in: path, required: true, schema: { type: string, enum: [netease, qq, kugou] } }]
+    get:
+      tags: [online]
+      summary: Platform search-box hot keywords (no platform login required). {origin, items:[{keyword, score?, url?}]}. 404 unknown_plugin / not_supported; 409 plugin_disabled.
+      responses:
+        "200": { description: "{origin, items:[HotKeyword]}" }
+        "404": { description: unknown_plugin or not_supported }
+        "409": { description: plugin_disabled }
   # ---- P1: sessions, 一起听 rooms (D48) ----
   /api/v1/sessions:
     get:
@@ -2703,7 +2712,7 @@ components:
               nickname: { type: string, description: Authenticated callers only }
               avatar_url: { type: string, description: "Platform account avatar (https), authenticated callers only (any role)" }
               vip: { type: boolean }
-              capabilities: { type: array, items: { type: string, enum: [search, stream, lyrics, charts, daily, fm, recommend_playlists, user_playlists] } }
+              capabilities: { type: array, items: { type: string, enum: [search, stream, lyrics, charts, daily, fm, recommend_playlists, user_playlists, hot_search] } }
     RecognizeMatch:
       type: object
       required: [title]

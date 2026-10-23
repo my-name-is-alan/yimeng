@@ -148,6 +148,7 @@ All routes require a device token. Mutations of plugin state require the admin r
 | `GET /api/search?q=&online=1[&origins=]` | adds `online: [{origin, name, result, error}]` (federated, parallel, 6 s budget each) |
 | `GET /api/playlists?scope=mine|recommend|discover|charts[&origin=]` | external playlists grouped by platform; no scope = local playlists |
 | `GET /api/charts[?origin=]` | charts grouped by platform |
+| `GET /api/online/{origin}/search/hot` | hot search keywords `{origin, items:[{keyword, score?, url?}]}` |
 | `GET /api/online/{origin}/{tracks|albums|artists|playlists}/{id}` | detail; playlists return `{playlist, counts{full,preview,unavailable,local}}` |
 | `POST /api/online/{origin}/playlists/{id}/clone` | `{name?, prefer_local?=true, skip_unavailable?}` → local static playlist (local copies substituted) |
 | `GET /api/online/favorites[?origin=]` | each account's cloud "liked songs" |

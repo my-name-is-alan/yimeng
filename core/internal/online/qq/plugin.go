@@ -34,7 +34,7 @@ func (p *Plugin) Manifest() online.Manifest {
 		ID: origin, Name: "QQ音乐", Version: "1.0.0", Homepage: "https://y.qq.com",
 		Description: "搜索、歌词、排行榜、推荐、歌单广场、我的歌单与播放（按账号权益）。",
 		Capabilities: []online.Capability{online.CapSearch, online.CapLyrics, online.CapCharts, online.CapRecommend,
-			online.CapDiscover, online.CapUserPlaylists, online.CapStream},
+			online.CapDiscover, online.CapUserPlaylists, online.CapStream, online.CapHotSearch},
 		LoginMethods: []online.LoginMethod{online.LoginQR, online.LoginCookie},
 		QRChannels:   []online.QRChannel{{ID: "qq", Label: "QQ 扫码", App: "手机 QQ", Hint: "请使用 QQ 扫码（手机 QQ App，不是 QQ音乐 或 微信）"}},
 		Qualities:    []online.Quality{online.QStandard, online.QHigh, online.QLossless},
@@ -175,6 +175,32 @@ func validMid(id string) error {
 		return fmt.Errorf("%w: qq song id %q", online.ErrBadInput, id)
 	}
 	return nil
+}
+
+func (p *Plugin) HotSearch(ctx context.Context) ([]online.HotKeyword, error) {
+	var d struct {
+		VecHotkey []struct {
+			Query string `json:"query"`
+			Score int64  `json:"score"`
+			URL   string `json:"url"`
+		} `json:"vec_hotkey"`
+	}
+	// search_id is an opaque session token; a random hex is fine for anonymous hot keys.
+	if err := p.one(ctx, "music.musicsearch.HotkeyService", "GetHotkeyForQQMusicMobile",
+		map[string]any{"search_id": strconv.FormatInt(p.now().UnixNano(), 10)}, &d); err != nil {
+		return nil, err
+	}
+	out := make([]online.HotKeyword, 0, len(d.VecHotkey))
+	seen := map[string]bool{}
+	for _, h := range d.VecHotkey {
+		kw := strings.TrimSpace(h.Query)
+		if kw == "" || seen[kw] {
+			continue
+		}
+		seen[kw] = true
+		out = append(out, online.HotKeyword{Keyword: kw, Score: h.Score, URL: h.URL})
+	}
+	return out, nil
 }
 
 func (p *Plugin) Tracks(ctx context.Context, ids []string) ([]online.Track, error) {
